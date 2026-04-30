@@ -65,6 +65,12 @@ export DASHSCOPE_API_KEY="your_api_key_here"
 python main.py
 ```
 
+CLI 内置技能管理命令：
+
+- `/skills`：列出当前技能
+- `/reload-skills`：手动重载技能目录
+- `/add-skill <name> [内容]`：添加技能；不传内容时进入多行输入，单独输入 `.` 结束
+
 ### Web UI
 
 ```bash
@@ -133,7 +139,27 @@ curl -X POST http://localhost:8000/api/sessions \\
 }
 ```
 
-3. `GET /api/sessions/<session_id>` 获取单个会话
+3. `GET /api/skills` 获取技能列表
+
+```bash
+curl http://localhost:8000/api/skills
+```
+
+4. `POST /api/skills` 添加技能
+
+```bash
+curl -X POST http://localhost:8000/api/skills \\
+  -H 'Content-Type: application/json' \\
+  -d '{\"name\":\"demo\",\"content\":\"# demo\\n技能说明\"}'
+```
+
+5. `POST /api/skills/reload` 手动重载技能目录
+
+```bash
+curl -X POST http://localhost:8000/api/skills/reload
+```
+
+6. `GET /api/sessions/<session_id>` 获取单个会话
 
 ```bash
 curl http://localhost:8000/api/sessions/d4b4b0...
@@ -155,7 +181,7 @@ curl http://localhost:8000/api/sessions/d4b4b0...
 }
 ```
 
-4. `POST /api/chat` 发送消息
+7. `POST /api/chat` 发送消息
 
 ```bash
 curl -X POST http://localhost:8000/api/chat \\
@@ -203,7 +229,7 @@ AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
 
 1. 在 `skills/` 下创建技能目录
 2. 创建 `{skill_name}.md` 文件
-3. 系统会自动发现并注册
+3. 系统会热重载并自动发现；也可以通过 CLI 的 `/add-skill` 或 Web 侧边栏的“添加技能”创建
 
 ### 添加新的响应处理器
 
@@ -236,5 +262,5 @@ AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
 - [ ] 单元测试覆盖
 - [ ] 异步执行支持
 - [x] Web API 接口（会话/聊天）
-- [ ] 技能热重载
+- [x] 技能热重载
 - [x] 对话历史持久化（JSON 文件）

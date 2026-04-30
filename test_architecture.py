@@ -182,6 +182,8 @@ def test_skill_registry():
     """测试技能注册表"""
     print("\n测试技能注册表...")
     try:
+        import tempfile
+        from pathlib import Path
         from skills import SkillRegistry
         
         registry = SkillRegistry("skills")
@@ -194,6 +196,20 @@ def test_skill_registry():
             print(f"✅ 技能注册表正常，发现 {len(skills)} 个技能: {skills}")
         else:
             print("⚠️  未发现 calculator 技能，但注册表功能正常")
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_registry = SkillRegistry(temp_dir)
+            created = temp_registry.create_skill("demo", "# demo\n测试技能")
+            assert created.name == "demo"
+            assert temp_registry.has_skill("demo")
+            assert "测试技能" in temp_registry.get("demo").load_context()
+            
+            external_dir = Path(temp_dir) / "external"
+            external_dir.mkdir()
+            (external_dir / "external.md").write_text("# external\n热重载技能", encoding="utf-8")
+            assert "external" in temp_registry.list_skills()
+            assert "热重载技能" in temp_registry.get("external").load_context()
+        
         return True
     except Exception as e:
         print(f"❌ 技能注册表测试失败: {e}")

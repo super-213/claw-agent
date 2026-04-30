@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, request
@@ -35,6 +36,23 @@ if not skills_dir.is_absolute():
     skills_dir = PROJECT_ROOT / skills_dir
 skill_registry = SkillRegistry(str(skills_dir))
 executor = CommandExecutor(timeout=config["timeout"])
+
+
+def _skill_payload(skill_name: str) -> dict:
+    skill = skill_registry.get(skill_name)
+    if not skill:
+        return {"name": skill_name}
+    
+    file_path = getattr(skill, "file_path", None)
+    payload = {"name": skill_name}
+    if file_path:
+        stat = Path(file_path).stat()
+        payload.update({
+            "path": str(file_path),
+            "bytes": stat.st_size,
+            "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        })
+    return payload
 
 
 def _build_orchestrator() -> AgentOrchestrator:
@@ -102,6 +120,40 @@ def get_token_usage():
             for session in sessions
         ],
     })
+
+
+@app.get("/api/skills")
+def list_skills():
+    skills = [_skill_payload(name) for name in skill_registry.list_skills()]
+    return jsonify({"skills": skills})
+
+
+@app.post("/api/skills/reload")
+def reload_skills():
+    skills = skill_registry.reload()
+    return jsonify({
+        "ok": True,
+        "skills": [_skill_payload(name) for name in skills],
+    })
+
+
+@app.post("/api/skills")
+def create_skill():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    content = (payload.get("content") or "").strip()
+    
+    try:
+        skill = skill_registry.create_skill(name, content)
+    except FileExistsError:
+        return jsonify({"error": "skill_exists", "message": f"技能已存在：{name}"}), 409
+    except ValueError as e:
+        return jsonify({"error": "invalid_skill", "message": str(e)}), 400
+    
+    return jsonify({
+        "ok": True,
+        "skill": _skill_payload(skill.name),
+    }), 201
 
 
 @app.post("/api/sessions")

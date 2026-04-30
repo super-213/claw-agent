@@ -356,6 +356,236 @@
       background: rgba(255, 77, 106, 0.1);
     }
 
+    .skill-panel {
+      padding: 0 10px 14px;
+      border-top: 1px solid var(--stroke-soft);
+    }
+
+    .skill-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 34px;
+      gap: 8px;
+      padding: 0 6px 10px;
+    }
+
+    .skill-add-btn,
+    .skill-reload-btn {
+      height: 34px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-sm);
+      background: rgba(0, 229, 200, 0.08);
+      color: var(--neon);
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      transition: background 0.18s, border-color 0.18s, color 0.18s;
+    }
+
+    .skill-add-btn:hover,
+    .skill-reload-btn:hover {
+      background: rgba(0, 229, 200, 0.16);
+      border-color: var(--neon);
+    }
+
+    .skill-reload-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .skill-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 132px;
+      overflow-y: auto;
+      padding: 0 6px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--ink-ghost) transparent;
+    }
+
+    .skill-item {
+      width: 100%;
+      min-height: 32px;
+      padding: 7px 9px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--ink-dim);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: color 0.18s, background 0.18s, border-color 0.18s;
+    }
+
+    .skill-item:hover {
+      color: var(--neon);
+      background: rgba(0, 229, 200, 0.05);
+      border-color: var(--stroke);
+    }
+
+    .skill-empty {
+      padding: 8px 9px;
+      color: var(--ink-ghost);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0, 0, 0, 0.58);
+      backdrop-filter: blur(8px);
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .skill-modal {
+      width: min(620px, 100%);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius-md);
+      background: rgba(13, 17, 23, 0.98);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--stroke-soft);
+    }
+
+    .modal-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .modal-close {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--stroke-soft);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--ink-dim);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: var(--neon);
+      border-color: var(--stroke);
+      background: rgba(0, 229, 200, 0.08);
+    }
+
+    .skill-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 18px 20px 20px;
+    }
+
+    .field-label {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-ghost);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .skill-input,
+    .skill-textarea {
+      width: 100%;
+      border: 1px solid var(--stroke-soft);
+      border-radius: var(--radius-sm);
+      background: rgba(20, 30, 46, 0.9);
+      color: var(--ink);
+      font-family: 'Outfit', sans-serif;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+
+    .skill-input {
+      height: 42px;
+      padding: 0 12px;
+    }
+
+    .skill-textarea {
+      min-height: 220px;
+      padding: 12px;
+      line-height: 1.55;
+      resize: vertical;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    .skill-input:focus,
+    .skill-textarea:focus {
+      border-color: rgba(0, 229, 200, 0.42);
+      box-shadow: 0 0 0 3px rgba(0, 229, 200, 0.06);
+    }
+
+    .skill-form-error {
+      min-height: 18px;
+      color: var(--red);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .modal-secondary,
+    .modal-primary {
+      min-width: 86px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+
+    .modal-secondary {
+      border: 1px solid var(--stroke-soft);
+      background: transparent;
+      color: var(--ink-dim);
+    }
+
+    .modal-primary {
+      border: 1px solid var(--neon);
+      background: var(--neon);
+      color: var(--bg-0);
+    }
+
+    .modal-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
     .sidebar-footer {
       padding: 14px 20px;
       border-top: 1px solid var(--stroke-soft);
@@ -920,6 +1150,19 @@
         -webkit-overflow-scrolling: touch;
       }
 
+      .skill-list {
+        max-height: 112px;
+      }
+
+      .skill-modal {
+        max-height: calc(100svh - 36px);
+      }
+
+      .skill-textarea {
+        min-height: 180px;
+        max-height: 46svh;
+      }
+
       .session-more {
         opacity: 1;
       }
@@ -992,6 +1235,14 @@
     </div>
     <div class="section-label">// Sessions</div>
     <div class="session-list" id="sessionList"></div>
+    <div class="skill-panel">
+      <div class="section-label">// Skills</div>
+      <div class="skill-toolbar">
+        <button class="skill-add-btn" id="addSkillBtn" type="button">添加技能</button>
+        <button class="skill-reload-btn" id="reloadSkillsBtn" type="button" title="重载技能" aria-label="重载技能">↻</button>
+      </div>
+      <div class="skill-list" id="skillList"></div>
+    </div>
     <div class="sidebar-footer">
       <div class="sys-status">
         <div class="dot"></div>
@@ -1049,6 +1300,30 @@
   </main>
 </div>
 
+<div class="modal-backdrop" id="skillModal" aria-hidden="true">
+  <div class="skill-modal" role="dialog" aria-modal="true" aria-labelledby="skillModalTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="skillModalTitle">添加技能</div>
+      <button class="modal-close" id="skillModalClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <form class="skill-form" id="skillForm">
+      <label class="field-label">
+        技能名
+        <input class="skill-input" id="skillNameInput" name="name" autocomplete="off" placeholder="calculator_ext" />
+      </label>
+      <label class="field-label">
+        Markdown 内容
+        <textarea class="skill-textarea" id="skillContentInput" name="content" spellcheck="false" placeholder="# 技能说明&#10;描述这个技能的使用规则、输出格式和注意事项。"></textarea>
+      </label>
+      <div class="skill-form-error" id="skillFormError"></div>
+      <div class="modal-actions">
+        <button class="modal-secondary" id="skillCancelBtn" type="button">取消</button>
+        <button class="modal-primary" id="skillSaveBtn" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
   const sessionListEl = document.getElementById('sessionList');
   const messageListEl = document.getElementById('messageList');
@@ -1065,9 +1340,21 @@
   const mobileMenuBtn = document.getElementById('mobileMenuBtn');
   const mobileSidebarClose = document.getElementById('mobileSidebarClose');
   const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  const skillListEl = document.getElementById('skillList');
+  const addSkillBtn = document.getElementById('addSkillBtn');
+  const reloadSkillsBtn = document.getElementById('reloadSkillsBtn');
+  const skillModal = document.getElementById('skillModal');
+  const skillModalClose = document.getElementById('skillModalClose');
+  const skillCancelBtn = document.getElementById('skillCancelBtn');
+  const skillForm = document.getElementById('skillForm');
+  const skillNameInput = document.getElementById('skillNameInput');
+  const skillContentInput = document.getElementById('skillContentInput');
+  const skillFormError = document.getElementById('skillFormError');
+  const skillSaveBtn = document.getElementById('skillSaveBtn');
 
   const state = {
     sessions: [],
+    skills: [],
     currentSessionId: null,
     busy: false,
     messages: [],
@@ -1080,6 +1367,20 @@
     sidebar.classList.toggle('open', open);
     sidebarBackdrop.classList.toggle('visible', open);
     mobileMenuBtn.setAttribute('aria-expanded', String(open));
+  };
+
+  const openSkillModal = () => {
+    skillForm.reset();
+    skillFormError.textContent = '';
+    skillModal.classList.add('open');
+    skillModal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => skillNameInput.focus(), 0);
+  };
+
+  const closeSkillModal = () => {
+    skillModal.classList.remove('open');
+    skillModal.setAttribute('aria-hidden', 'true');
+    skillFormError.textContent = '';
   };
 
   const formatTime = (value) => {
@@ -1240,6 +1541,34 @@
     });
   };
 
+  const renderSkills = () => {
+    skillListEl.innerHTML = '';
+    if (!state.skills.length) {
+      const empty = document.createElement('div');
+      empty.className = 'skill-empty';
+      empty.textContent = '暂无技能';
+      skillListEl.appendChild(empty);
+      return;
+    }
+
+    state.skills.forEach((skill) => {
+      const button = document.createElement('button');
+      button.className = 'skill-item';
+      button.type = 'button';
+      button.title = `插入调用 ${skill.name} skill`;
+      button.textContent = skill.name;
+      button.addEventListener('click', () => {
+        const prefix = `调用 ${skill.name} skill `;
+        const current = messageInput.value.trimStart();
+        messageInput.value = current ? prefix + current : prefix;
+        messageInput.focus();
+        messageInput.dispatchEvent(new Event('input'));
+        if (isMobileLayout()) setMobileSidebar(false);
+      });
+      skillListEl.appendChild(button);
+    });
+  };
+
   const renderMessages = (messages) => {
     state.messages = messages;
     const visibleMessages = messages.filter(m => m.role !== 'system');
@@ -1315,6 +1644,59 @@
         await openSession(state.sessions[0].id);
       }
     } catch (e) { console.warn('loadSessions:', e); }
+  };
+
+  const loadSkills = async () => {
+    try {
+      const res = await fetch('/api/skills');
+      if (!res.ok) return;
+      const data = await res.json();
+      state.skills = data.skills || [];
+      renderSkills();
+    } catch (e) { console.warn('loadSkills:', e); }
+  };
+
+  const reloadSkills = async () => {
+    try {
+      const res = await fetch('/api/skills/reload', { method: 'POST' });
+      if (!res.ok) return;
+      const data = await res.json();
+      state.skills = data.skills || [];
+      renderSkills();
+      setStatus(`技能 ${state.skills.length}`, false);
+      setTimeout(() => setStatus('就绪', false), 1200);
+    } catch (e) { console.warn('reloadSkills:', e); }
+  };
+
+  const submitSkill = async (event) => {
+    event.preventDefault();
+    const name = skillNameInput.value.trim();
+    const content = skillContentInput.value.trim();
+    skillFormError.textContent = '';
+
+    skillSaveBtn.disabled = true;
+    try {
+      const res = await fetch('/api/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, content }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        skillFormError.textContent = data.message || '添加失败';
+        return;
+      }
+
+      closeSkillModal();
+      await loadSkills();
+      setStatus(`已添加 ${data.skill?.name || name}`, false);
+      setTimeout(() => setStatus('就绪', false), 1200);
+    } catch (e) {
+      skillFormError.textContent = '网络错误';
+      console.warn('submitSkill:', e);
+    } finally {
+      skillSaveBtn.disabled = false;
+    }
   };
 
   const openSession = async (sessionId) => {
@@ -1440,6 +1822,14 @@
 
   sendBtn.addEventListener('click', sendMessage);
   newSessionBtn.addEventListener('click', createSession);
+  addSkillBtn.addEventListener('click', openSkillModal);
+  reloadSkillsBtn.addEventListener('click', reloadSkills);
+  skillForm.addEventListener('submit', submitSkill);
+  skillModalClose.addEventListener('click', closeSkillModal);
+  skillCancelBtn.addEventListener('click', closeSkillModal);
+  skillModal.addEventListener('click', (event) => {
+    if (event.target === skillModal) closeSkillModal();
+  });
   mobileMenuBtn.addEventListener('click', () => {
     setMobileSidebar(!sidebar.classList.contains('open'));
   });
@@ -1452,6 +1842,7 @@
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (skillModal.classList.contains('open')) closeSkillModal();
     if (sidebar.classList.contains('open')) setMobileSidebar(false);
     if (state.openMenuSessionId) {
       state.openMenuSessionId = null;
@@ -1466,6 +1857,7 @@
   });
 
   window.addEventListener('load', async () => {
+    await loadSkills();
     await loadSessions();
     if (!state.currentSessionId) await createSession();
   });
