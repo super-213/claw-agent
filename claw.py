@@ -1,13 +1,15 @@
-#!/usr/bin/env python3#!/usr/bin/env python3
+#!/usr/bin/env python3
 from openai import OpenAI
 import os, sys, re, subprocess
 from pathlib import Path
 
+from config import ConfigManager
+
 # ================= 配置区域 =================
 CONFIG = {
-    "api_key": "sk-b897bb331e9f448aac1d089118da1ec5",
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model": "qwen-plus",
+    "api_key": "",
+    "base_url": "",
+    "model": "",
     "agent_file": "Agent.md",
     "skills_dir": "skills",
     "timeout": 30,
@@ -25,6 +27,16 @@ def load_skill(name):
     return path.read_text(encoding='utf-8') if path.exists() else None
 
 def main():
+    config = ConfigManager()
+    CONFIG.update({
+        "api_key": config["api_key"],
+        "base_url": config["base_url"],
+        "model": config["model"],
+        "agent_file": config["agent_file"],
+        "skills_dir": config["skills_dir"],
+        "timeout": config["timeout"],
+    })
+
     if not CONFIG["api_key"]:
         print("错误：未设置 DASHSCOPE_API_KEY"); sys.exit(1)
 

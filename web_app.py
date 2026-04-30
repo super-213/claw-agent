@@ -128,6 +128,26 @@ def list_skills():
     return jsonify({"skills": skills})
 
 
+@app.get("/api/config")
+def get_config():
+    return jsonify(config.get_public_llm_config())
+
+
+@app.post("/api/config")
+def update_config():
+    payload = request.get_json(silent=True) or {}
+    try:
+        public_config = config.update_llm_config(
+            api_key=payload.get("api_key"),
+            base_url=payload.get("base_url"),
+            model=payload.get("model"),
+        )
+    except ValueError as e:
+        return jsonify({"error": "invalid_config", "message": str(e)}), 400
+
+    return jsonify({"ok": True, "config": public_config})
+
+
 @app.post("/api/skills/reload")
 def reload_skills():
     skills = skill_registry.reload()

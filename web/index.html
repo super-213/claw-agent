@@ -591,6 +591,47 @@
       border-top: 1px solid var(--stroke-soft);
     }
 
+    .config-btn {
+      width: 100%;
+      height: 34px;
+      margin-bottom: 12px;
+      border: 1px solid var(--stroke-soft);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--ink-dim);
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      transition: color 0.18s, border-color 0.18s, background 0.18s;
+    }
+
+    .config-btn:hover {
+      color: var(--neon);
+      border-color: var(--stroke);
+      background: rgba(0, 229, 200, 0.08);
+    }
+
+    .config-summary {
+      display: grid;
+      grid-template-columns: 80px minmax(0, 1fr);
+      gap: 7px 10px;
+      padding: 12px;
+      border: 1px solid var(--stroke-soft);
+      border-radius: var(--radius-sm);
+      background: rgba(20, 30, 46, 0.54);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-dim);
+    }
+
+    .config-summary span:nth-child(even) {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ink);
+    }
+
     .sidebar-backdrop {
       display: none;
     }
@@ -1244,6 +1285,7 @@
       <div class="skill-list" id="skillList"></div>
     </div>
     <div class="sidebar-footer">
+      <button class="config-btn" id="configBtn" type="button">模型设置</button>
       <div class="sys-status">
         <div class="dot"></div>
         <span>System Online</span>
@@ -1300,6 +1342,39 @@
   </main>
 </div>
 
+<div class="modal-backdrop" id="configModal" aria-hidden="true">
+  <div class="skill-modal" role="dialog" aria-modal="true" aria-labelledby="configModalTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="configModalTitle">模型设置</div>
+      <button class="modal-close" id="configModalClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <form class="skill-form" id="configForm">
+      <div class="config-summary" id="configSummary">
+        <span>API URL</span><span>-</span>
+        <span>API KEY</span><span>-</span>
+        <span>模型</span><span>-</span>
+      </div>
+      <label class="field-label">
+        API URL
+        <input class="skill-input" id="configBaseUrlInput" name="base_url" autocomplete="off" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+      </label>
+      <label class="field-label">
+        API KEY
+        <input class="skill-input" id="configApiKeyInput" name="api_key" type="password" autocomplete="new-password" placeholder="留空则保留当前密钥" />
+      </label>
+      <label class="field-label">
+        模型名称
+        <input class="skill-input" id="configModelInput" name="model" autocomplete="off" placeholder="qwen-plus" />
+      </label>
+      <div class="skill-form-error" id="configFormError"></div>
+      <div class="modal-actions">
+        <button class="modal-secondary" id="configCancelBtn" type="button">取消</button>
+        <button class="modal-primary" id="configSaveBtn" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="skillModal" aria-hidden="true">
   <div class="skill-modal" role="dialog" aria-modal="true" aria-labelledby="skillModalTitle">
     <div class="modal-head">
@@ -1343,6 +1418,17 @@
   const skillListEl = document.getElementById('skillList');
   const addSkillBtn = document.getElementById('addSkillBtn');
   const reloadSkillsBtn = document.getElementById('reloadSkillsBtn');
+  const configBtn = document.getElementById('configBtn');
+  const configModal = document.getElementById('configModal');
+  const configModalClose = document.getElementById('configModalClose');
+  const configCancelBtn = document.getElementById('configCancelBtn');
+  const configForm = document.getElementById('configForm');
+  const configBaseUrlInput = document.getElementById('configBaseUrlInput');
+  const configApiKeyInput = document.getElementById('configApiKeyInput');
+  const configModelInput = document.getElementById('configModelInput');
+  const configSummary = document.getElementById('configSummary');
+  const configFormError = document.getElementById('configFormError');
+  const configSaveBtn = document.getElementById('configSaveBtn');
   const skillModal = document.getElementById('skillModal');
   const skillModalClose = document.getElementById('skillModalClose');
   const skillCancelBtn = document.getElementById('skillCancelBtn');
@@ -1355,6 +1441,7 @@
   const state = {
     sessions: [],
     skills: [],
+    config: null,
     currentSessionId: null,
     busy: false,
     messages: [],
@@ -1381,6 +1468,35 @@
     skillModal.classList.remove('open');
     skillModal.setAttribute('aria-hidden', 'true');
     skillFormError.textContent = '';
+  };
+
+  const renderConfigSummary = () => {
+    const cfg = state.config || {};
+    configSummary.innerHTML = `
+      <span>API URL</span><span title="${escapeHtml(cfg.base_url || '')}">${escapeHtml(cfg.base_url || '-')}</span>
+      <span>API KEY</span><span>${escapeHtml(cfg.api_key_masked || '<未设置>')}</span>
+      <span>模型</span><span>${escapeHtml(cfg.model || '-')}</span>
+    `;
+  };
+
+  const openConfigModal = async () => {
+    configFormError.textContent = '';
+    await loadConfig();
+    const cfg = state.config || {};
+    configBaseUrlInput.value = cfg.base_url || '';
+    configApiKeyInput.value = '';
+    configModelInput.value = cfg.model || '';
+    renderConfigSummary();
+    configModal.classList.add('open');
+    configModal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => configBaseUrlInput.focus(), 0);
+  };
+
+  const closeConfigModal = () => {
+    configModal.classList.remove('open');
+    configModal.setAttribute('aria-hidden', 'true');
+    configFormError.textContent = '';
+    configApiKeyInput.value = '';
   };
 
   const formatTime = (value) => {
@@ -1668,6 +1784,51 @@
     } catch (e) { console.warn('reloadSkills:', e); }
   };
 
+  const loadConfig = async () => {
+    try {
+      const res = await fetch('/api/config');
+      if (!res.ok) return;
+      state.config = await res.json();
+    } catch (e) { console.warn('loadConfig:', e); }
+  };
+
+  const submitConfig = async (event) => {
+    event.preventDefault();
+    configFormError.textContent = '';
+    configSaveBtn.disabled = true;
+
+    try {
+      const payload = {
+        base_url: configBaseUrlInput.value.trim(),
+        model: configModelInput.value.trim(),
+      };
+      const apiKey = configApiKeyInput.value.trim();
+      if (apiKey) payload.api_key = apiKey;
+
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        configFormError.textContent = data.message || '保存失败';
+        return;
+      }
+
+      state.config = data.config;
+      renderConfigSummary();
+      closeConfigModal();
+      setStatus('配置已保存', false);
+      setTimeout(() => setStatus('就绪', false), 1200);
+    } catch (e) {
+      configFormError.textContent = '网络错误';
+      console.warn('submitConfig:', e);
+    } finally {
+      configSaveBtn.disabled = false;
+    }
+  };
+
   const submitSkill = async (event) => {
     event.preventDefault();
     const name = skillNameInput.value.trim();
@@ -1822,6 +1983,13 @@
 
   sendBtn.addEventListener('click', sendMessage);
   newSessionBtn.addEventListener('click', createSession);
+  configBtn.addEventListener('click', openConfigModal);
+  configForm.addEventListener('submit', submitConfig);
+  configModalClose.addEventListener('click', closeConfigModal);
+  configCancelBtn.addEventListener('click', closeConfigModal);
+  configModal.addEventListener('click', (event) => {
+    if (event.target === configModal) closeConfigModal();
+  });
   addSkillBtn.addEventListener('click', openSkillModal);
   reloadSkillsBtn.addEventListener('click', reloadSkills);
   skillForm.addEventListener('submit', submitSkill);
@@ -1842,6 +2010,7 @@
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (configModal.classList.contains('open')) closeConfigModal();
     if (skillModal.classList.contains('open')) closeSkillModal();
     if (sidebar.classList.contains('open')) setMobileSidebar(false);
     if (state.openMenuSessionId) {
@@ -1857,6 +2026,7 @@
   });
 
   window.addEventListener('load', async () => {
+    await loadConfig();
     await loadSkills();
     await loadSessions();
     if (!state.currentSessionId) await createSession();

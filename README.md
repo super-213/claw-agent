@@ -55,9 +55,13 @@ pip install -r requirements.txt
 
 ```bash
 export DASHSCOPE_API_KEY="your_api_key_here"
+export API_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+export MODEL_NAME="qwen-plus"
 ```
 
 或创建 `.env` 文件（参考 `config/.env.example`）
+
+配置优先级：当前进程环境变量 > 项目根 `.env` > `config/.env` > 默认值。
 
 ### 3. 运行（CLI）
 
@@ -71,13 +75,21 @@ CLI 内置技能管理命令：
 - `/reload-skills`：手动重载技能目录
 - `/add-skill <name> [内容]`：添加技能；不传内容时进入多行输入，单独输入 `.` 结束
 
+CLI 内置模型配置命令：
+
+- `/config`：查看当前 API URL、模型名称和脱敏后的 API KEY
+- `/config set api_key`：隐藏输入并保存 API KEY
+- `/config set api_key <value>`：直接保存 API KEY
+- `/config set base_url <url>`：保存 API URL
+- `/config set model <name>`：保存模型名称
+
 ### Web UI
 
 ```bash
 python web_app.py
 ```
 
-默认访问 `http://localhost:8000`。对话历史会保存在 `.data/conversations` 下的 JSON 文件中，可通过 `CONVERSATION_DIR` 修改路径。
+默认访问 `http://localhost:8000`。侧边栏的“模型设置”可修改 API URL、API KEY 和模型名称。Web 端只展示脱敏 API KEY；保存时 API KEY 留空会保留原值，不会把完整密钥返回给浏览器。对话历史会保存在 `.data/conversations` 下的 JSON 文件中，可通过 `CONVERSATION_DIR` 修改路径。
 
 ### 对话持久化
 

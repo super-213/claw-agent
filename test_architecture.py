@@ -45,6 +45,65 @@ def test_config():
         return False
 
 
+def test_config_update_security():
+    """测试 LLM 配置更新不会明文返回 API KEY"""
+    print("\n测试 LLM 配置安全更新...")
+    import os
+    from tempfile import TemporaryDirectory
+
+    env_names = ["DASHSCOPE_API_KEY", "API_BASE_URL", "MODEL_NAME"]
+    original_env = {name: os.environ.get(name) for name in env_names}
+    for name in env_names:
+        os.environ.pop(name, None)
+
+    try:
+        from config import ConfigManager
+
+        with TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            env_path.write_text(
+                "\n".join([
+                    "DASHSCOPE_API_KEY=old-secret-key",
+                    "API_BASE_URL=https://old.example.com/v1",
+                    "MODEL_NAME=old-model",
+                    "TIMEOUT=45",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            config = ConfigManager(str(env_path))
+            public_config = config.get_public_llm_config()
+            assert public_config["api_key_set"] is True
+            assert "old-secret-key" not in str(public_config)
+            assert public_config["api_key_masked"] == "old-se...-key"
+
+            config.update_llm_config(
+                base_url="https://new.example.com/v1/",
+                model="new-model",
+            )
+            text = env_path.read_text(encoding="utf-8")
+            assert "DASHSCOPE_API_KEY=old-secret-key" in text
+            assert "API_BASE_URL=https://new.example.com/v1" in text
+            assert "MODEL_NAME=new-model" in text
+            assert config["base_url"] == "https://new.example.com/v1"
+
+            updated = config.update_llm_config(api_key="new-secret-key-1234")
+            assert "new-secret-key-1234" not in str(updated)
+            assert "DASHSCOPE_API_KEY=new-secret-key-1234" in env_path.read_text(encoding="utf-8")
+
+        print("✅ LLM 配置安全更新正常")
+        return True
+    except Exception as e:
+        print(f"❌ LLM 配置安全更新失败: {e}")
+        return False
+    finally:
+        for name, value in original_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def test_conversation():
     """测试对话管理"""
     print("\n测试对话管理...")
@@ -295,6 +354,7 @@ def main():
     tests = [
         test_imports,
         test_config,
+        test_config_update_security,
         test_conversation,
         test_context_compressor,
         test_conversation_store_summary,
