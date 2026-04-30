@@ -17,6 +17,11 @@ class ConfigManager:
         "conversation_dir": ".data/conversations",
         "timeout": 30,
         "max_retries": 3,
+        "context_max_chars": 60000,
+        "context_recent_messages": 12,
+        "summary_target_chars": 6000,
+        "summary_input_chars": 30000,
+        "token_encoding": "cl100k_base",
     }
     
     def __init__(self, config_path: str = None):
@@ -56,6 +61,9 @@ class ConfigManager:
         if conversation_dir := os.getenv("CONVERSATION_DIR"):
             config["conversation_dir"] = conversation_dir
 
+        if token_encoding := os.getenv("TOKEN_ENCODING"):
+            config["token_encoding"] = token_encoding
+
         if timeout := os.getenv("TIMEOUT"):
             try:
                 config["timeout"] = int(timeout)
@@ -67,6 +75,19 @@ class ConfigManager:
                 config["max_retries"] = int(max_retries)
             except ValueError:
                 pass
+
+        int_envs = {
+            "CONTEXT_MAX_CHARS": "context_max_chars",
+            "CONTEXT_RECENT_MESSAGES": "context_recent_messages",
+            "SUMMARY_TARGET_CHARS": "summary_target_chars",
+            "SUMMARY_INPUT_CHARS": "summary_input_chars",
+        }
+        for env_name, config_key in int_envs.items():
+            if value := os.getenv(env_name):
+                try:
+                    config[config_key] = int(value)
+                except ValueError:
+                    pass
         
         return config
     

@@ -8,8 +8,8 @@ from pathlib import Path
 from flask import Flask, jsonify, request
 
 from config import ConfigManager
-from core import AgentOrchestrator, ConversationManager
-from services import LLMClient, CommandExecutor, ConversationStore
+from core import AgentOrchestrator, ContextCompressor, ConversationManager
+from services import LLMClient, CommandExecutor, ConversationStore, TokenUsageEstimator
 from skills import SkillRegistry
 
 
@@ -28,7 +28,8 @@ agent_prompt = agent_path.read_text(encoding="utf-8")
 conversation_root = Path(config["conversation_dir"])
 if not conversation_root.is_absolute():
     conversation_root = PROJECT_ROOT / conversation_root
-store = ConversationStore(conversation_root)
+token_estimator = TokenUsageEstimator(config["token_encoding"])
+store = ConversationStore(conversation_root, token_estimator=token_estimator)
 skills_dir = Path(config["skills_dir"])
 if not skills_dir.is_absolute():
     skills_dir = PROJECT_ROOT / skills_dir
@@ -44,11 +45,19 @@ def _build_orchestrator() -> AgentOrchestrator:
         timeout=config["timeout"],
     )
     conversation = ConversationManager(agent_prompt)
+    context_compressor = ContextCompressor(
+        llm_client=llm_client,
+        max_context_chars=config["context_max_chars"],
+        recent_messages=config["context_recent_messages"],
+        summary_target_chars=config["summary_target_chars"],
+        summary_input_chars=config["summary_input_chars"],
+    )
     return AgentOrchestrator(
         llm_client=llm_client,
         conversation=conversation,
         skill_registry=skill_registry,
         executor=executor,
+        context_compressor=context_compressor,
     )
 
 
@@ -61,6 +70,38 @@ def index():
 def list_sessions():
     sessions = store.list_sessions()
     return jsonify([asdict(s) for s in sessions])
+
+
+@app.get("/api/token-usage")
+def get_token_usage():
+    skill_paths = sorted(
+        path
+        for path in skills_dir.glob("*/*.md")
+        if not path.name.startswith("._")
+    )
+    sessions = [
+        store.load_session(session.id)
+        for session in store.list_sessions()
+    ]
+    return jsonify({
+        "estimated": True,
+        "encoding": token_estimator.encoding_name,
+        "system_prompt": {
+            "path": str(agent_path),
+            "tokens": token_estimator.count_text(agent_prompt),
+            "characters": len(agent_prompt),
+            "bytes": len(agent_prompt.encode("utf-8")),
+        },
+        "skills": token_estimator.summarize_files(skill_paths),
+        "sessions": [
+            {
+                "id": session.get("id"),
+                "title": session.get("title"),
+                "token_usage": session.get("token_usage"),
+            }
+            for session in sessions
+        ],
+    })
 
 
 @app.post("/api/sessions")
@@ -118,6 +159,10 @@ def chat():
     stored_messages = session.get("messages", [])
     if stored_messages:
         conversation.load_messages(stored_messages)
+    conversation.load_summary(
+        session.get("summary", ""),
+        session.get("summarized_until", 1),
+    )
 
     before_len = len(conversation.get_messages())
 
@@ -125,7 +170,12 @@ def chat():
         orchestrator.process_user_input(user_message)
 
     messages = conversation.get_messages()
-    store.save_messages(session_id, messages)
+    store.save_messages(
+        session_id,
+        messages,
+        summary=conversation.get_summary(),
+        summarized_until=conversation.get_summarized_until(),
+    )
 
     new_messages = messages[before_len:]
 

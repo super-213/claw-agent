@@ -58,10 +58,123 @@ def test_conversation():
         messages = conv.get_messages()
         assert len(messages) == 3  # system + user + assistant
         assert messages[1]['role'] == 'user'
+        conv.set_summary("历史摘要", 2)
+        assert conv.get_summary() == "历史摘要"
+        assert conv.get_summarized_until() == 2
         print("✅ 对话管理正常")
         return True
     except Exception as e:
         print(f"❌ 对话管理测试失败: {e}")
+        return False
+
+
+def test_context_compressor():
+    """测试上下文压缩"""
+    print("\n测试上下文压缩...")
+    try:
+        from core import ConversationManager, ContextCompressor
+
+        class FakeLLMClient:
+            def __init__(self):
+                self.calls = 0
+
+            def chat(self, messages):
+                self.calls += 1
+                return "压缩后的历史摘要"
+
+        conv = ConversationManager("System prompt")
+        for idx in range(10):
+            conv.add_user_message(f"用户消息 {idx} " + "x" * 80)
+            conv.add_assistant_message(f"助手回复 {idx} " + "y" * 80)
+
+        fake_client = FakeLLMClient()
+        compressor = ContextCompressor(
+            llm_client=fake_client,
+            max_context_chars=800,
+            recent_messages=4,
+            summary_target_chars=200,
+            summary_input_chars=500,
+        )
+        prompt_messages = compressor.build_messages(conv)
+
+        assert fake_client.calls > 0
+        assert conv.get_summary() == "压缩后的历史摘要"
+        assert conv.get_summarized_until() > 1
+        assert prompt_messages[0]["role"] == "system"
+        assert "历史对话摘要" in prompt_messages[1]["content"]
+        assert prompt_messages[-1]["content"].startswith("助手回复 9")
+
+        print("✅ 上下文压缩正常")
+        return True
+    except Exception as e:
+        print(f"❌ 上下文压缩测试失败: {e}")
+        return False
+
+
+def test_conversation_store_summary():
+    """测试对话摘要持久化"""
+    print("\n测试对话摘要持久化...")
+    try:
+        from tempfile import TemporaryDirectory
+        from services import ConversationStore
+
+        with TemporaryDirectory() as temp_dir:
+            store = ConversationStore(temp_dir)
+            session = store.create_session("System prompt")
+            session_id = session["id"]
+            messages = [
+                {"role": "system", "content": "System prompt"},
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi"},
+            ]
+            store.save_messages(
+                session_id,
+                messages,
+                summary="摘要内容",
+                summarized_until=2,
+            )
+            loaded = store.load_session(session_id)
+
+        assert loaded["summary"] == "摘要内容"
+        assert loaded["summarized_until"] == 2
+        assert len(loaded["messages"]) == 3
+        assert loaded["token_usage"]["total_tokens"] > 0
+        assert loaded["messages"][1]["usage"]["category"] == "user"
+
+        print("✅ 对话摘要持久化正常")
+        return True
+    except Exception as e:
+        print(f"❌ 对话摘要持久化测试失败: {e}")
+        return False
+
+
+def test_token_usage_estimator():
+    """测试 token 用量估算"""
+    print("\n测试 token 用量估算...")
+    try:
+        from services import TokenUsageEstimator
+
+        estimator = TokenUsageEstimator()
+        messages = estimator.annotate_messages([
+            {"role": "system", "content": "System prompt"},
+            {"role": "assistant", "content": "[命令] pwd"},
+            {"role": "user", "content": "[执行完成]\n/tmp"},
+        ])
+        totals = estimator.summarize_session(messages)
+
+        assert messages[0]["usage"]["category"] == "system_prompt"
+        assert messages[1]["usage"]["category"] == "tool_call"
+        assert messages[2]["usage"]["category"] == "tool_result"
+        assert totals["tool_tokens"] == (
+            messages[1]["usage"]["total_tokens"]
+            + messages[2]["usage"]["total_tokens"]
+        )
+        assert totals["total_tokens"] >= totals["tool_tokens"]
+
+        print("✅ token 用量估算正常")
+        return True
+    except Exception as e:
+        print(f"❌ token 用量估算测试失败: {e}")
         return False
 
 
@@ -167,6 +280,9 @@ def main():
         test_imports,
         test_config,
         test_conversation,
+        test_context_compressor,
+        test_conversation_store_summary,
+        test_token_usage_estimator,
         test_skill_registry,
         test_executor,
         test_parser,

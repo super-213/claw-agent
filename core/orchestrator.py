@@ -2,6 +2,7 @@
 from typing import Optional
 from .conversation import ConversationManager
 from .context import ExecutionContext
+from .context_compressor import ContextCompressor
 from services.llm_client import LLMClient
 from services.executor import CommandExecutor
 from skills.registry import SkillRegistry
@@ -17,12 +18,14 @@ class AgentOrchestrator:
         llm_client: LLMClient,
         conversation: ConversationManager,
         skill_registry: SkillRegistry,
-        executor: CommandExecutor
+        executor: CommandExecutor,
+        context_compressor: Optional[ContextCompressor] = None,
     ):
         self.llm_client = llm_client
         self.conversation = conversation
         self.skill_registry = skill_registry
         self.executor = executor
+        self.context_compressor = context_compressor
         self.context = ExecutionContext()
         
         # 构建责任链：完成 -> 命令 -> 技能输出 -> 默认
@@ -72,7 +75,10 @@ class AgentOrchestrator:
         """处理 AI 回复循环"""
         while True:
             # 获取 AI 回复
-            messages = self.conversation.get_messages()
+            if self.context_compressor:
+                messages = self.context_compressor.build_messages(self.conversation)
+            else:
+                messages = self.conversation.get_messages()
             reply = self.llm_client.chat(messages)
             
             print(f"\n[AI 回复]:\n{reply}\n")

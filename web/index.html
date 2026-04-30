@@ -644,6 +644,20 @@
       padding: 12px 14px;
     }
 
+    .msg-usage {
+      max-width: 75%;
+      padding: 5px 4px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      line-height: 1.5;
+      color: var(--ink-ghost);
+      word-break: break-word;
+    }
+
+    .user-row .msg-usage {
+      text-align: right;
+    }
+
     .protocol-flow {
       width: min(75%, 660px);
       display: grid;
@@ -935,6 +949,7 @@
       .chat-window { padding: 20px 18px; }
       .composer-area { padding: 12px 16px 18px; }
       .message { max-width: 92%; }
+      .msg-usage { max-width: 92%; }
       .message.protocol,
       .protocol-flow,
       .protocol-row .msg-label {
@@ -1001,7 +1016,7 @@
       </div>
       <div class="topbar-meta">
         <div class="meta-badge">
-          <span>Claude Sonnet</span>
+          <span id="tokenSummary">Tokens 0</span>
         </div>
         <div class="status-badge" id="statusBadge">
           <div class="dot"></div>
@@ -1043,6 +1058,7 @@
   const newSessionBtn = document.getElementById('newSessionBtn');
   const statusText = document.getElementById('statusText');
   const statusBadge = document.getElementById('statusBadge');
+  const tokenSummary = document.getElementById('tokenSummary');
   const topbarTitle = document.getElementById('topbarTitle');
   const emptyState = document.getElementById('emptyState');
   const sidebar = document.getElementById('sidebar');
@@ -1071,6 +1087,24 @@
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatTokens = (value) => {
+    const tokens = Number(value || 0);
+    if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
+    if (tokens >= 1000) return (tokens / 1000).toFixed(1) + 'K';
+    return String(tokens);
+  };
+
+  const formatUsage = (usage) => {
+    if (!usage) return '';
+    const parts = [
+      `tokens ${formatTokens(usage.total_tokens)}`,
+      `cum ${formatTokens(usage.cumulative_tokens)}`,
+    ];
+    if (usage.tool_tokens) parts.push(`tool ${formatTokens(usage.tool_tokens)}`);
+    if (usage.category) parts.push(usage.category);
+    return parts.join(' · ');
   };
 
   const escapeHtml = (text) => text
@@ -1173,7 +1207,7 @@
       item.innerHTML = `
         <div class="session-content">
           <div class="session-title">${escapeHtml(session.title || '新对话')}</div>
-          <div class="session-time">${escapeHtml(formatTime(session.updated_at || session.created_at))}</div>
+          <div class="session-time">${escapeHtml(formatTime(session.updated_at || session.created_at))} · ${escapeHtml(formatTokens(session.token_usage?.total_tokens))} tok</div>
         </div>
         <button class="session-more" type="button" title="更多操作" aria-label="更多操作">⋯</button>
         ${session.id === state.openMenuSessionId ? `
@@ -1236,9 +1270,14 @@
       bubble.className = `message ${view.role}`;
       bubble.innerHTML = escapeHtml(msg.content || '');
 
+      const usage = document.createElement('div');
+      usage.className = 'msg-usage';
+      usage.textContent = formatUsage(msg.usage);
+
       row.appendChild(label);
       if (view.flow) row.appendChild(createProtocolFlow(view.flow));
       row.appendChild(bubble);
+      if (usage.textContent) row.appendChild(usage);
       messageListEl.appendChild(row);
     });
 
@@ -1287,6 +1326,7 @@
       const data = await res.json();
       const session = state.sessions.find(s => s.id === sessionId);
       topbarTitle.textContent = session?.title || '新对话';
+      tokenSummary.textContent = `Tokens ${formatTokens(data.token_usage?.total_tokens)} · Tool ${formatTokens(data.token_usage?.tool_tokens)}`;
       renderMessages(data.messages || []);
     } catch (e) { console.warn('openSession:', e); }
   };

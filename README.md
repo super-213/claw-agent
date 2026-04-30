@@ -77,6 +77,16 @@ python web_app.py
 
 - 默认路径：`.data/conversations`
 - 自定义路径：设置 `CONVERSATION_DIR=/absolute/path`
+- 长对话会保留完整历史，同时在发给模型前自动压缩旧上下文
+
+### 上下文压缩配置
+
+可通过环境变量调整压缩策略：
+
+- `CONTEXT_MAX_CHARS`：模型请求上下文字符预算，默认 `60000`
+- `CONTEXT_RECENT_MESSAGES`：始终保留的最近消息数，默认 `12`
+- `SUMMARY_TARGET_CHARS`：历史摘要目标长度，默认 `6000`
+- `SUMMARY_INPUT_CHARS`：单次摘要输入字符上限，默认 `30000`
 
 ### Web API 说明（接口示例）
 

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from config import ConfigManager
-from core import AgentOrchestrator, ConversationManager
+from core import AgentOrchestrator, ContextCompressor, ConversationManager
 from services import LLMClient, CommandExecutor
 from skills import SkillRegistry
 
@@ -27,6 +27,13 @@ def main():
         )
         
         conversation = ConversationManager(agent_prompt)
+        context_compressor = ContextCompressor(
+            llm_client=llm_client,
+            max_context_chars=config["context_max_chars"],
+            recent_messages=config["context_recent_messages"],
+            summary_target_chars=config["summary_target_chars"],
+            summary_input_chars=config["summary_input_chars"],
+        )
         skill_registry = SkillRegistry(config["skills_dir"])
         executor = CommandExecutor(timeout=config["timeout"])
         
@@ -35,7 +42,8 @@ def main():
             llm_client=llm_client,
             conversation=conversation,
             skill_registry=skill_registry,
-            executor=executor
+            executor=executor,
+            context_compressor=context_compressor,
         )
         
         print("Agent 已启动，输入 Ctrl+C 退出\n")
