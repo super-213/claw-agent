@@ -11,7 +11,7 @@ class BaseSkill(ABC):
     
     @abstractmethod
     def load_context(self) -> str:
-        """加载技能上下文（通常是 .md 文件内容）"""
+        """加载技能上下文（通常是 .md 或 .skill 文件内容）"""
         pass
     
     def parse_output(self, text: str) -> Optional[Dict[str, Any]]:

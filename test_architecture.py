@@ -319,6 +319,21 @@ def test_skill_registry():
             (external_dir / "external.md").write_text("# external\n热重载技能", encoding="utf-8")
             assert "external" in temp_registry.list_skills()
             assert "热重载技能" in temp_registry.get("external").load_context()
+
+            skill_suffix = temp_registry.create_skill("custom.skill", "# custom\nskill 后缀技能")
+            assert skill_suffix.name == "custom"
+            assert (Path(temp_dir) / "custom" / "custom.skill").exists()
+            assert "custom" in temp_registry.list_skills()
+            assert "skill 后缀技能" in temp_registry.get("custom").load_context()
+
+            external_skill_dir = Path(temp_dir) / "external_skill"
+            external_skill_dir.mkdir()
+            (external_skill_dir / "external_skill.skill").write_text(
+                "# external_skill\n外部 skill 后缀",
+                encoding="utf-8",
+            )
+            assert "external_skill" in temp_registry.list_skills()
+            assert "外部 skill 后缀" in temp_registry.get("external_skill").load_context()
         
         return True
     except Exception as e:

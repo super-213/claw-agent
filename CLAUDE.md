@@ -35,7 +35,7 @@ export DASHSCOPE_API_KEY="your_api_key_here"
 ### Layered Structure
 - **config/**: Configuration management (`settings.py`, `.env.example`)
 - **core/**: Business logic (`orchestrator.py`, `conversation.py`, `context.py`)
-- **skills/**: Plugin-based skills system (auto-registered from `.md` files)
+- **skills/**: Plugin-based skills system (auto-registered from `.md` and `.skill` files)
 - **handlers/**: Responsibility chain pattern for response processing
 - **services/**: Core services (`llm_client.py`, `executor.py`, `conversation_store.py`)
 

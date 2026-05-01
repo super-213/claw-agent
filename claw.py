@@ -22,9 +22,13 @@ def extract_skill(text):
     return m.group(1).strip() if m else None
 
 def load_skill(name):
-    """加载 skills/{name}/{name}.md"""
-    path = Path(CONFIG["skills_dir"]) / name / f"{name}.md"
-    return path.read_text(encoding='utf-8') if path.exists() else None
+    """加载 skills/{name}/{name}.md 或 skills/{name}/{name}.skill"""
+    skill_dir = Path(CONFIG["skills_dir"]) / name
+    for suffix in (".md", ".skill"):
+        path = skill_dir / f"{name}{suffix}"
+        if path.exists():
+            return path.read_text(encoding='utf-8')
+    return None
 
 def main():
     config = ConfigManager()

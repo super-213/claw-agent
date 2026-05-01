@@ -199,7 +199,8 @@ def list_sessions():
 def get_token_usage():
     skill_paths = sorted(
         path
-        for path in skills_dir.glob("*/*.md")
+        for suffix in SkillRegistry.SUPPORTED_SUFFIXES
+        for path in skills_dir.glob(f"*/*{suffix}")
         if not path.name.startswith("._")
     )
     sessions = [

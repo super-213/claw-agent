@@ -38,8 +38,8 @@
 
 1. 接收用户输入
 2. 检测是否包含 "调用 XXX skill"
-3. 如有，系统自动加载 skills/XXX/XXX.md 并注入上下文
-4. 根据上下文（Agent.md + skill.md）生成回复
+3. 如有，系统自动加载 skills/XXX/XXX.md 或 skills/XXX/XXX.skill 并注入上下文
+4. 根据上下文（Agent.md + skill 文件）生成回复
 5. 使用正确格式输出（[命令]/[完成]）
 
 ## 示例
@@ -66,7 +66,7 @@ skills/
   ├── weather/
   │   └── weather.md
   ├── search/
-  │   └── search.md
+  │   └── search.skill
   └── calculator/
       └── calculator.md
 
