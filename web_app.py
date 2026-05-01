@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
@@ -347,6 +348,91 @@ def chat():
         "messages": new_messages,
         "session_id": session_id,
     })
+
+
+def _stream_event(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+@app.post("/api/chat/stream")
+def chat_stream():
+    payload = request.get_json(silent=True) or {}
+    session_id = payload.get("session_id")
+    user_message = (payload.get("message") or "").strip()
+    try:
+        images = _normalize_images(payload.get("images"))
+        attachments = _normalize_attachments(payload.get("attachments"))
+    except ValueError as e:
+        return jsonify({"error": "invalid_media", "message": str(e)}), 400
+
+    if not session_id:
+        return jsonify({"error": "missing_session_id"}), 400
+    if not user_message and not images and not attachments:
+        return jsonify({"error": "empty_message"}), 400
+
+    try:
+        session = store.load_session(session_id)
+    except KeyError:
+        return jsonify({"error": "session_not_found"}), 404
+
+    def generate():
+        orchestrator = _build_orchestrator()
+        conversation = orchestrator.conversation
+        stored_messages = session.get("messages", [])
+        if stored_messages:
+            conversation.load_messages(stored_messages)
+        conversation.load_summary(
+            session.get("summary", ""),
+            session.get("summarized_until", 1),
+        )
+
+        before_len = len(conversation.get_messages())
+        try:
+            with orchestrator.llm_client:
+                yield _stream_event({
+                    "type": "step",
+                    "stage": "request",
+                    "message": "开始处理请求",
+                })
+                for event in orchestrator.process_user_input_stream(
+                    user_message,
+                    attachments=attachments,
+                    images=images,
+                ):
+                    if event.get("type") != "done":
+                        yield _stream_event(event)
+
+            messages = conversation.get_messages()
+            yield _stream_event({
+                "type": "step",
+                "stage": "save",
+                "message": "保存会话记录",
+            })
+            store.save_messages(
+                session_id,
+                messages,
+                summary=conversation.get_summary(),
+                summarized_until=conversation.get_summarized_until(),
+            )
+            yield _stream_event({
+                "type": "done",
+                "stage": "done",
+                "message": "响应完成",
+                "messages": messages[before_len:],
+                "session_id": session_id,
+            })
+        except Exception as e:
+            yield _stream_event({
+                "type": "error",
+                "stage": "error",
+                "message": str(e),
+            })
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 if __name__ == "__main__":

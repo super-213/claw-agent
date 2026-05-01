@@ -1,6 +1,6 @@
 """LLM 客户端封装"""
 from openai import OpenAI
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
 
 
 class LLMClient:
@@ -19,6 +19,22 @@ class LLMClient:
             timeout=self.timeout
         )
         return response.choices[0].message.content
+
+    def stream_chat(self, messages: List[Dict[str, Any]]) -> Iterator[str]:
+        """流式发送聊天请求，逐段返回模型输出。"""
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            messages=self._chat_messages(messages),
+            timeout=self.timeout,
+            stream=True,
+        )
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            content = getattr(delta, "content", None)
+            if content:
+                yield content
 
     @staticmethod
     def _chat_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:

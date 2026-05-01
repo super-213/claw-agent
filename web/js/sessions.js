@@ -1,11 +1,13 @@
 import { chatApi, sessionsApi } from './api.js';
 import { els, fitMessageInput, isMobileLayout, setMobileSidebar } from './dom.js';
 import {
+  appendProcessStep,
   appendOptimisticUserMessage,
-  hideThinking,
+  appendStreamingAssistantDelta,
+  finishStreamingAssistantMessage,
   renderMessages,
   setStatus,
-  showThinking,
+  startStreamingAssistantMessage,
 } from './messages.js';
 import { state } from './state.js';
 import { escapeHtml, formatTime, formatTokens } from './utils.js';
@@ -155,16 +157,89 @@ export const sendMessage = async () => {
   els.messageInput.value = '';
   fitMessageInput();
   appendOptimisticUserMessage(text);
-  showThinking();
+  const streamMessages = new Map();
+
+  const clipDetail = (value) => {
+    const textValue = String(value || '').trim();
+    if (textValue.length <= 4000) return textValue;
+    return textValue.slice(0, 4000) + '\n...';
+  };
+
+  const handleStreamEvent = (event) => {
+    if (event.type === 'step') {
+      appendProcessStep(event.message || event.stage || '处理进度');
+      setStatus(event.message || '处理中…', true);
+      return;
+    }
+
+    if (event.type === 'model_start') {
+      appendProcessStep(
+        event.message || '发送模型请求',
+        `${event.model || 'model'} · ${event.message_count || 0} messages`,
+      );
+      streamMessages.set(
+        event.iteration || 1,
+        startStreamingAssistantMessage(event),
+      );
+      setStatus('模型生成中…', true);
+      return;
+    }
+
+    if (event.type === 'model_delta') {
+      appendStreamingAssistantDelta(
+        streamMessages.get(event.iteration || 1),
+        event.delta || '',
+      );
+      return;
+    }
+
+    if (event.type === 'model_done') {
+      finishStreamingAssistantMessage(
+        streamMessages.get(event.iteration || 1),
+        event.content || '',
+      );
+      setStatus('解析模型回复…', true);
+      return;
+    }
+
+    if (event.type === 'command_start') {
+      appendProcessStep(event.message || '执行命令', event.command || '');
+      setStatus('执行命令…', true);
+      return;
+    }
+
+    if (event.type === 'command_result') {
+      appendProcessStep(
+        event.message || '命令执行完成',
+        clipDetail(event.output || ''),
+      );
+      setStatus('命令结果写回上下文…', true);
+      return;
+    }
+
+    if (event.type === 'error') {
+      appendProcessStep('处理失败', event.message || '请求失败');
+    }
+  };
 
   try {
-    await chatApi.send({ sessionId: state.currentSessionId, message: text });
-    await openSession(state.currentSessionId);
+    const finalEvent = await chatApi.stream(
+      { sessionId: state.currentSessionId, message: text },
+      handleStreamEvent,
+    );
+    if (Array.isArray(finalEvent?.messages)) {
+      state.messages = [...state.messages, ...finalEvent.messages];
+    }
     await loadSessions();
+    const current = state.sessions.find((item) => item.id === state.currentSessionId);
+    if (current) {
+      els.topbarTitle.textContent = current.title || '新对话';
+      els.tokenSummary.textContent = `Tokens ${formatTokens(current.token_usage?.total_tokens)} · Tool ${formatTokens(current.token_usage?.tool_tokens)}`;
+    }
   } catch (error) {
     console.warn('sendMessage:', error);
+    appendProcessStep('请求失败', error.data?.message || error.message || '网络错误');
   } finally {
-    hideThinking();
     state.busy = false;
     setStatus('就绪', false);
   }

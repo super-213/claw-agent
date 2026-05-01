@@ -53,6 +53,28 @@ const getMessageView = (msg) => {
   };
 };
 
+const markerLineIndex = (text, marker) => {
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(^|\\n)\\s*[\\[［]\\s*${escaped}\\s*[\\]］]`).exec(text || '');
+  if (!match) return -1;
+  return match.index + (match[1] ? match[1].length : 0);
+};
+
+const splitMixedProtocolMessage = (msg) => {
+  const content = msg.content || '';
+  if (!hasMarker(content, '命令')) return [msg];
+
+  const finalIndex = markerLineIndex(content, '完成');
+  if (finalIndex <= 0) return [msg];
+
+  const commandContent = content.slice(0, finalIndex).trimEnd();
+  const finalContent = content.slice(finalIndex).trimStart();
+  return [
+    { ...msg, content: commandContent },
+    { ...msg, content: finalContent, usage: null },
+  ].filter((item) => item.content);
+};
+
 const createProtocolFlow = (flow) => {
   const el = document.createElement('div');
   el.className = 'protocol-flow' + (flow.reverse ? ' reverse' : '');
@@ -136,28 +158,30 @@ export const renderMessages = (messages) => {
 
   messages.forEach((msg) => {
     if (msg.role === 'system') return;
-    const view = getMessageView(msg);
+    splitMixedProtocolMessage(msg).forEach((displayMsg) => {
+      const view = getMessageView(displayMsg);
 
-    const row = document.createElement('div');
-    row.className = `message-row ${view.role}-row`;
+      const row = document.createElement('div');
+      row.className = `message-row ${view.role}-row`;
 
-    const label = document.createElement('div');
-    label.className = 'msg-label';
-    label.textContent = view.label;
+      const label = document.createElement('div');
+      label.className = 'msg-label';
+      label.textContent = view.label;
 
-    const bubble = document.createElement('div');
-    bubble.className = `message ${view.role}`;
-    appendMessageContent(bubble, msg);
+      const bubble = document.createElement('div');
+      bubble.className = `message ${view.role}`;
+      appendMessageContent(bubble, displayMsg);
 
-    const usage = document.createElement('div');
-    usage.className = 'msg-usage';
-    usage.textContent = formatUsage(msg.usage);
+      const usage = document.createElement('div');
+      usage.className = 'msg-usage';
+      usage.textContent = formatUsage(displayMsg.usage);
 
-    row.appendChild(label);
-    if (view.flow) row.appendChild(createProtocolFlow(view.flow));
-    row.appendChild(bubble);
-    if (usage.textContent) row.appendChild(usage);
-    els.messageList.appendChild(row);
+      row.appendChild(label);
+      if (view.flow) row.appendChild(createProtocolFlow(view.flow));
+      row.appendChild(bubble);
+      if (usage.textContent) row.appendChild(usage);
+      els.messageList.appendChild(row);
+    });
   });
 
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
@@ -184,6 +208,99 @@ export const appendOptimisticUserMessage = (text, media = {}) => {
   row.appendChild(label);
   row.appendChild(bubble);
   els.messageList.appendChild(row);
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+};
+
+export const appendProcessStep = (text, detail = '') => {
+  els.emptyState.style.display = 'none';
+
+  const row = document.createElement('div');
+  row.className = 'message-row process-row';
+
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = '// Model Process';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message process';
+  bubble.textContent = detail ? `${text}\n${detail}` : text;
+
+  row.appendChild(label);
+  row.appendChild(bubble);
+  els.messageList.appendChild(row);
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+};
+
+export const startStreamingAssistantMessage = ({ iteration = 1, model = '' } = {}) => {
+  els.emptyState.style.display = 'none';
+
+  const row = document.createElement('div');
+  row.className = 'message-row assistant-row streaming-row';
+
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = model
+    ? `// Agent · ${model} · #${iteration}`
+    : `// Agent · #${iteration}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'message assistant streaming';
+
+  const textEl = document.createElement('div');
+  textEl.className = 'message-text';
+  bubble.appendChild(textEl);
+
+  row.appendChild(label);
+  row.appendChild(bubble);
+  els.messageList.appendChild(row);
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+
+  return { row, label, bubble, textEl, content: '' };
+};
+
+export const appendStreamingAssistantDelta = (streamMessage, delta) => {
+  if (!streamMessage || !delta) return;
+  streamMessage.content += delta;
+  streamMessage.textEl.textContent = streamMessage.content;
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+};
+
+export const finishStreamingAssistantMessage = (streamMessage, content = '') => {
+  if (!streamMessage) return;
+  streamMessage.content = content || streamMessage.content;
+  streamMessage.textEl.textContent = streamMessage.content;
+
+  const displayMessages = splitMixedProtocolMessage({
+    role: 'assistant',
+    content: streamMessage.content,
+  });
+  const firstDisplayMessage = displayMessages[0];
+  const view = getMessageView(firstDisplayMessage);
+  streamMessage.row.className = `message-row ${view.role}-row`;
+  streamMessage.bubble.className = `message ${view.role}`;
+  streamMessage.label.textContent = view.label;
+  streamMessage.textEl.textContent = firstDisplayMessage.content;
+  if (view.flow) {
+    streamMessage.row.insertBefore(createProtocolFlow(view.flow), streamMessage.bubble);
+  }
+  displayMessages.slice(1).forEach((displayMsg) => {
+    const nextView = getMessageView(displayMsg);
+    const row = document.createElement('div');
+    row.className = `message-row ${nextView.role}-row`;
+
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = nextView.label;
+
+    const bubble = document.createElement('div');
+    bubble.className = `message ${nextView.role}`;
+    appendMessageContent(bubble, displayMsg);
+
+    row.appendChild(label);
+    if (nextView.flow) row.appendChild(createProtocolFlow(nextView.flow));
+    row.appendChild(bubble);
+    streamMessage.row.insertAdjacentElement('afterend', row);
+  });
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 };
 

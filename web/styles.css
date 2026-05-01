@@ -835,6 +835,10 @@ body::after {
   align-items: center;
 }
 
+.message-row.process-row {
+  align-items: center;
+}
+
 .msg-label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
@@ -850,6 +854,11 @@ body::after {
 .tool-row .msg-label { color: var(--ink-dim); }
 .protocol-row .msg-label {
   color: var(--ink-dim);
+  width: min(75%, 660px);
+}
+
+.process-row .msg-label {
+  color: var(--ink-ghost);
   width: min(75%, 660px);
 }
 
@@ -937,6 +946,35 @@ body::after {
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   padding: 12px 14px;
+}
+
+.message.process {
+  width: min(75%, 660px);
+  max-width: min(75%, 660px);
+  background: rgba(8, 11, 16, 0.58);
+  border: 1px solid rgba(122, 143, 168, 0.22);
+  border-radius: var(--radius-md);
+  color: var(--ink-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  padding: 9px 12px;
+}
+
+.message.streaming .message-text::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1.15em;
+  margin-left: 3px;
+  vertical-align: -0.18em;
+  background: var(--neon);
+  animation: cursorPulse 0.9s ease-in-out infinite;
+}
+
+@keyframes cursorPulse {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
 }
 
 .msg-usage {
@@ -1259,8 +1297,10 @@ textarea::placeholder {
   .message { max-width: 92%; }
   .msg-usage { max-width: 92%; }
   .message.protocol,
+  .message.process,
   .protocol-flow,
-  .protocol-row .msg-label {
+  .protocol-row .msg-label,
+  .process-row .msg-label {
     width: 92%;
     max-width: 92%;
   }
