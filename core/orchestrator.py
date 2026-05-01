@@ -264,6 +264,4 @@ class AgentOrchestrator:
 
     @staticmethod
     def _extract_command(response: str) -> str:
-        if "[命令]" not in response:
-            return ""
-        return response.split("[命令]", 1)[1].strip().split("\n", 1)[0].strip()
+        return InputParser.extract_command(response)

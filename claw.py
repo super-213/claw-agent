@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from openai import OpenAI
-import os, sys, re, subprocess
+import sys, re
 from pathlib import Path
 
 from config import ConfigManager
+from services import CommandExecutor
+from utils import InputParser
 
 # ================= 配置区域 =================
 CONFIG = {
@@ -46,6 +48,14 @@ def main():
 
     agent_prompt = open(CONFIG["agent_file"]).read()
     client = OpenAI(api_key=CONFIG["api_key"], base_url=CONFIG["base_url"])
+    generated_dir = Path(config["generated_files_dir"])
+    if not generated_dir.is_absolute():
+        generated_dir = config.project_root / generated_dir
+    executor = CommandExecutor(
+        timeout=CONFIG["timeout"],
+        cwd=generated_dir,
+        generated_files_dir=generated_dir,
+    )
     
     with client:
         messages = [{"role": "system", "content": agent_prompt}]
@@ -93,13 +103,11 @@ def main():
                     
                     # 检查并执行命令
                     if "[命令]" in reply:
-                        cmd = reply.split("[命令]")[1].strip().split('\n')[0].strip()
-                        cmd = cmd.replace('```', '').replace('`', '').strip()
+                        cmd = InputParser.extract_command(reply)
                         print(f"[执行命令]: {cmd}")
-                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                        output = result.stdout if result.stdout else result.stderr
-                        print(f"[执行结果]:\n{output}\n")
-                        messages.append({"role": "user", "content": f"[执行完成]\n{output}"})
+                        result = executor.execute(cmd)
+                        print(f"[执行结果]:\n{result.feedback}\n")
+                        messages.append({"role": "user", "content": f"[执行完成]\n{result.feedback}"})
                         continue
                     
                     # 技能模式下 接受技能自定义输出格式

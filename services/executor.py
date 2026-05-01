@@ -45,8 +45,21 @@ class CommandExecutor:
         r'chmod\s+-R\s+777',
     ]
     
-    # 交互式命令（不支持）
-    INTERACTIVE_COMMANDS = ['vi', 'vim', 'nano', 'python', 'python3', 'node', 'irb']
+    # 交互式命令（不支持）。python/node 允许带 -c/-m/脚本等一次性执行形式。
+    ALWAYS_INTERACTIVE_COMMANDS = {"vi", "vim", "nano", "irb"}
+    REPL_CAPABLE_COMMANDS = {"python", "python3", "node"}
+    PYTHON_EXEC_FLAGS = {"-c", "-m"}
+    PYTHON_EXIT_FLAGS = {
+        "-V",
+        "--version",
+        "-h",
+        "--help",
+        "--help-env",
+        "--help-xoptions",
+        "--help-all",
+    }
+    NODE_EXEC_FLAGS = {"-e", "--eval", "-p", "--print", "-c", "--check"}
+    NODE_EXIT_FLAGS = {"-v", "--version", "-h", "--help"}
     SINGLE_DEST_COMMANDS = {"cp", "mv"}
     MULTI_PATH_WRITE_COMMANDS = {"touch", "mkdir"}
     REDIRECT_OPERATORS = {">", ">>", "1>", "1>>", "2>", "2>>", "&>", "&>>"}
@@ -79,6 +92,7 @@ class CommandExecutor:
             return ExecutionResult(output="", return_code=-1, error=error)
         
         try:
+            before_files = self._file_snapshot()
             result = subprocess.run(
                 command,
                 shell=True,
@@ -89,7 +103,11 @@ class CommandExecutor:
                 env=self._command_env(),
             )
             output = result.stdout if result.stdout else result.stderr
-            return ExecutionResult(output=output, return_code=result.returncode)
+            execution_result = ExecutionResult(output=output, return_code=result.returncode)
+            if execution_result.success:
+                if error := self._validate_generated_outputs(command, before_files):
+                    return ExecutionResult(output=output, return_code=-1, error=error)
+            return execution_result
         
         except subprocess.TimeoutExpired:
             return ExecutionResult.timeout()
@@ -99,8 +117,10 @@ class CommandExecutor:
     
     def _clean_command(self, command: str) -> str:
         """清理命令字符串"""
-        # 移除代码块标记
-        command = command.replace('```', '').replace('`', '').strip()
+        command = command.strip()
+        lines = command.splitlines()
+        if len(lines) >= 2 and lines[0].strip().startswith("```") and lines[-1].strip().startswith("```"):
+            return "\n".join(lines[1:-1]).strip()
         return command
     
     def _validate_command(self, command: str) -> Optional[str]:
@@ -110,30 +130,105 @@ class CommandExecutor:
             if re.search(pattern, command):
                 return f"拒绝执行危险命令: {command}"
         
-        # 检查交互式命令
-        cmd_parts = command.split()
-        if cmd_parts and cmd_parts[0] in self.INTERACTIVE_COMMANDS:
-            return f"不支持交互式命令: {cmd_parts[0]}"
+        command_for_validation = self._strip_heredoc_bodies(command)
+        try:
+            tokens = shlex.split(command_for_validation, posix=True)
+        except ValueError as exc:
+            return f"命令解析失败: {exc}"
 
-        if error := self._validate_write_targets(command):
+        if error := self._validate_interactive_commands(tokens):
+            return error
+
+        if error := self._validate_write_targets(tokens):
             return error
         
         return None
 
-    def _validate_write_targets(self, command: str) -> Optional[str]:
+    def _strip_heredoc_bodies(self, command: str) -> str:
+        """校验命令时跳过 heredoc 正文，避免正文内容被 shlex 当作 shell 语法解析。"""
+        lines = command.splitlines()
+        if not lines:
+            return command
+
+        stripped_lines: list[str] = []
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            stripped_lines.append(line)
+            delimiters = self._heredoc_delimiters(line)
+            index += 1
+            for delimiter in delimiters:
+                while index < len(lines) and lines[index].strip() != delimiter:
+                    index += 1
+                if index < len(lines):
+                    index += 1
+        return "\n".join(stripped_lines)
+
+    def _heredoc_delimiters(self, command_line: str) -> list[str]:
+        matches = re.finditer(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", command_line)
+        return [match.group(2) for match in matches]
+
+    def _validate_interactive_commands(self, tokens: list[str]) -> Optional[str]:
+        """拦截会等待用户输入的 REPL/编辑器，允许一次性脚本命令。"""
+        for segment in self._split_shell_segments(tokens):
+            if not segment:
+                continue
+            program = Path(segment[0]).name
+            if program in self.ALWAYS_INTERACTIVE_COMMANDS:
+                return f"不支持交互式命令: {program}"
+            if program in self.REPL_CAPABLE_COMMANDS and self._starts_repl(program, segment[1:]):
+                return f"不支持交互式命令: {program}"
+        return None
+
+    def _starts_repl(self, program: str, args: list[str]) -> bool:
+        if not args:
+            return True
+        if program in {"python", "python3"}:
+            return self._python_starts_repl(args)
+        if program == "node":
+            return self._node_starts_repl(args)
+        return False
+
+    def _python_starts_repl(self, args: list[str]) -> bool:
+        for index, arg in enumerate(args):
+            if arg == "-i":
+                return True
+            if arg in self.PYTHON_EXEC_FLAGS:
+                return False
+            if arg in self.PYTHON_EXIT_FLAGS:
+                return False
+            if arg == "-":
+                return False
+            if arg == "--":
+                return index + 1 >= len(args)
+            if not arg.startswith("-"):
+                return False
+        return True
+
+    def _node_starts_repl(self, args: list[str]) -> bool:
+        for index, arg in enumerate(args):
+            if arg == "-i" or arg == "--interactive":
+                return True
+            if arg in self.NODE_EXEC_FLAGS:
+                return False
+            if arg in self.NODE_EXIT_FLAGS:
+                return False
+            if arg == "-":
+                return False
+            if arg == "--":
+                return index + 1 >= len(args)
+            if not arg.startswith("-"):
+                return False
+        return True
+
+    def _validate_write_targets(self, tokens: list[str]) -> Optional[str]:
         """禁止把生成文件写到统一目录之外的绝对路径。"""
         if not self.generated_files_dir:
             return None
 
-        try:
-            tokens = shlex.split(command, posix=True)
-        except ValueError as exc:
-            return f"命令解析失败: {exc}"
-
-        for index, token in enumerate(tokens):
-            if token in self.REDIRECT_OPERATORS and index + 1 < len(tokens):
-                if error := self._validate_output_path(tokens[index + 1]):
-                    return error
+        for raw_path in self._redirect_output_paths(tokens):
+            if error := self._validate_output_path(raw_path):
+                return error
 
         for segment in self._split_shell_segments(tokens):
             if not segment:
@@ -150,6 +245,91 @@ class CommandExecutor:
                         return error
 
         return None
+
+    def _validate_generated_outputs(
+        self,
+        command: str,
+        before_files: dict[Path, tuple[int, int]],
+    ) -> Optional[str]:
+        """对可识别的重定向输出做基本完整性检查。"""
+        command_for_validation = self._strip_heredoc_bodies(command)
+        try:
+            tokens = shlex.split(command_for_validation, posix=True)
+        except ValueError:
+            tokens = []
+
+        paths = set(self._changed_generated_files(before_files))
+        for raw_path in self._redirect_output_paths(tokens):
+            paths.add(self._resolve_output_path(raw_path))
+
+        for path in sorted(paths):
+            if error := self._validate_generated_file(path):
+                return error
+        return None
+
+    def _file_snapshot(self) -> dict[Path, tuple[int, int]]:
+        if not self.generated_files_dir or not self.generated_files_dir.exists():
+            return {}
+
+        snapshot: dict[Path, tuple[int, int]] = {}
+        for path in self.generated_files_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            snapshot[path.resolve()] = (stat.st_mtime_ns, stat.st_size)
+        return snapshot
+
+    def _changed_generated_files(self, before_files: dict[Path, tuple[int, int]]) -> list[Path]:
+        if not self.generated_files_dir or not self.generated_files_dir.exists():
+            return []
+
+        changed: list[Path] = []
+        for path in self.generated_files_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                resolved = path.resolve()
+                stat = path.stat()
+            except OSError:
+                continue
+            current = (stat.st_mtime_ns, stat.st_size)
+            if before_files.get(resolved) != current:
+                changed.append(resolved)
+        return changed
+
+    def _validate_generated_file(self, path: Path) -> Optional[str]:
+        if not path.exists() or not path.is_file():
+            return None
+        if path.name.startswith("."):
+            return None
+
+        size = path.stat().st_size
+        if size == 0:
+            return f"文件写入失败: {path} 为 0 字节，可能被截断"
+        if path.suffix.lower() == ".pdf":
+            with path.open("rb") as file:
+                header = file.read(5)
+            if header != b"%PDF-":
+                return f"PDF 写入失败: {path} 缺少 %PDF- 文件头，可能被截断或编码错误"
+        return None
+
+    def _redirect_output_paths(self, tokens: list[str]) -> list[str]:
+        paths: list[str] = []
+        for index, token in enumerate(tokens):
+            if token in self.REDIRECT_OPERATORS and index + 1 < len(tokens):
+                paths.append(tokens[index + 1])
+        return paths
+
+    def _resolve_output_path(self, raw_path: str) -> Path:
+        expanded = os.path.expandvars(os.path.expanduser(raw_path))
+        path = Path(expanded)
+        if path.is_absolute():
+            return path.resolve()
+        base_dir = self.cwd if self.cwd else Path.cwd()
+        return (base_dir / path).resolve()
 
     def _split_shell_segments(self, tokens: list[str]) -> list[list[str]]:
         segments: list[list[str]] = []

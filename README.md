@@ -265,7 +265,7 @@ AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
 ## 安全特性
 
 - 危险命令黑名单（rm -rf /、mkfs 等）
-- 交互式命令拦截（vi、vim、python 等）
+- 交互式 REPL/编辑器拦截（vi、vim、裸 python 等），允许 python -c / python -m / 脚本等一次性命令
 - 命令执行超时保护
 - 环境变量管理 API Key
 

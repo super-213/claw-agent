@@ -2,6 +2,7 @@
 from .base import ResponseHandler, HandlerResult
 from core.context import ExecutionContext
 from services.executor import CommandExecutor
+from utils.parser import InputParser
 
 
 class CommandHandler(ResponseHandler):
@@ -16,7 +17,7 @@ class CommandHandler(ResponseHandler):
     
     def process(self, response: str, context: ExecutionContext) -> HandlerResult:
         # 提取命令
-        command = response.split("[命令]")[1].strip().split('\n')[0].strip()
+        command = InputParser.extract_command(response)
         print(f"[执行命令]: {command}")
         
         # 执行命令

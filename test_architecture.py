@@ -354,6 +354,15 @@ def test_executor():
         result = executor.execute("echo 'test'")
         assert result.success
         assert 'test' in result.output
+
+        # 测试 Python 一次性命令允许执行，裸 REPL 仍被拦截
+        result = executor.execute("python -c \"print('py-ok')\"")
+        assert result.success
+        assert "py-ok" in result.output
+
+        result = executor.execute("python")
+        assert not result.success
+        assert "不支持交互式命令" in result.feedback
         
         # 测试危险命令拦截
         result = executor.execute("rm -rf /")
@@ -370,6 +379,34 @@ def test_executor():
             result = fixed_executor.execute("echo 'hello' > generated.txt")
             assert result.success
             assert (files_dir / "generated.txt").read_text(encoding="utf-8").strip() == "hello"
+
+            result = fixed_executor.execute("cat > heredoc.html <<'EOF'\n<html>ok</html>\nEOF")
+            assert result.success
+            assert (files_dir / "heredoc.html").read_text(encoding="utf-8").strip() == "<html>ok</html>"
+
+            result = fixed_executor.execute("cat > quoted.md <<'EOF'\nIt's `code`\nEOF")
+            assert result.success
+            assert (files_dir / "quoted.md").read_text(encoding="utf-8").strip() == "It's `code`"
+
+            result = fixed_executor.execute("printf '' > empty.txt")
+            assert not result.success
+            assert "0 字节" in result.feedback
+
+            result = fixed_executor.execute("cat > invalid.pdf <<'EOF'\nnot a pdf\nEOF")
+            assert not result.success
+            assert "PDF 写入失败" in result.feedback
+
+            result = fixed_executor.execute("cat > valid.pdf <<'EOF'\n%PDF-1.1\n%%EOF\nEOF")
+            assert result.success
+            assert (files_dir / "valid.pdf").read_bytes().startswith(b"%PDF-")
+
+            result = fixed_executor.execute("python -c \"open('python-empty.txt', 'w').close()\"")
+            assert not result.success
+            assert "0 字节" in result.feedback
+
+            result = fixed_executor.execute("python -c \"open('python-invalid.pdf', 'wb').write(b'bad')\"")
+            assert not result.success
+            assert "PDF 写入失败" in result.feedback
 
             result = fixed_executor.execute("printf '%s' \"$FILES_DIR\"")
             assert result.success
@@ -411,6 +448,16 @@ def test_parser():
         skill, text = InputParser.parse_user_input("查看当前目录")
         assert skill is None
         assert text == "查看当前目录"
+
+        # 测试命令提取：普通命令仍只取一行，heredoc 保留完整正文
+        assert InputParser.extract_command("[命令] echo ok\n说明文字") == "echo ok"
+        heredoc = InputParser.extract_command(
+            "[命令] cat > index.html <<'EOF'\n"
+            "<html>ok</html>\n"
+            "EOF\n"
+            "[完成] 已写入"
+        )
+        assert heredoc == "cat > index.html <<'EOF'\n<html>ok</html>\nEOF"
         
         print("✅ 输入解析器正常")
         return True

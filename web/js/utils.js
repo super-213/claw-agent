@@ -47,7 +47,7 @@ export const isFormatNudge = (text) => {
     && /[\[［]\s*完成\s*[\]］]/.test(text);
 };
 
-const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif)(?:[?#].*)?$/i;
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg)(?:[?#].*)?$/i;
 const LOCAL_IMAGE_PREFIXES = [
   '/generated/',
   '/assets/',

@@ -1,4 +1,5 @@
 import { els } from './dom.js';
+import { markdownToHtml } from './markdown.js';
 import { state } from './state.js';
 import {
   escapeHtml,
@@ -107,8 +108,7 @@ const appendMessageContent = (bubble, msg) => {
   const text = msg.content || '';
   if (text) {
     const textEl = document.createElement('div');
-    textEl.className = 'message-text';
-    textEl.textContent = text;
+    renderMessageText(textEl, text);
     bubble.appendChild(textEl);
   }
 
@@ -134,6 +134,11 @@ const appendMessageContent = (bubble, msg) => {
     gallery.appendChild(link);
   });
   bubble.appendChild(gallery);
+};
+
+const renderMessageText = (textEl, text) => {
+  textEl.className = 'message-text markdown-body';
+  textEl.innerHTML = markdownToHtml(text);
 };
 
 export const setStatus = (text, busy = false) => {
@@ -268,7 +273,6 @@ export const appendStreamingAssistantDelta = (streamMessage, delta) => {
 export const finishStreamingAssistantMessage = (streamMessage, content = '') => {
   if (!streamMessage) return;
   streamMessage.content = content || streamMessage.content;
-  streamMessage.textEl.textContent = streamMessage.content;
 
   const displayMessages = splitMixedProtocolMessage({
     role: 'assistant',
@@ -279,7 +283,7 @@ export const finishStreamingAssistantMessage = (streamMessage, content = '') => 
   streamMessage.row.className = `message-row ${view.role}-row`;
   streamMessage.bubble.className = `message ${view.role}`;
   streamMessage.label.textContent = view.label;
-  streamMessage.textEl.textContent = firstDisplayMessage.content;
+  renderMessageText(streamMessage.textEl, firstDisplayMessage.content);
   if (view.flow) {
     streamMessage.row.insertBefore(createProtocolFlow(view.flow), streamMessage.bubble);
   }
