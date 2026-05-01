@@ -43,8 +43,8 @@ export const configApi = {
 };
 
 export const chatApi = {
-  send: ({ sessionId, message }) => jsonRequest('/api/chat', {
+  send: ({ sessionId, message, attachments = [], images = [] }) => jsonRequest('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify({ session_id: sessionId, message, attachments, images }),
   }),
 };

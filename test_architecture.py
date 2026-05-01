@@ -127,6 +127,57 @@ def test_conversation():
         return False
 
 
+def test_message_media_metadata():
+    """测试消息图片/附件元数据可持久化但不会发送给 LLM"""
+    print("\n测试消息媒体元数据...")
+    try:
+        from tempfile import TemporaryDirectory
+        from core import ConversationManager
+        from services import ConversationStore, LLMClient
+
+        image = {"url": "/generated/demo.png", "alt": "demo"}
+        attachment = {
+            "name": "local image",
+            "url": "/images/local.webp",
+            "type": "image/webp",
+        }
+
+        conv = ConversationManager("System prompt")
+        conv.add_user_message(
+            "带图消息",
+            images=[image],
+            attachments=[attachment],
+        )
+        messages = conv.get_messages()
+        assert messages[1]["images"] == [image]
+        assert messages[1]["attachments"] == [attachment]
+
+        cleaned = LLMClient._chat_messages(messages)
+        assert cleaned[1] == {"role": "user", "content": "带图消息"}
+        assert "images" not in cleaned[1]
+        assert "attachments" not in cleaned[1]
+
+        loaded_conv = ConversationManager("System prompt")
+        loaded_conv.load_messages(messages)
+        assert loaded_conv.get_messages()[1]["images"] == [image]
+
+        with TemporaryDirectory() as temp_dir:
+            store = ConversationStore(temp_dir)
+            session = store.create_session("System prompt")
+            saved = store.save_messages(session["id"], messages)
+
+        saved_message = saved["messages"][1]
+        assert saved_message["images"] == [image]
+        assert saved_message["attachments"] == [attachment]
+        assert saved_message["usage"]["category"] == "user"
+
+        print("✅ 消息媒体元数据正常")
+        return True
+    except Exception as e:
+        print(f"❌ 消息媒体元数据测试失败: {e}")
+        return False
+
+
 def test_context_compressor():
     """测试上下文压缩"""
     print("\n测试上下文压缩...")
@@ -356,6 +407,7 @@ def main():
         test_config,
         test_config_update_security,
         test_conversation,
+        test_message_media_metadata,
         test_context_compressor,
         test_conversation_store_summary,
         test_token_usage_estimator,

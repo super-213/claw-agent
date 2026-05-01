@@ -46,3 +46,76 @@ export const isFormatNudge = (text) => {
     && /[\[［]\s*命令\s*[\]］]/.test(text)
     && /[\[［]\s*完成\s*[\]］]/.test(text);
 };
+
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif)(?:[?#].*)?$/i;
+const LOCAL_IMAGE_PREFIXES = [
+  '/generated/',
+  '/assets/',
+  '/images/',
+  '/static/',
+  '/uploads/',
+];
+
+export const imageSourceFrom = (item) => {
+  if (!item) return '';
+  if (typeof item === 'string') return item.trim();
+  return String(item.url || item.src || item.path || '').trim();
+};
+
+const hasUnsafeLocalPath = (value) => {
+  if (value.includes('\\')) return true;
+  try {
+    return decodeURIComponent(value).includes('..');
+  } catch {
+    return value.includes('..');
+  }
+};
+
+export const looksLikeImageSource = (source) => {
+  const raw = String(source || '').trim();
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    return IMAGE_EXT_RE.test(url.pathname);
+  } catch {
+    return IMAGE_EXT_RE.test(raw);
+  }
+};
+
+export const safeImageSrc = (source) => {
+  const raw = String(source || '').trim();
+  if (!raw || raw.includes('\\') || raw.startsWith('//')) return '';
+
+  const withSlash = raw.replace(/^\.?\//, '');
+  if (/^generated\//i.test(withSlash)) {
+    if (hasUnsafeLocalPath(withSlash)) return '';
+    return '/' + encodeURI(withSlash);
+  }
+
+  if (raw.startsWith('/')) {
+    if (hasUnsafeLocalPath(raw)) return '';
+    if (LOCAL_IMAGE_PREFIXES.some((prefix) => raw.startsWith(prefix)) || IMAGE_EXT_RE.test(raw)) {
+      return encodeURI(raw);
+    }
+    return '';
+  }
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.href;
+    }
+  } catch {
+    if (!hasUnsafeLocalPath(raw) && IMAGE_EXT_RE.test(raw)) {
+      return encodeURI('/' + raw.replace(/^\/+/, ''));
+    }
+  }
+
+  return '';
+};
+
+export const isImageAttachment = (item) => {
+  const type = String(item?.type || item?.mime_type || item?.mimeType || '').toLowerCase();
+  const source = imageSourceFrom(item);
+  return type.startsWith('image/') || looksLikeImageSource(source);
+};

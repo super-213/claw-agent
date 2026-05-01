@@ -1,6 +1,14 @@
 import { els } from './dom.js';
 import { state } from './state.js';
-import { escapeHtml, formatUsage, hasMarker, isFormatNudge } from './utils.js';
+import {
+  escapeHtml,
+  formatUsage,
+  hasMarker,
+  imageSourceFrom,
+  isFormatNudge,
+  isImageAttachment,
+  safeImageSrc,
+} from './utils.js';
 
 const getMessageView = (msg) => {
   const content = msg.content || '';
@@ -56,6 +64,56 @@ const createProtocolFlow = (flow) => {
   return el;
 };
 
+const imageAltFrom = (item) => {
+  if (!item || typeof item === 'string') return 'message image';
+  return item.alt || item.title || item.name || 'message image';
+};
+
+const collectMessageImages = (msg) => {
+  const images = Array.isArray(msg.images) ? msg.images : [];
+  const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
+  return [
+    ...images,
+    ...attachments.filter(isImageAttachment),
+  ].map((item) => ({
+    src: safeImageSrc(imageSourceFrom(item)),
+    alt: imageAltFrom(item),
+  })).filter((item) => item.src);
+};
+
+const appendMessageContent = (bubble, msg) => {
+  const text = msg.content || '';
+  if (text) {
+    const textEl = document.createElement('div');
+    textEl.className = 'message-text';
+    textEl.textContent = text;
+    bubble.appendChild(textEl);
+  }
+
+  const images = collectMessageImages(msg);
+  if (!images.length) return;
+
+  const gallery = document.createElement('div');
+  gallery.className = 'message-images';
+  images.forEach((image) => {
+    const link = document.createElement('a');
+    link.className = 'message-image-link';
+    link.href = image.src;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+
+    const img = document.createElement('img');
+    img.src = image.src;
+    img.alt = image.alt;
+    img.loading = 'lazy';
+    img.decoding = 'async';
+
+    link.appendChild(img);
+    gallery.appendChild(link);
+  });
+  bubble.appendChild(gallery);
+};
+
 export const setStatus = (text, busy = false) => {
   els.statusText.textContent = text;
   els.statusBadge.classList.toggle('busy', busy);
@@ -89,7 +147,7 @@ export const renderMessages = (messages) => {
 
     const bubble = document.createElement('div');
     bubble.className = `message ${view.role}`;
-    bubble.innerHTML = escapeHtml(msg.content || '');
+    appendMessageContent(bubble, msg);
 
     const usage = document.createElement('div');
     usage.className = 'msg-usage';
@@ -105,7 +163,7 @@ export const renderMessages = (messages) => {
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 };
 
-export const appendOptimisticUserMessage = (text) => {
+export const appendOptimisticUserMessage = (text, media = {}) => {
   els.emptyState.style.display = 'none';
 
   const row = document.createElement('div');
@@ -117,7 +175,11 @@ export const appendOptimisticUserMessage = (text) => {
 
   const bubble = document.createElement('div');
   bubble.className = 'message user';
-  bubble.textContent = text;
+  appendMessageContent(bubble, {
+    content: text,
+    attachments: media.attachments || [],
+    images: media.images || [],
+  });
 
   row.appendChild(label);
   row.appendChild(bubble);

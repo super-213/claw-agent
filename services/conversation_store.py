@@ -111,7 +111,7 @@ class ConversationStore:
     def save_messages(
         self,
         session_id: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         summary: str | None = None,
         summarized_until: int | None = None,
     ) -> Dict[str, Any]:
@@ -122,10 +122,10 @@ class ConversationStore:
             new_messages: List[Dict[str, Any]] = []
 
             for idx, msg in enumerate(messages):
+                message_payload = self._message_payload(msg)
                 if (
                     idx < len(stored)
-                    and stored[idx].get("role") == msg.get("role")
-                    and stored[idx].get("content") == msg.get("content")
+                    and self._message_payload(stored[idx]) == message_payload
                 ):
                     stored_message = {
                         key: value
@@ -134,13 +134,7 @@ class ConversationStore:
                     }
                     new_messages.append(stored_message)
                 else:
-                    new_messages.append(
-                        {
-                            "role": msg.get("role", ""),
-                            "content": msg.get("content", ""),
-                            "ts": now,
-                        }
-                    )
+                    new_messages.append({**message_payload, "ts": now})
 
             data["messages"] = new_messages
             if summary is not None:
@@ -185,6 +179,18 @@ class ConversationStore:
             json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    @staticmethod
+    def _message_payload(message: Dict[str, Any]) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "role": message.get("role", ""),
+            "content": message.get("content", ""),
+        }
+        if message.get("attachments"):
+            payload["attachments"] = message["attachments"]
+        if message.get("images"):
+            payload["images"] = message["images"]
+        return payload
 
     def _with_usage(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if not data.get("messages"):

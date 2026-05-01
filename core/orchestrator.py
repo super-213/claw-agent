@@ -1,5 +1,5 @@
 """Agent 编排器"""
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from .conversation import ConversationManager
 from .context import ExecutionContext
 from .context_compressor import ContextCompressor
@@ -36,9 +36,14 @@ class AgentOrchestrator:
             )
         )
     
-    def process_user_input(self, user_input: str) -> bool:
+    def process_user_input(
+        self,
+        user_input: str,
+        attachments: List[Dict[str, Any]] | None = None,
+        images: List[Dict[str, Any]] | None = None,
+    ) -> bool:
         """处理用户输入，返回是否继续"""
-        if not user_input.strip():
+        if not user_input.strip() and not attachments and not images:
             return True
         
         # 解析技能调用
@@ -52,7 +57,11 @@ class AgentOrchestrator:
                 print(f"[警告] 未找到技能：{skill_name}")
         
         # 添加用户消息
-        self.conversation.add_user_message(user_input)
+        self.conversation.add_user_message(
+            user_input,
+            attachments=attachments,
+            images=images,
+        )
         
         # 处理 AI 回复循环
         self._process_ai_loop()

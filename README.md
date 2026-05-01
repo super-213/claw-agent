@@ -201,6 +201,19 @@ curl -X POST http://localhost:8000/api/chat \\
   -d '{\"session_id\":\"d4b4b0...\",\"message\":\"你好\"}'
 ```
 
+也可以附带图片或附件元数据；本地生成文件建议放在 `.data/generated/`，通过 `/generated/<文件名>` 访问：
+
+```bash
+curl -X POST http://localhost:8000/api/chat \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "session_id":"d4b4b0...",
+    "message":"请看这张图",
+    "images":[{"url":"/generated/example.png","alt":"example"}],
+    "attachments":[{"name":"原图","url":"https://example.com/a.png","type":"image/png"}]
+  }'
+```
+
 响应示例：
 
 ```json

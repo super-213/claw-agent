@@ -1,12 +1,12 @@
 """对话管理器"""
-from typing import List, Dict
+from typing import Any, Dict, List
 
 
 class ConversationManager:
     """管理对话历史和消息构建"""
     
     def __init__(self, system_prompt: str):
-        self._messages: List[Dict[str, str]] = [
+        self._messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt}
         ]
         self._summary = ""
@@ -18,13 +18,23 @@ class ConversationManager:
             return self._messages[0].get("content", "")
         return ""
     
-    def add_user_message(self, content: str):
+    def add_user_message(
+        self,
+        content: str,
+        attachments: List[Dict[str, Any]] | None = None,
+        images: List[Dict[str, Any]] | None = None,
+    ):
         """添加用户消息"""
-        self._messages.append({"role": "user", "content": content})
+        self._messages.append(self._build_message("user", content, attachments, images))
     
-    def add_assistant_message(self, content: str):
+    def add_assistant_message(
+        self,
+        content: str,
+        attachments: List[Dict[str, Any]] | None = None,
+        images: List[Dict[str, Any]] | None = None,
+    ):
         """添加助手消息"""
-        self._messages.append({"role": "assistant", "content": content})
+        self._messages.append(self._build_message("assistant", content, attachments, images))
     
     def add_system_message(self, content: str):
         """添加系统消息（用于技能注入）"""
@@ -34,7 +44,7 @@ class ConversationManager:
         """注入技能上下文"""
         self.add_system_message(f"## 激活技能：{skill_name}\n{skill_content}")
     
-    def get_messages(self) -> List[Dict[str, str]]:
+    def get_messages(self) -> List[Dict[str, Any]]:
         """获取消息列表副本"""
         return self._messages.copy()
 
@@ -51,16 +61,16 @@ class ConversationManager:
         self._summary = summary or ""
         self._summarized_until = max(1, min(summarized_until, len(self._messages)))
 
-    def load_messages(self, messages: List[Dict[str, str]]):
-        """加载历史消息（仅保留 role/content）"""
-        cleaned: List[Dict[str, str]] = []
+    def load_messages(self, messages: List[Dict[str, Any]]):
+        """加载历史消息（保留前端可展示的附件元数据）"""
+        cleaned: List[Dict[str, Any]] = []
         for msg in messages:
-            cleaned.append(
-                {
-                    "role": msg.get("role", ""),
-                    "content": msg.get("content", ""),
-                }
-            )
+            cleaned.append(self._build_message(
+                msg.get("role", ""),
+                msg.get("content", ""),
+                msg.get("attachments"),
+                msg.get("images"),
+            ))
         self._messages = cleaned
         self._summarized_until = max(1, min(self._summarized_until, len(self._messages)))
 
@@ -76,3 +86,20 @@ class ConversationManager:
             self._messages = []
         self._summary = ""
         self._summarized_until = 1
+
+    @staticmethod
+    def _build_message(
+        role: str,
+        content: str,
+        attachments: List[Dict[str, Any]] | None = None,
+        images: List[Dict[str, Any]] | None = None,
+    ) -> Dict[str, Any]:
+        message: Dict[str, Any] = {
+            "role": role or "",
+            "content": content or "",
+        }
+        if attachments:
+            message["attachments"] = attachments
+        if images:
+            message["images"] = images
+        return message

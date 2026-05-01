@@ -863,6 +863,39 @@ body::after {
   position: relative;
 }
 
+.message-text {
+  white-space: pre-wrap;
+}
+
+.message-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 240px));
+  gap: 10px;
+  margin-top: 12px;
+  max-width: 100%;
+}
+
+.message-text:empty + .message-images,
+.message-images:first-child {
+  margin-top: 0;
+}
+
+.message-image-link {
+  display: block;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: rgba(8, 11, 16, 0.46);
+}
+
+.message-image-link img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  object-fit: contain;
+}
+
 .message.user {
   background: linear-gradient(135deg, rgba(245, 166, 35, 0.18), rgba(245, 166, 35, 0.08));
   border: 1px solid rgba(245, 166, 35, 0.25);

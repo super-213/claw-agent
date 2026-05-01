@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
@@ -16,6 +17,10 @@ from skills import SkillRegistry
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WEB_DIR = PROJECT_ROOT / "web"
+GENERATED_DIR = PROJECT_ROOT / ".data" / "generated"
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+MAX_MEDIA_ITEMS = 32
+MAX_MEDIA_FIELD_LENGTH = 2048
 
 app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
 app.json.ensure_ascii = False
@@ -36,6 +41,79 @@ if not skills_dir.is_absolute():
     skills_dir = PROJECT_ROOT / skills_dir
 skill_registry = SkillRegistry(str(skills_dir))
 executor = CommandExecutor(timeout=config["timeout"])
+
+
+def _clean_text(value: Any, max_length: int = MAX_MEDIA_FIELD_LENGTH) -> str:
+    return str(value or "").strip()[:max_length]
+
+
+def _normalize_images(value: Any) -> list[dict[str, Any]]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("images 必须是数组")
+
+    images: list[dict[str, Any]] = []
+    for item in value[:MAX_MEDIA_ITEMS]:
+        if isinstance(item, str):
+            source = _clean_text(item)
+            image = {"url": source}
+        elif isinstance(item, dict):
+            source = _clean_text(
+                item.get("url") or item.get("src") or item.get("path")
+            )
+            image = {
+                "url": source,
+                "alt": _clean_text(item.get("alt") or item.get("name"), 200),
+                "title": _clean_text(item.get("title"), 200),
+            }
+            image = {key: val for key, val in image.items() if val}
+        else:
+            raise ValueError("images 只支持字符串或对象")
+
+        if not image.get("url"):
+            raise ValueError("images 中存在空图片地址")
+        images.append(image)
+    return images
+
+
+def _normalize_attachments(value: Any) -> list[dict[str, Any]]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("attachments 必须是数组")
+
+    allowed_keys = {
+        "name", "url", "src", "path", "type", "mime_type", "mimeType",
+        "alt", "title", "size",
+    }
+    attachments: list[dict[str, Any]] = []
+    for item in value[:MAX_MEDIA_ITEMS]:
+        if isinstance(item, str):
+            attachment = {"url": _clean_text(item)}
+        elif isinstance(item, dict):
+            attachment = {}
+            for key in allowed_keys:
+                if key not in item:
+                    continue
+                raw_value = item[key]
+                if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
+                    attachment[key] = (
+                        raw_value if isinstance(raw_value, (int, float, bool))
+                        else _clean_text(raw_value)
+                    )
+            if "url" not in attachment and attachment.get("src"):
+                attachment["url"] = attachment["src"]
+            if "url" not in attachment and attachment.get("path"):
+                attachment["url"] = attachment["path"]
+            attachment = {key: val for key, val in attachment.items() if val not in ("", None)}
+        else:
+            raise ValueError("attachments 只支持字符串或对象")
+
+        if not attachment:
+            raise ValueError("attachments 中存在空附件")
+        attachments.append(attachment)
+    return attachments
 
 
 def _skill_payload(skill_name: str) -> dict:
@@ -82,6 +160,11 @@ def _build_orchestrator() -> AgentOrchestrator:
 @app.get("/")
 def index():
     return app.send_static_file("index.html")
+
+
+@app.get("/generated/<path:filename>")
+def generated_file(filename: str):
+    return send_from_directory(GENERATED_DIR, filename)
 
 
 @app.get("/api/sessions")
@@ -215,10 +298,15 @@ def chat():
     payload = request.get_json(silent=True) or {}
     session_id = payload.get("session_id")
     user_message = (payload.get("message") or "").strip()
+    try:
+        images = _normalize_images(payload.get("images"))
+        attachments = _normalize_attachments(payload.get("attachments"))
+    except ValueError as e:
+        return jsonify({"error": "invalid_media", "message": str(e)}), 400
 
     if not session_id:
         return jsonify({"error": "missing_session_id"}), 400
-    if not user_message:
+    if not user_message and not images and not attachments:
         return jsonify({"error": "empty_message"}), 400
 
     try:
@@ -239,7 +327,11 @@ def chat():
     before_len = len(conversation.get_messages())
 
     with orchestrator.llm_client:
-        orchestrator.process_user_input(user_message)
+        orchestrator.process_user_input(
+            user_message,
+            attachments=attachments,
+            images=images,
+        )
 
     messages = conversation.get_messages()
     store.save_messages(
