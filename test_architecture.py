@@ -330,6 +330,7 @@ def test_executor():
     """测试命令执行器"""
     print("\n测试命令执行器...")
     try:
+        from tempfile import TemporaryDirectory
         from services import CommandExecutor
         
         executor = CommandExecutor(timeout=5)
@@ -343,6 +344,35 @@ def test_executor():
         result = executor.execute("rm -rf /")
         assert not result.success
         assert result.error is not None
+
+        with TemporaryDirectory() as temp_dir:
+            files_dir = Path(temp_dir) / "files"
+            fixed_executor = CommandExecutor(
+                timeout=5,
+                cwd=files_dir,
+                generated_files_dir=files_dir,
+            )
+            result = fixed_executor.execute("echo 'hello' > generated.txt")
+            assert result.success
+            assert (files_dir / "generated.txt").read_text(encoding="utf-8").strip() == "hello"
+
+            result = fixed_executor.execute("printf '%s' \"$FILES_DIR\"")
+            assert result.success
+            assert result.output == str(files_dir.resolve())
+
+            result = fixed_executor.execute("cp generated.txt /home/user/Downloads/generated.txt")
+            assert not result.success
+            assert "拒绝写入固定生成目录之外" in result.feedback
+            assert "None" not in result.feedback
+
+            result = fixed_executor.execute("cp generated.txt /home/user/Downloads/ && echo ok")
+            assert not result.success
+            assert "拒绝写入固定生成目录之外" in result.feedback
+
+            result = fixed_executor.execute("ls missing-file.pdf")
+            assert not result.success
+            assert "退出码" in result.feedback
+            assert "None" not in result.feedback
         
         print("✅ 命令执行器正常（包括安全检查）")
         return True
@@ -380,6 +410,7 @@ def test_handlers():
     try:
         from handlers import CompletionHandler, HandlerResult
         from core import ExecutionContext
+        from services import ExecutionResult
         
         handler = CompletionHandler()
         context = ExecutionContext()
@@ -388,6 +419,20 @@ def test_handlers():
         result = handler.handle("[完成] 任务完成", context)
         assert result == HandlerResult.BREAK
         assert not context.should_continue
+
+        failed_context = ExecutionContext()
+        failed_context.metadata["execution_result"] = ExecutionResult(
+            output="",
+            return_code=1,
+            error="文件不存在",
+        )
+        result = handler.handle("[完成] 文件已保存成功", failed_context)
+        assert result == HandlerResult.CONTINUE
+        assert failed_context.should_continue
+
+        result = handler.handle("[完成] 文件没有生成，源文件不存在", failed_context)
+        assert result == HandlerResult.BREAK
+        assert not failed_context.should_continue
         
         print("✅ 处理器链正常")
         return True

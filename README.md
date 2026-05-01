@@ -201,7 +201,7 @@ curl -X POST http://localhost:8000/api/chat \\
   -d '{\"session_id\":\"d4b4b0...\",\"message\":\"你好\"}'
 ```
 
-也可以附带图片或附件元数据；本地生成文件建议放在 `.data/generated/`，通过 `/generated/<文件名>` 访问：
+也可以附带图片或附件元数据；本地生成文件会统一放在 `files/`（可通过 `GENERATED_FILES_DIR` 修改），通过 `/generated/<文件名>` 或 `/files/<文件名>` 访问：
 
 ```bash
 curl -X POST http://localhost:8000/api/chat \\

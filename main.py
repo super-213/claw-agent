@@ -66,6 +66,27 @@ def _new_llm_client(config: ConfigManager) -> LLMClient:
     )
 
 
+def _resolve_project_path(project_root: Path, value: str) -> Path:
+    """解析相对项目根目录的配置路径。"""
+    path = Path(value)
+    if not path.is_absolute():
+        path = project_root / path
+    return path.resolve()
+
+
+def _append_file_generation_prompt(agent_prompt: str, project_root: Path, generated_dir: Path) -> str:
+    """把统一文件生成目录注入系统提示词。"""
+    return agent_prompt + (
+        "\n\n## 文件生成目录\n\n"
+        f"- 当前命令工作目录固定为：{generated_dir}\n"
+        "- 所有新建、导出、下载、转换、保存的文件都必须写入当前工作目录，"
+        "也就是 GENERATED_FILES_DIR/FILES_DIR 指向的目录。\n"
+        "- 生成文件时直接使用文件名或子目录名，不要再额外加 files/ 前缀。\n"
+        f"- 如需读取或检查项目源码，使用 PROJECT_ROOT 环境变量：{project_root}\n"
+        "- 完成时请给出生成文件相对该目录的文件名。\n"
+    )
+
+
 def _handle_config_command(
     user_input: str,
     config: ConfigManager,
@@ -168,9 +189,17 @@ def main():
     try:
         # 加载配置
         config = ConfigManager()
+        project_root = Path(__file__).resolve().parent
+        generated_dir = _resolve_project_path(project_root, config["generated_files_dir"])
         
         # 加载 Agent 提示词
-        agent_prompt = Path(config["agent_file"]).read_text(encoding='utf-8')
+        agent_path = _resolve_project_path(project_root, config["agent_file"])
+        agent_prompt = agent_path.read_text(encoding='utf-8')
+        agent_prompt = _append_file_generation_prompt(
+            agent_prompt,
+            project_root,
+            generated_dir,
+        )
         
         # 初始化组件
         llm_client = _new_llm_client(config)
@@ -183,8 +212,13 @@ def main():
             summary_target_chars=config["summary_target_chars"],
             summary_input_chars=config["summary_input_chars"],
         )
-        skill_registry = SkillRegistry(config["skills_dir"])
-        executor = CommandExecutor(timeout=config["timeout"])
+        skills_dir = _resolve_project_path(project_root, config["skills_dir"])
+        skill_registry = SkillRegistry(str(skills_dir))
+        executor = CommandExecutor(
+            timeout=config["timeout"],
+            cwd=generated_dir,
+            generated_files_dir=generated_dir,
+        )
         
         # 创建编排器
         orchestrator = AgentOrchestrator(

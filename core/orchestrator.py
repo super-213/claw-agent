@@ -145,8 +145,7 @@ class AgentOrchestrator:
             elif result == HandlerResult.CONTINUE:
                 # 命令执行后，添加执行结果
                 if exec_result := self.context.metadata.get('execution_result'):
-                    output = exec_result.output if exec_result.success else exec_result.error
-                    self.conversation.add_user_message(f"[执行完成]\n{output}")
+                    self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
                 continue
             elif result == HandlerResult.RETRY:
                 # 格式不正确，提醒 AI
@@ -222,7 +221,6 @@ class AgentOrchestrator:
             if command:
                 exec_result = self.context.metadata.get("execution_result")
                 if exec_result:
-                    output = exec_result.output if exec_result.success else exec_result.error
                     yield {
                         "type": "command_result",
                         "stage": "command",
@@ -231,7 +229,7 @@ class AgentOrchestrator:
                         "command": command,
                         "success": exec_result.success,
                         "return_code": exec_result.return_code,
-                        "output": output or "",
+                        "output": exec_result.feedback,
                     }
 
             if result == HandlerResult.BREAK:
@@ -244,8 +242,7 @@ class AgentOrchestrator:
                 break
             elif result == HandlerResult.CONTINUE:
                 if exec_result := self.context.metadata.get("execution_result"):
-                    output = exec_result.output if exec_result.success else exec_result.error
-                    self.conversation.add_user_message(f"[执行完成]\n{output}")
+                    self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
                     yield {
                         "type": "step",
                         "stage": "conversation",

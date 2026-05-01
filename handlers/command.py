@@ -22,12 +22,12 @@ class CommandHandler(ResponseHandler):
         # 执行命令
         result = self.executor.execute(command)
         
-        if result.error:
-            print(f"[执行错误]: {result.error}\n")
-            context.metadata['last_error'] = result.error
+        if not result.success:
+            print(f"[执行错误]: {result.feedback}\n")
+            context.metadata['last_error'] = result.feedback
         else:
-            print(f"[执行结果]:\n{result.output}\n")
-            context.metadata['last_output'] = result.output
+            print(f"[执行结果]:\n{result.feedback}\n")
+            context.metadata['last_output'] = result.feedback
         
         # 保存命令和结果到上下文
         context.last_command = command

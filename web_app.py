@@ -18,8 +18,6 @@ from skills import SkillRegistry
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WEB_DIR = PROJECT_ROOT / "web"
-GENERATED_DIR = PROJECT_ROOT / ".data" / "generated"
-GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 MAX_MEDIA_ITEMS = 32
 MAX_MEDIA_FIELD_LENGTH = 2048
 
@@ -30,7 +28,21 @@ config = ConfigManager()
 agent_path = Path(config["agent_file"])
 if not agent_path.is_absolute():
     agent_path = PROJECT_ROOT / agent_path
+generated_dir = Path(config["generated_files_dir"])
+if not generated_dir.is_absolute():
+    generated_dir = PROJECT_ROOT / generated_dir
+GENERATED_DIR = generated_dir.resolve()
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 agent_prompt = agent_path.read_text(encoding="utf-8")
+agent_prompt += (
+    "\n\n## 文件生成目录\n\n"
+    f"- 当前命令工作目录固定为：{GENERATED_DIR}\n"
+    "- 所有新建、导出、下载、转换、保存的文件都必须写入当前工作目录，"
+    "也就是 GENERATED_FILES_DIR/FILES_DIR 指向的目录。\n"
+    "- 生成文件时直接使用文件名或子目录名，不要再额外加 files/ 前缀。\n"
+    f"- 如需读取或检查项目源码，使用 PROJECT_ROOT 环境变量：{PROJECT_ROOT}\n"
+    "- 完成时请给出生成文件相对该目录的文件名；Web 访问路径为 /generated/<文件名>。\n"
+)
 
 conversation_root = Path(config["conversation_dir"])
 if not conversation_root.is_absolute():
@@ -41,7 +53,11 @@ skills_dir = Path(config["skills_dir"])
 if not skills_dir.is_absolute():
     skills_dir = PROJECT_ROOT / skills_dir
 skill_registry = SkillRegistry(str(skills_dir))
-executor = CommandExecutor(timeout=config["timeout"])
+executor = CommandExecutor(
+    timeout=config["timeout"],
+    cwd=GENERATED_DIR,
+    generated_files_dir=GENERATED_DIR,
+)
 
 
 def _clean_text(value: Any, max_length: int = MAX_MEDIA_FIELD_LENGTH) -> str:
@@ -165,6 +181,11 @@ def index():
 
 @app.get("/generated/<path:filename>")
 def generated_file(filename: str):
+    return send_from_directory(GENERATED_DIR, filename)
+
+
+@app.get("/files/<path:filename>")
+def files_file(filename: str):
     return send_from_directory(GENERATED_DIR, filename)
 
 

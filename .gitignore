@@ -23,3 +23,7 @@ ENV/
 
 # 日志
 *.log
+
+# 模型生成文件
+files/*
+!files/.gitkeep
