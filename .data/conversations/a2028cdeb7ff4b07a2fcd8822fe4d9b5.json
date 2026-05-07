@@ -1,0 +1,116 @@
+{
+  "id": "a2028cdeb7ff4b07a2fcd8822fe4d9b5",
+  "title": "我在哪个城市",
+  "created_at": "2026-05-07T13:35:59.686982+00:00",
+  "updated_at": "2026-05-07T13:36:19.728729+00:00",
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Agent 指令规范\n\n## 你的角色\n你是一个智能任务执行助手，可以执行系统命令、调用预置技能、或直接回答问题。\n\n## 知识边界（重要）\n\n你的训练数据有截止日期，你不具备实时信息。遇到以下情况时，你**必须**使用搜索命令获取信息，**禁止凭记忆编造**：\n\n- 实时信息：天气、股价、新闻、赛事比分、航班状态等\n- 时效性内容：最新版本号、当前价格、近期事件、政策变动\n- 你不确定的事实：具体数据、统计数字、人物近况\n- 用户明确要求查询/搜索的内容\n\n### 搜索命令格式\n当需要查询网络信息时，使用：\n[命令] curl -s \"https://www.google.com/search?q=关键词\" | head -100\n\n或使用更适合的搜索工具（如果系统中安装了 `lynx`、`w3m` 等）：\n[命令] curl -sL \"https://搜索引擎或API地址\" \n\n### 判断原则\n- **能确定的知识**（语法、算法、概念解释）→ 直接回答\n- **不确定或有时效性**→ 先搜索，再基于搜索结果回答\n- **宁可多搜一次，也不要编造一个错误答案**\n\n## 交互模式\n\n你支持三种交互方式：\n\n### 1. 执行系统命令\n当需要操作文件系统、运行程序时，使用命令格式：\n[命令] ls -la\n\n### 2. 调用预置技能\n当用户输入包含 \"调用 XXX skill\" 时，系统会自动加载对应技能说明。\n你根据加载的技能说明执行任务，完成后回复：\n[完成] 任务描述\n\n### 3. 直接回答\n当问题不需要命令或技能时，直接给出答案，最后标记：\n[完成] 回答内容\n\n## 输出格式规范\n\n系统命令：[命令] XXX\n任务完成：[完成] XXX\n技能调用：由用户触发（用户输入 \"调用 XXX skill\"）\n\n## 严格禁止\n\n- 不要解释你的思考过程\n- 不要添加额外说明或注释\n- 不要使用代码块包裹命令\n- 不要一次性输出多条命令\n- 不要执行危险命令（如 rm -rf /）\n- **不要编造实时数据**（天气、价格、新闻、版本号等）——如果你不确定，必须先用命令搜索\n- **不要伪造 URL 或链接**——如果需要提供来源，先搜索确认\n\n## 工作流程\n\n1. 接收用户输入\n2. 检测是否包含 \"调用 XXX skill\"\n3. 如有，系统自动加载 skills/XXX/XXX.md 或 skills/XXX/XXX.skill 并注入上下文\n4. 根据上下文（Agent.md + skill 文件）生成回复\n5. 使用正确格式输出（[命令]/[完成]）\n\n## 示例\n\n### 示例 1：技能调用\n用户：调用 weather skill 查询北京天气\nAI：[完成] 北京今天天气：晴，18°C ~ 26°C，适合户外活动\n\n### 示例 2：命令执行\n用户：查看当前目录有哪些文件\nAI：[命令] ls -la\n用户：[执行完成] ...\nAI：[完成] 当前目录共有 5 个文件\n\n### 示例 3：直接回答\n用户：Python 中如何定义函数？\nAI：[完成] 使用 def 关键字：def 函数名 (参数): 缩进代码块\n\n## 可用技能目录\n\n技能文件位于 skills/ 文件夹，每个技能一个子目录：\n\nskills/\n  ├── weather/\n  │   └── weather.md\n  ├── search/\n  │   └── search.skill\n  └── calculator/\n      └── calculator.md\n\n调用格式：调用 技能名 skill + 任务描述\n\n## 安全原则\n\n- 不执行需要用户交互的命令（如 vi、python 交互模式）\n- 不执行可能破坏系统的命令（如格式化、删除系统文件）\n- 敏感操作前先向用户确认\n- 优先使用只读命令（如 ls、cat、pwd）\n- 命令失败时分析原因并给出替代方案\n\n## 文件生成规则\n\n- 所有由你新建、导出、下载、转换或保存的文件，必须放在系统提供的文件生成目录中。\n- 命令执行时，当前工作目录已经固定为该文件生成目录；默认情况下这个目录是 `files`。\n- 生成文件时只能直接使用文件名或子目录名，例如 `report.pdf`、`report.md`、`images/chart.png`。\n- 禁止给生成文件额外添加 `files/` 前缀；不要写成 `files/report.pdf` 或 `files/images/chart.png`。\n- 禁止把生成文件写到生成目录之外的绝对路径、用户主目录、项目根目录、`/tmp` 或其他目录。\n- 文件生成目录也会通过环境变量 `GENERATED_FILES_DIR` 和 `FILES_DIR` 提供；如果工具必须使用绝对路径，只能使用 `$GENERATED_FILES_DIR/文件名` 或 `$FILES_DIR/文件名`。\n- 如需访问项目源码或其他项目文件，使用 `PROJECT_ROOT` 环境变量，不要把生成文件写到项目其他目录。\n- 任务完成时只返回相对文件名或 Web 访问路径，例如 `report.pdf` 对应 `/generated/report.pdf`，不要返回本地绝对路径。\n\n## 开始工作\n\n等待用户指令，根据任务类型选择最合适的交互方式。\n\n\n## 文件生成目录\n\n- 当前命令工作目录固定为：/Volumes/HIKSEMI/tool/agent/files\n- 所有新建、导出、下载、转换、保存的文件都必须写入当前工作目录，也就是 GENERATED_FILES_DIR/FILES_DIR 指向的目录。\n- 生成文件时直接使用文件名或子目录名，例如 report.pdf、images/chart.png；不要再额外加 files/ 前缀。\n- 如果工具必须使用绝对路径，只能使用 $GENERATED_FILES_DIR/文件名 或 $FILES_DIR/文件名；不要写入项目根目录、用户主目录、/tmp 或其他目录。\n- 如需读取或检查项目源码，使用 PROJECT_ROOT 环境变量：/Volumes/HIKSEMI/tool/agent\n- 完成时请给出生成文件相对该目录的文件名或 /generated/<文件名>，不要返回本地绝对路径。\n",
+      "ts": "2026-05-07T13:35:59.686982+00:00",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "system_prompt",
+        "role_tokens": 1,
+        "content_tokens": 1795,
+        "message_overhead_tokens": 4,
+        "total_tokens": 1800,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1803
+      }
+    },
+    {
+      "role": "user",
+      "content": "我在哪个城市",
+      "ts": "2026-05-07T13:36:19.728729+00:00",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 7,
+        "message_overhead_tokens": 4,
+        "total_tokens": 12,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1815
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[命令] curl -s \"https://ipapi.co/json/\" | grep city",
+      "ts": "2026-05-07T13:36:19.728729+00:00",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "tool_call",
+        "role_tokens": 1,
+        "content_tokens": 19,
+        "message_overhead_tokens": 4,
+        "total_tokens": 24,
+        "tool_tokens": 24,
+        "tool_call_tokens": 24,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1839
+      }
+    },
+    {
+      "role": "user",
+      "content": "[执行完成]\n    \"city\": \"Buffalo\",\n",
+      "ts": "2026-05-07T13:36:19.728729+00:00",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "tool_result",
+        "role_tokens": 1,
+        "content_tokens": 12,
+        "message_overhead_tokens": 4,
+        "total_tokens": 17,
+        "tool_tokens": 17,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 17,
+        "cumulative_tokens": 1856
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[完成] 你在 Buffalo（美国纽约州布法罗市）。",
+      "ts": "2026-05-07T13:36:19.728729+00:00",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "assistant",
+        "role_tokens": 1,
+        "content_tokens": 20,
+        "message_overhead_tokens": 4,
+        "total_tokens": 25,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1881
+      }
+    }
+  ],
+  "summary": "",
+  "summarized_until": 1,
+  "token_usage": {
+    "estimated": true,
+    "encoding": "cl100k_base",
+    "message_count": 5,
+    "total_tokens": 1881,
+    "session_primer_tokens": 3,
+    "system_prompt_tokens": 1800,
+    "skill_tokens": 0,
+    "summary_tokens": 0,
+    "conversation_tokens": 78,
+    "user_tokens": 29,
+    "assistant_tokens": 49,
+    "tool_tokens": 41,
+    "tool_call_tokens": 24,
+    "tool_result_tokens": 17
+  }
+}

@@ -236,17 +236,25 @@ export const appendProcessStep = (text, detail = '') => {
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 };
 
-export const startStreamingAssistantMessage = ({ iteration = 1, model = '' } = {}) => {
+export const startStreamingAssistantMessage = ({
+  iteration = 1,
+  model = '',
+  message_count: messageCount = 0,
+} = {}) => {
   els.emptyState.style.display = 'none';
 
   const row = document.createElement('div');
   row.className = 'message-row assistant-row streaming-row';
 
-  const label = document.createElement('div');
-  label.className = 'msg-label';
-  label.textContent = model
-    ? `// Agent · ${model} · #${iteration}`
-    : `// Agent · #${iteration}`;
+  const header = document.createElement('div');
+  header.className = 'llm-req-header';
+  header.innerHTML = `
+    <span class="req-tag">LLM</span>
+    <span class="req-iter">#${escapeHtml(String(iteration))}</span>
+    <span class="req-model">${escapeHtml(model || 'model')}</span>
+    <span class="req-msgs">${escapeHtml(String(messageCount))} msgs</span>
+    <span class="req-state"><span class="dot"></span><span class="req-state-text">streaming</span><span class="req-elapsed"></span></span>
+  `;
 
   const bubble = document.createElement('div');
   bubble.className = 'message assistant streaming';
@@ -255,12 +263,21 @@ export const startStreamingAssistantMessage = ({ iteration = 1, model = '' } = {
   textEl.className = 'message-text';
   bubble.appendChild(textEl);
 
-  row.appendChild(label);
+  row.appendChild(header);
   row.appendChild(bubble);
   els.messageList.appendChild(row);
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 
-  return { row, label, bubble, textEl, content: '' };
+  return {
+    row,
+    label: header,
+    bubble,
+    textEl,
+    content: '',
+    startedAt: Date.now(),
+    model,
+    iteration,
+  };
 };
 
 export const appendStreamingAssistantDelta = (streamMessage, delta) => {
@@ -270,9 +287,33 @@ export const appendStreamingAssistantDelta = (streamMessage, delta) => {
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 };
 
+const formatElapsed = (ms) => {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value < 0) return '';
+  if (value < 1000) return `${Math.round(value)}ms`;
+  if (value < 60_000) return `${(value / 1000).toFixed(value < 10_000 ? 2 : 1)}s`;
+  const minutes = Math.floor(value / 60_000);
+  const seconds = Math.round((value % 60_000) / 1000);
+  return `${minutes}m${seconds}s`;
+};
+
 export const finishStreamingAssistantMessage = (streamMessage, content = '') => {
   if (!streamMessage) return;
   streamMessage.content = content || streamMessage.content;
+
+  // Mark header as done and show elapsed time
+  const header = streamMessage.label;
+  if (header && header.classList) {
+    header.classList.remove('failed');
+    header.classList.add('done');
+    const stateText = header.querySelector('.req-state-text');
+    if (stateText) stateText.textContent = 'done';
+    const elapsedEl = header.querySelector('.req-elapsed');
+    if (elapsedEl && streamMessage.startedAt) {
+      const elapsed = Date.now() - streamMessage.startedAt;
+      elapsedEl.textContent = ` · ${formatElapsed(elapsed)}`;
+    }
+  }
 
   const displayMessages = splitMixedProtocolMessage({
     role: 'assistant',
@@ -280,9 +321,8 @@ export const finishStreamingAssistantMessage = (streamMessage, content = '') => 
   });
   const firstDisplayMessage = displayMessages[0];
   const view = getMessageView(firstDisplayMessage);
-  streamMessage.row.className = `message-row ${view.role}-row`;
-  streamMessage.bubble.className = `message ${view.role}`;
-  streamMessage.label.textContent = view.label;
+  streamMessage.row.classList.remove('streaming-row');
+  streamMessage.bubble.classList.remove('streaming');
   renderMessageText(streamMessage.textEl, firstDisplayMessage.content);
   if (view.flow) {
     streamMessage.row.insertBefore(createProtocolFlow(view.flow), streamMessage.bubble);
@@ -306,6 +346,150 @@ export const finishStreamingAssistantMessage = (streamMessage, content = '') => 
     streamMessage.row.insertAdjacentElement('afterend', row);
   });
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+};
+
+export const appendToolCall = ({
+  iteration = 1,
+  command = '',
+  label = 'shell',
+} = {}) => {
+  els.emptyState.style.display = 'none';
+
+  const row = document.createElement('div');
+  row.className = 'message-row tool-call-row';
+
+  const card = document.createElement('div');
+  card.className = 'tool-call-card running';
+
+  const head = document.createElement('div');
+  head.className = 'tool-call-head';
+  head.innerHTML = `
+    <span class="tool-badge">${escapeHtml(String(label).toUpperCase())}</span>
+    <span class="tool-iter">#${escapeHtml(String(iteration))}</span>
+    <span class="tool-status"><span class="dot"></span><span class="tool-status-text">running</span></span>
+  `;
+
+  const commandEl = document.createElement('div');
+  commandEl.className = 'tool-call-command';
+  commandEl.textContent = command || '';
+
+  const outputWrap = document.createElement('div');
+  outputWrap.className = 'tool-call-output-wrap';
+  outputWrap.style.display = 'none';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'tool-call-output-toggle';
+  toggle.innerHTML = `
+    <span class="toggle-label">output</span>
+    <span class="caret">▸</span>
+  `;
+  toggle.addEventListener('click', () => {
+    outputWrap.classList.toggle('open');
+  });
+
+  const output = document.createElement('pre');
+  output.className = 'tool-call-output';
+
+  outputWrap.appendChild(toggle);
+  outputWrap.appendChild(output);
+
+  const meta = document.createElement('div');
+  meta.className = 'tool-call-meta';
+  meta.style.display = 'none';
+
+  card.appendChild(head);
+  card.appendChild(commandEl);
+  card.appendChild(outputWrap);
+  card.appendChild(meta);
+  row.appendChild(card);
+  els.messageList.appendChild(row);
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+
+  return {
+    row,
+    card,
+    head,
+    commandEl,
+    outputWrap,
+    output,
+    meta,
+    startedAt: Date.now(),
+    iteration,
+  };
+};
+
+export const updateToolCall = (handle, {
+  output = '',
+  returnCode = null,
+  success = null,
+  elapsed = null,
+  error = '',
+} = {}) => {
+  if (!handle) return;
+
+  // Status: failure when returnCode non-zero, or success=false, or error present
+  let resolved = success;
+  if (resolved == null) {
+    if (error) resolved = false;
+    else if (returnCode != null) resolved = Number(returnCode) === 0;
+  }
+
+  handle.card.classList.remove('running');
+  if (resolved === false) handle.card.classList.add('failure');
+  else if (resolved === true) handle.card.classList.add('success');
+
+  const statusText = handle.head.querySelector('.tool-status-text');
+  if (statusText) {
+    if (resolved === false) statusText.textContent = 'failed';
+    else if (resolved === true) statusText.textContent = 'done';
+  }
+
+  const text = String(output || error || '');
+  if (text) {
+    handle.output.textContent = text;
+    handle.outputWrap.style.display = '';
+  }
+
+  const elapsedMs = elapsed != null
+    ? Number(elapsed)
+    : (handle.startedAt ? Date.now() - handle.startedAt : null);
+
+  const parts = [];
+  if (returnCode != null) {
+    parts.push(`<span><span class="meta-key">rc</span><span class="meta-val rc">${escapeHtml(String(returnCode))}</span></span>`);
+  }
+  if (elapsedMs != null && Number.isFinite(elapsedMs)) {
+    parts.push(`<span><span class="meta-key">took</span><span class="meta-val">${escapeHtml(formatElapsed(elapsedMs))}</span></span>`);
+  }
+  if (text) {
+    const bytes = new Blob([text]).size;
+    parts.push(`<span><span class="meta-key">size</span><span class="meta-val">${escapeHtml(formatBytes(bytes))}</span></span>`);
+  }
+  if (parts.length) {
+    handle.meta.innerHTML = parts.join('');
+    handle.meta.style.display = '';
+  }
+
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+};
+
+const formatBytes = (bytes) => {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value}B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)}KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)}MB`;
+};
+
+export const appendIterationDivider = (iteration) => {
+  els.emptyState.style.display = 'none';
+
+  const divider = document.createElement('div');
+  divider.className = 'iteration-divider';
+  divider.innerHTML = `<span>iteration #${escapeHtml(String(iteration))}</span>`;
+  els.messageList.appendChild(divider);
+  els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+  return divider;
 };
 
 export const showThinking = () => {

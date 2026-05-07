@@ -1,13 +1,16 @@
 import { chatApi, sessionsApi } from './api.js';
 import { els, fitMessageInput, isMobileLayout, setMobileSidebar } from './dom.js';
 import {
-  appendProcessStep,
+  appendIterationDivider,
   appendOptimisticUserMessage,
+  appendProcessStep,
   appendStreamingAssistantDelta,
+  appendToolCall,
   finishStreamingAssistantMessage,
   renderMessages,
   setStatus,
   startStreamingAssistantMessage,
+  updateToolCall,
 } from './messages.js';
 import { state } from './state.js';
 import { escapeHtml, formatTime, formatTokens } from './utils.js';
@@ -158,6 +161,8 @@ export const sendMessage = async () => {
   fitMessageInput();
   appendOptimisticUserMessage(text);
   const streamMessages = new Map();
+  const toolCalls = new Map();
+  let lastIteration = 0;
 
   const clipDetail = (value) => {
     const textValue = String(value || '').trim();
@@ -165,18 +170,41 @@ export const sendMessage = async () => {
     return textValue.slice(0, 4000) + '\n...';
   };
 
+  // Filter out low-signal process steps that duplicate info already shown in
+  // the LLM / tool call cards.
+  const NOISY_STAGES = new Set(['handler', 'conversation']);
+  const NOISY_MESSAGES = [
+    '解析模型回复',
+    '命令结果已写回上下文',
+  ];
+  const isNoisyStep = (event) => {
+    if (NOISY_STAGES.has(event.stage)) return true;
+    const msg = String(event.message || '');
+    return NOISY_MESSAGES.some((needle) => msg.includes(needle));
+  };
+
+  const maybeAppendIterationDivider = (iteration) => {
+    const iter = Number(iteration) || 1;
+    if (iter > 1 && iter !== lastIteration) {
+      appendIterationDivider(iter);
+    }
+    lastIteration = iter;
+  };
+
   const handleStreamEvent = (event) => {
     if (event.type === 'step') {
+      if (isNoisyStep(event)) {
+        // Still drive status bar, but skip adding a noisy bubble.
+        if (event.message) setStatus(event.message, true);
+        return;
+      }
       appendProcessStep(event.message || event.stage || '处理进度');
       setStatus(event.message || '处理中…', true);
       return;
     }
 
     if (event.type === 'model_start') {
-      appendProcessStep(
-        event.message || '发送模型请求',
-        `${event.model || 'model'} · ${event.message_count || 0} messages`,
-      );
+      maybeAppendIterationDivider(event.iteration);
       streamMessages.set(
         event.iteration || 1,
         startStreamingAssistantMessage(event),
@@ -203,17 +231,33 @@ export const sendMessage = async () => {
     }
 
     if (event.type === 'command_start') {
-      appendProcessStep(event.message || '执行命令', event.command || '');
+      const handle = appendToolCall({
+        iteration: event.iteration || 1,
+        command: event.command || '',
+        label: 'shell',
+      });
+      toolCalls.set(event.iteration || 1, handle);
       setStatus('执行命令…', true);
       return;
     }
 
     if (event.type === 'command_result') {
-      appendProcessStep(
-        event.message || '命令执行完成',
-        clipDetail(event.output || ''),
-      );
-      setStatus('命令结果写回上下文…', true);
+      const handle = toolCalls.get(event.iteration || 1);
+      if (handle) {
+        updateToolCall(handle, {
+          output: clipDetail(event.output || ''),
+          returnCode: event.return_code,
+          success: event.success,
+        });
+        toolCalls.delete(event.iteration || 1);
+      } else {
+        // Fallback: no paired command_start (shouldn't happen, but keep log).
+        appendProcessStep(
+          event.message || '命令执行完成',
+          clipDetail(event.output || ''),
+        );
+      }
+      setStatus(event.success === false ? '命令执行失败' : '命令结果写回上下文…', true);
       return;
     }
 
