@@ -55,6 +55,15 @@ class AgentOrchestrator:
                 user_input = cleaned_input if cleaned_input else user_input
             else:
                 print(f"[警告] 未找到技能：{skill_name}")
+
+        # 检测实时查询意图，注入搜索提醒
+        if InputParser.needs_realtime_search(user_input):
+            self.conversation.add_system_message(
+                "## 提醒：用户的问题涉及实时信息\n"
+                "你的训练数据有截止日期，不具备实时信息。"
+                "请先使用 [命令] curl 等方式搜索获取最新数据，"
+                "然后基于搜索结果回答。禁止凭记忆编造实时数据。"
+            )
         
         # 添加用户消息
         self.conversation.add_user_message(
@@ -101,6 +110,20 @@ class AgentOrchestrator:
                     "stage": "skill_missing",
                     "message": f"未找到技能：{skill_name}",
                 }
+
+        # 检测实时查询意图，注入搜索提醒
+        if InputParser.needs_realtime_search(user_input):
+            self.conversation.add_system_message(
+                "## 提醒：用户的问题涉及实时信息\n"
+                "你的训练数据有截止日期，不具备实时信息。"
+                "请先使用 [命令] curl 等方式搜索获取最新数据，"
+                "然后基于搜索结果回答。禁止凭记忆编造实时数据。"
+            )
+            yield {
+                "type": "step",
+                "stage": "realtime_hint",
+                "message": "检测到实时查询意图，已注入搜索提醒",
+            }
 
         self.conversation.add_user_message(
             user_input,

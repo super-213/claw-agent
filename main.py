@@ -81,9 +81,12 @@ def _append_file_generation_prompt(agent_prompt: str, project_root: Path, genera
         f"- 当前命令工作目录固定为：{generated_dir}\n"
         "- 所有新建、导出、下载、转换、保存的文件都必须写入当前工作目录，"
         "也就是 GENERATED_FILES_DIR/FILES_DIR 指向的目录。\n"
-        "- 生成文件时直接使用文件名或子目录名，不要再额外加 files/ 前缀。\n"
+        "- 生成文件时直接使用文件名或子目录名，例如 report.pdf、images/chart.png；"
+        "不要再额外加 files/ 前缀。\n"
+        "- 如果工具必须使用绝对路径，只能使用 $GENERATED_FILES_DIR/文件名 "
+        "或 $FILES_DIR/文件名；不要写入项目根目录、用户主目录、/tmp 或其他目录。\n"
         f"- 如需读取或检查项目源码，使用 PROJECT_ROOT 环境变量：{project_root}\n"
-        "- 完成时请给出生成文件相对该目录的文件名。\n"
+        "- 完成时请给出生成文件相对该目录的文件名，不要返回本地绝对路径。\n"
     )
 
 
