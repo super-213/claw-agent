@@ -83,6 +83,15 @@ export const openSession = async (sessionId) => {
     els.topbarTitle.textContent = session?.title || '新对话';
     els.tokenSummary.textContent = `Tokens ${formatTokens(data.token_usage?.total_tokens)} · Tool ${formatTokens(data.token_usage?.tool_tokens)}`;
     renderMessages(data.messages || []);
+
+    // 如果切回来的正好是仍在流式中的会话，补一个占位提示
+    if (state.activeStreamSessionId === sessionId) {
+      if (state.pendingUserMessage) {
+        appendOptimisticUserMessage(state.pendingUserMessage);
+      }
+      appendProcessStep('会话仍在后台生成中…', '完成后将自动刷新');
+      setStatus('处理中…', true);
+    }
   } catch (error) {
     console.warn('openSession:', error);
   }
@@ -102,7 +111,11 @@ export const createSession = async () => {
 };
 
 export const deleteSession = async (sessionId) => {
-  if (state.busy) return;
+  // 只挡删除正在流式的会话；其它会话可以随时删
+  if (state.activeStreamSessionId === sessionId) {
+    alert('该会话正在生成中，请等生成完成后再删除');
+    return;
+  }
 
   const session = state.sessions.find((item) => item.id === sessionId);
   const title = session?.title || '新对话';
@@ -134,7 +147,10 @@ export const deleteSession = async (sessionId) => {
 };
 
 export const copySession = async (sessionId) => {
-  if (state.busy) return;
+  // 复制正在生成的会话可能拿到不完整的快照，提示一下
+  if (state.activeStreamSessionId === sessionId) {
+    if (!confirm('该会话仍在生成中，复制将只包含已保存的部分内容。继续？')) return;
+  }
 
   try {
     const data = await sessionsApi.copy(sessionId);
@@ -155,6 +171,13 @@ export const sendMessage = async () => {
   if (!text) return;
   if (!state.currentSessionId) await createSession();
 
+  // 绑定本次请求的目标会话；切换会话后通过该 id 判断 DOM 是否应被更新
+  const streamSessionId = state.currentSessionId;
+  state.activeStreamSessionId = streamSessionId;
+  state.pendingUserMessage = text;
+  // 是否在流式期间离开过流式会话（离开过就需要最终刷新一次以替换占位）
+  let switchedAwayDuringStream = false;
+
   state.busy = true;
   setStatus('处理中…', true);
   els.messageInput.value = '';
@@ -163,6 +186,8 @@ export const sendMessage = async () => {
   const streamMessages = new Map();
   const toolCalls = new Map();
   let lastIteration = 0;
+
+  const isViewingStreamSession = () => state.currentSessionId === streamSessionId;
 
   const clipDetail = (value) => {
     const textValue = String(value || '').trim();
@@ -192,6 +217,12 @@ export const sendMessage = async () => {
   };
 
   const handleStreamEvent = (event) => {
+    // 用户切到别的会话时不操作 DOM 和状态栏，避免把消息塞进别的会话视图
+    if (!isViewingStreamSession()) {
+      switchedAwayDuringStream = true;
+      return;
+    }
+
     if (event.type === 'step') {
       if (isNoisyStep(event)) {
         // Still drive status bar, but skip adding a noisy bubble.
@@ -268,23 +299,39 @@ export const sendMessage = async () => {
 
   try {
     const finalEvent = await chatApi.stream(
-      { sessionId: state.currentSessionId, message: text },
+      { sessionId: streamSessionId, message: text },
       handleStreamEvent,
     );
-    if (Array.isArray(finalEvent?.messages)) {
-      state.messages = [...state.messages, ...finalEvent.messages];
-    }
     await loadSessions();
-    const current = state.sessions.find((item) => item.id === state.currentSessionId);
-    if (current) {
-      els.topbarTitle.textContent = current.title || '新对话';
-      els.tokenSummary.textContent = `Tokens ${formatTokens(current.token_usage?.total_tokens)} · Tool ${formatTokens(current.token_usage?.tool_tokens)}`;
+
+    if (state.currentSessionId === streamSessionId) {
+      if (Array.isArray(finalEvent?.messages)) {
+        state.messages = [...state.messages, ...finalEvent.messages];
+      }
+      const current = state.sessions.find((item) => item.id === streamSessionId);
+      if (current) {
+        els.topbarTitle.textContent = current.title || '新对话';
+        els.tokenSummary.textContent = `Tokens ${formatTokens(current.token_usage?.total_tokens)} · Tool ${formatTokens(current.token_usage?.tool_tokens)}`;
+      }
     }
   } catch (error) {
     console.warn('sendMessage:', error);
-    appendProcessStep('请求失败', error.data?.message || error.message || '网络错误');
+    if (state.currentSessionId === streamSessionId) {
+      appendProcessStep('请求失败', error.data?.message || error.message || '网络错误');
+    }
   } finally {
     state.busy = false;
+    state.activeStreamSessionId = null;
+    state.pendingUserMessage = null;
     setStatus('就绪', false);
+    // 流式期间离开过流式会话，现在又回到这个会话：视图是不完整占位，用最终数据重绘
+    if (switchedAwayDuringStream && state.currentSessionId === streamSessionId) {
+      try {
+        const data = await sessionsApi.get(streamSessionId);
+        renderMessages(data.messages || []);
+      } catch (refreshError) {
+        console.warn('refresh after stream:', refreshError);
+      }
+    }
   }
 };
