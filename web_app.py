@@ -24,6 +24,20 @@ MAX_MEDIA_FIELD_LENGTH = 2048
 app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
 app.json.ensure_ascii = False
 
+
+@app.after_request
+def _set_static_cache_headers(response):
+    """Disable browser caching for static assets during development."""
+    if response.content_type and (
+        "text/css" in response.content_type
+        or "javascript" in response.content_type
+        or "text/html" in response.content_type
+    ):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 config = ConfigManager()
 agent_path = Path(config["agent_file"])
 if not agent_path.is_absolute():

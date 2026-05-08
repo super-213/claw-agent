@@ -1740,12 +1740,62 @@ textarea::placeholder {
     max-width: 94%;
   }
 
+  .tool-call-head {
+    gap: 7px;
+    padding: 7px 10px;
+    font-size: 9px;
+  }
+
+  .tool-call-command {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .tool-call-output {
+    max-height: 200px;
+    font-size: 10.5px;
+    padding: 0 10px 10px;
+  }
+
+  .tool-call-output-toggle {
+    padding: 6px 10px;
+    font-size: 9px;
+  }
+
+  .tool-call-meta {
+    gap: 10px;
+    padding: 6px 10px;
+    font-size: 9px;
+  }
+
   .llm-req-header {
     font-size: 9px;
-    gap: 7px;
+    gap: 6px;
+    padding: 0 2px 5px;
   }
 
   .llm-req-header .req-model {
     font-size: 10px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .llm-req-header .req-state {
+    margin-left: 0;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .llm-req-header .req-msgs {
+    display: none;
+  }
+
+  .iteration-divider {
+    gap: 6px;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    margin: 4px 0 -2px;
   }
 }
