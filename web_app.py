@@ -461,4 +461,6 @@ def chat_stream():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=False)
+    # threaded=True 让 Flask 开发服务器为每个请求分配独立线程，
+    # 从而允许多个会话同时进行模型调用和命令执行。
+    app.run(host="0.0.0.0", port=8000, debug=False, threaded=True)

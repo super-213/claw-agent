@@ -3,6 +3,7 @@ import os
 import subprocess
 import re
 import shlex
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -81,7 +82,10 @@ class CommandExecutor:
             self.cwd.mkdir(parents=True, exist_ok=True)
         if self.generated_files_dir:
             self.generated_files_dir.mkdir(parents=True, exist_ok=True)
-    
+        # 多会话并发时，命令自身可以并行执行，但快照-执行-校验必须原子，
+        # 否则不同会话写入同一 files/ 目录会彼此把对方文件识别成“本次产物”。
+        self._snapshot_lock = threading.Lock()
+
     def execute(self, command: str) -> ExecutionResult:
         """执行命令"""
         # 清理命令
@@ -92,21 +96,25 @@ class CommandExecutor:
             return ExecutionResult(output="", return_code=-1, error=error)
         
         try:
-            before_files = self._file_snapshot()
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                cwd=str(self.cwd) if self.cwd else None,
-                env=self._command_env(),
-            )
-            output = result.stdout if result.stdout else result.stderr
-            execution_result = ExecutionResult(output=output, return_code=result.returncode)
-            if execution_result.success:
-                if error := self._validate_generated_outputs(command, before_files):
-                    return ExecutionResult(output=output, return_code=-1, error=error)
+            # 序列化 `snapshot → run → diff`，避免并发会话互相污染产物判定。
+            # 命令的真实 IO / 网络等待仍然发生在锁内，对多会话吞吐是折中；
+            # 若后续需要更高并发，可以改成按 generated_files_dir 分桶的多把锁。
+            with self._snapshot_lock:
+                before_files = self._file_snapshot()
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                    cwd=str(self.cwd) if self.cwd else None,
+                    env=self._command_env(),
+                )
+                output = result.stdout if result.stdout else result.stderr
+                execution_result = ExecutionResult(output=output, return_code=result.returncode)
+                if execution_result.success:
+                    if error := self._validate_generated_outputs(command, before_files):
+                        return ExecutionResult(output=output, return_code=-1, error=error)
             return execution_result
         
         except subprocess.TimeoutExpired:

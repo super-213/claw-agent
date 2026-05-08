@@ -12,19 +12,41 @@ import {
   startStreamingAssistantMessage,
   updateToolCall,
 } from './messages.js';
-import { state } from './state.js';
+import {
+  beginStream,
+  endStream,
+  getStream,
+  hasAnyStream,
+  isSessionBusy,
+  state,
+} from './state.js';
 import { escapeHtml, formatTime, formatTokens } from './utils.js';
+
+// 刷新顶部状态栏：按当前选中的会话单独判定 busy。
+const refreshStatusForCurrentSession = () => {
+  if (!state.currentSessionId) {
+    setStatus(hasAnyStream() ? '后台生成中…' : '就绪', false);
+    return;
+  }
+  if (isSessionBusy(state.currentSessionId)) {
+    setStatus('处理中…', true);
+  } else {
+    setStatus(hasAnyStream() ? '后台生成中…' : '就绪', false);
+  }
+};
 
 export const renderSessions = () => {
   els.sessionList.innerHTML = '';
   state.sessions.forEach((session) => {
+    const busy = isSessionBusy(session.id);
     const item = document.createElement('div');
     item.className = 'session-item'
       + (session.id === state.currentSessionId ? ' active' : '')
-      + (session.id === state.openMenuSessionId ? ' menu-open' : '');
+      + (session.id === state.openMenuSessionId ? ' menu-open' : '')
+      + (busy ? ' busy' : '');
     item.innerHTML = `
       <div class="session-content">
-        <div class="session-title">${escapeHtml(session.title || '新对话')}</div>
+        <div class="session-title">${escapeHtml(session.title || '新对话')}${busy ? ' <span class="session-busy-dot" title="生成中"></span>' : ''}</div>
         <div class="session-time">${escapeHtml(formatTime(session.updated_at || session.created_at))} · ${escapeHtml(formatTokens(session.token_usage?.total_tokens))} tok</div>
       </div>
       <button class="session-more" type="button" title="更多操作" aria-label="更多操作">⋯</button>
@@ -85,12 +107,15 @@ export const openSession = async (sessionId) => {
     renderMessages(data.messages || []);
 
     // 如果切回来的正好是仍在流式中的会话，补一个占位提示
-    if (state.activeStreamSessionId === sessionId) {
-      if (state.pendingUserMessage) {
-        appendOptimisticUserMessage(state.pendingUserMessage);
+    const stream = getStream(sessionId);
+    if (stream) {
+      if (stream.pendingUserMessage) {
+        appendOptimisticUserMessage(stream.pendingUserMessage);
       }
       appendProcessStep('会话仍在后台生成中…', '完成后将自动刷新');
       setStatus('处理中…', true);
+    } else {
+      refreshStatusForCurrentSession();
     }
   } catch (error) {
     console.warn('openSession:', error);
@@ -112,7 +137,7 @@ export const createSession = async () => {
 
 export const deleteSession = async (sessionId) => {
   // 只挡删除正在流式的会话；其它会话可以随时删
-  if (state.activeStreamSessionId === sessionId) {
+  if (isSessionBusy(sessionId)) {
     alert('该会话正在生成中，请等生成完成后再删除');
     return;
   }
@@ -148,7 +173,7 @@ export const deleteSession = async (sessionId) => {
 
 export const copySession = async (sessionId) => {
   // 复制正在生成的会话可能拿到不完整的快照，提示一下
-  if (state.activeStreamSessionId === sessionId) {
+  if (isSessionBusy(sessionId)) {
     if (!confirm('该会话仍在生成中，复制将只包含已保存的部分内容。继续？')) return;
   }
 
@@ -165,29 +190,39 @@ export const copySession = async (sessionId) => {
 };
 
 export const sendMessage = async () => {
-  if (state.busy) return;
+  // 允许其它会话并发发送；只禁止同一会话自己排队
+  const streamSessionId = state.currentSessionId;
+  if (streamSessionId && isSessionBusy(streamSessionId)) return;
 
   const text = els.messageInput.value.trim();
   if (!text) return;
-  if (!state.currentSessionId) await createSession();
+  if (!streamSessionId) {
+    await createSession();
+  }
 
-  // 绑定本次请求的目标会话；切换会话后通过该 id 判断 DOM 是否应被更新
-  const streamSessionId = state.currentSessionId;
-  state.activeStreamSessionId = streamSessionId;
-  state.pendingUserMessage = text;
+  // 会话可能被 createSession 切到新 id，这里重新取一次
+  const targetSessionId = state.currentSessionId;
+  if (!targetSessionId) return;
+  if (isSessionBusy(targetSessionId)) return;
+
+  beginStream(targetSessionId, text);
+  renderSessions();
   // 是否在流式期间离开过流式会话（离开过就需要最终刷新一次以替换占位）
   let switchedAwayDuringStream = false;
 
-  state.busy = true;
-  setStatus('处理中…', true);
+  if (state.currentSessionId === targetSessionId) {
+    setStatus('处理中…', true);
+  }
   els.messageInput.value = '';
   fitMessageInput();
-  appendOptimisticUserMessage(text);
+  if (state.currentSessionId === targetSessionId) {
+    appendOptimisticUserMessage(text);
+  }
   const streamMessages = new Map();
   const toolCalls = new Map();
   let lastIteration = 0;
 
-  const isViewingStreamSession = () => state.currentSessionId === streamSessionId;
+  const isViewingStreamSession = () => state.currentSessionId === targetSessionId;
 
   const clipDetail = (value) => {
     const textValue = String(value || '').trim();
@@ -299,16 +334,16 @@ export const sendMessage = async () => {
 
   try {
     const finalEvent = await chatApi.stream(
-      { sessionId: streamSessionId, message: text },
+      { sessionId: targetSessionId, message: text },
       handleStreamEvent,
     );
     await loadSessions();
 
-    if (state.currentSessionId === streamSessionId) {
+    if (state.currentSessionId === targetSessionId) {
       if (Array.isArray(finalEvent?.messages)) {
         state.messages = [...state.messages, ...finalEvent.messages];
       }
-      const current = state.sessions.find((item) => item.id === streamSessionId);
+      const current = state.sessions.find((item) => item.id === targetSessionId);
       if (current) {
         els.topbarTitle.textContent = current.title || '新对话';
         els.tokenSummary.textContent = `Tokens ${formatTokens(current.token_usage?.total_tokens)} · Tool ${formatTokens(current.token_usage?.tool_tokens)}`;
@@ -316,18 +351,17 @@ export const sendMessage = async () => {
     }
   } catch (error) {
     console.warn('sendMessage:', error);
-    if (state.currentSessionId === streamSessionId) {
+    if (state.currentSessionId === targetSessionId) {
       appendProcessStep('请求失败', error.data?.message || error.message || '网络错误');
     }
   } finally {
-    state.busy = false;
-    state.activeStreamSessionId = null;
-    state.pendingUserMessage = null;
-    setStatus('就绪', false);
+    endStream(targetSessionId);
+    renderSessions();
+    refreshStatusForCurrentSession();
     // 流式期间离开过流式会话，现在又回到这个会话：视图是不完整占位，用最终数据重绘
-    if (switchedAwayDuringStream && state.currentSessionId === streamSessionId) {
+    if (switchedAwayDuringStream && state.currentSessionId === targetSessionId) {
       try {
-        const data = await sessionsApi.get(streamSessionId);
+        const data = await sessionsApi.get(targetSessionId);
         renderMessages(data.messages || []);
       } catch (refreshError) {
         console.warn('refresh after stream:', refreshError);
