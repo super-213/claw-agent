@@ -3,13 +3,21 @@ import { markdownToHtml } from './markdown.js';
 import { state } from './state.js';
 import {
   escapeHtml,
+  extractCommandFromContent,
+  extractToolOutput,
   formatUsage,
   hasMarker,
   imageSourceFrom,
   isFormatNudge,
   isImageAttachment,
+  isToolCallMessage,
+  isToolResultMessage,
   safeImageSrc,
 } from './utils.js';
+
+// 系统注入的格式纠正提醒 —— 不计入真实用户轮次，也不重置迭代号。
+const isFormatNudgeMessage = (msg) =>
+  msg?.role === 'user' && isFormatNudge(msg.content || '');
 
 const getMessageView = (msg) => {
   const content = msg.content || '';
@@ -87,6 +95,26 @@ const createProtocolFlow = (flow) => {
   return el;
 };
 
+const createLlmHeader = ({
+  iteration = 1,
+  model = '',
+  message_count: messageCount = 0,
+  stateText = 'done',
+  done = true,
+  elapsed = '',
+} = {}) => {
+  const header = document.createElement('div');
+  header.className = 'llm-req-header' + (done ? ' done' : '');
+  header.innerHTML = `
+    <span class="req-tag">LLM</span>
+    <span class="req-iter">#${escapeHtml(String(iteration))}</span>
+    <span class="req-model">${escapeHtml(model || state.config?.model || 'model')}</span>
+    <span class="req-msgs">${escapeHtml(String(messageCount || 0))} msgs</span>
+    <span class="req-state"><span class="dot"></span><span class="req-state-text">${escapeHtml(stateText)}</span><span class="req-elapsed">${escapeHtml(elapsed ? ` · ${elapsed}` : '')}</span></span>
+  `;
+  return header;
+};
+
 const imageAltFrom = (item) => {
   if (!item || typeof item === 'string') return 'message image';
   return item.alt || item.title || item.name || 'message image';
@@ -141,6 +169,88 @@ const renderMessageText = (textEl, text) => {
   textEl.innerHTML = markdownToHtml(text);
 };
 
+const formatBytes = (bytes) => {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value}B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)}KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)}MB`;
+};
+
+const createToolCallCard = ({
+  iteration = 1,
+  command = '',
+  label = 'shell',
+  running = false,
+} = {}) => {
+  const row = document.createElement('div');
+  row.className = 'message-row tool-call-row';
+
+  const card = document.createElement('div');
+  card.className = 'tool-call-card' + (running ? ' running' : '');
+
+  const head = document.createElement('div');
+  head.className = 'tool-call-head';
+  head.innerHTML = `
+    <span class="tool-badge">${escapeHtml(String(label).toUpperCase())}</span>
+    <span class="tool-iter">#${escapeHtml(String(iteration))}</span>
+    <span class="tool-status"><span class="dot"></span><span class="tool-status-text">${running ? 'running' : 'done'}</span></span>
+  `;
+
+  const commandEl = document.createElement('div');
+  commandEl.className = 'tool-call-command';
+  commandEl.textContent = command || '';
+
+  const outputWrap = document.createElement('div');
+  outputWrap.className = 'tool-call-output-wrap';
+  outputWrap.style.display = 'none';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'tool-call-output-toggle';
+  toggle.innerHTML = `
+    <span class="toggle-label">output</span>
+    <span class="caret">▸</span>
+  `;
+  toggle.addEventListener('click', () => {
+    outputWrap.classList.toggle('open');
+  });
+
+  const output = document.createElement('pre');
+  output.className = 'tool-call-output';
+
+  outputWrap.appendChild(toggle);
+  outputWrap.appendChild(output);
+
+  const meta = document.createElement('div');
+  meta.className = 'tool-call-meta';
+  meta.style.display = 'none';
+
+  card.appendChild(head);
+  card.appendChild(commandEl);
+  card.appendChild(outputWrap);
+  card.appendChild(meta);
+  row.appendChild(card);
+
+  return {
+    row,
+    card,
+    head,
+    commandEl,
+    outputWrap,
+    output,
+    meta,
+    startedAt: Date.now(),
+    iteration,
+  };
+};
+
+const createIterationDivider = (iteration) => {
+  const divider = document.createElement('div');
+  divider.className = 'iteration-divider';
+  divider.innerHTML = `<span>iteration #${escapeHtml(String(iteration))}</span>`;
+  return divider;
+};
+
 export const setStatus = (text, busy = false) => {
   els.statusText.textContent = text;
   els.statusBadge.classList.toggle('busy', busy);
@@ -161,8 +271,124 @@ export const renderMessages = (messages) => {
   els.emptyState.style.display = 'none';
   els.messageList.appendChild(els.emptyState);
 
+  let iteration = 0;
+  let pendingToolCall = null;
+
   messages.forEach((msg) => {
     if (msg.role === 'system') return;
+
+    if (isToolResultMessage(msg) && pendingToolCall) {
+      const result = extractToolOutput(msg.content || '');
+      updateToolCall(pendingToolCall, result);
+      pendingToolCall = null;
+      return;
+    }
+
+    if (isToolCallMessage(msg)) {
+      iteration += 1;
+      if (iteration > 1) {
+        els.messageList.appendChild(createIterationDivider(iteration));
+      }
+
+      const displayMessages = splitMixedProtocolMessage(msg);
+      const commandMessage = displayMessages[0];
+      const row = document.createElement('div');
+      row.className = 'message-row assistant-row';
+      row.appendChild(createLlmHeader({
+        iteration,
+        message_count: Math.max(0, messages.indexOf(msg)),
+      }));
+
+      const bubble = document.createElement('div');
+      bubble.className = 'message protocol';
+      appendMessageContent(bubble, commandMessage);
+      row.appendChild(createProtocolFlow({
+        from: 'Agent',
+        packet: 'COMMAND',
+        to: 'Shell',
+        reverse: false,
+      }));
+      row.appendChild(bubble);
+      els.messageList.appendChild(row);
+
+      const usage = document.createElement('div');
+      usage.className = 'msg-usage';
+      usage.textContent = formatUsage(commandMessage.usage);
+      if (usage.textContent) row.appendChild(usage);
+
+      pendingToolCall = createToolCallCard({
+        iteration,
+        command: extractCommandFromContent(commandMessage.content || ''),
+        label: 'shell',
+      });
+      els.messageList.appendChild(pendingToolCall.row);
+
+      displayMessages.slice(1).forEach((displayMsg) => {
+        const nextView = getMessageView(displayMsg);
+        const nextRow = document.createElement('div');
+        nextRow.className = `message-row ${nextView.role}-row`;
+
+        const label = document.createElement('div');
+        label.className = 'msg-label';
+        label.textContent = nextView.label;
+
+        const nextBubble = document.createElement('div');
+        nextBubble.className = `message ${nextView.role}`;
+        appendMessageContent(nextBubble, displayMsg);
+
+        nextRow.appendChild(label);
+        if (nextView.flow) nextRow.appendChild(createProtocolFlow(nextView.flow));
+        nextRow.appendChild(nextBubble);
+        els.messageList.appendChild(nextRow);
+      });
+      return;
+    }
+
+    if (msg.role === 'assistant' && !isFormatNudgeMessage(msg)) {
+      iteration += 1;
+      if (iteration > 1) {
+        els.messageList.appendChild(createIterationDivider(iteration));
+      }
+
+      splitMixedProtocolMessage(msg).forEach((displayMsg, index) => {
+        const view = getMessageView(displayMsg);
+
+        const row = document.createElement('div');
+        row.className = `message-row ${view.role}-row`;
+        if (index === 0) {
+          row.appendChild(createLlmHeader({
+            iteration,
+            message_count: Math.max(0, messages.indexOf(msg)),
+          }));
+        } else {
+          const label = document.createElement('div');
+          label.className = 'msg-label';
+          label.textContent = view.label;
+          row.appendChild(label);
+        }
+
+        const bubble = document.createElement('div');
+        bubble.className = `message ${view.role}`;
+        appendMessageContent(bubble, displayMsg);
+
+        if (view.flow) row.appendChild(createProtocolFlow(view.flow));
+        row.appendChild(bubble);
+
+        const usage = document.createElement('div');
+        usage.className = 'msg-usage';
+        usage.textContent = formatUsage(displayMsg.usage);
+        if (usage.textContent) row.appendChild(usage);
+        els.messageList.appendChild(row);
+      });
+      pendingToolCall = null;
+      return;
+    }
+
+    if (isFormatNudgeMessage(msg)) {
+      return;
+    }
+
+    pendingToolCall = null;
     splitMixedProtocolMessage(msg).forEach((displayMsg) => {
       const view = getMessageView(displayMsg);
 
@@ -246,15 +472,13 @@ export const startStreamingAssistantMessage = ({
   const row = document.createElement('div');
   row.className = 'message-row assistant-row streaming-row';
 
-  const header = document.createElement('div');
-  header.className = 'llm-req-header';
-  header.innerHTML = `
-    <span class="req-tag">LLM</span>
-    <span class="req-iter">#${escapeHtml(String(iteration))}</span>
-    <span class="req-model">${escapeHtml(model || 'model')}</span>
-    <span class="req-msgs">${escapeHtml(String(messageCount))} msgs</span>
-    <span class="req-state"><span class="dot"></span><span class="req-state-text">streaming</span><span class="req-elapsed"></span></span>
-  `;
+  const header = createLlmHeader({
+    iteration,
+    model,
+    message_count: messageCount,
+    stateText: 'streaming',
+    done: false,
+  });
 
   const bubble = document.createElement('div');
   bubble.className = 'message assistant streaming';
@@ -355,68 +579,17 @@ export const appendToolCall = ({
 } = {}) => {
   els.emptyState.style.display = 'none';
 
-  const row = document.createElement('div');
-  row.className = 'message-row tool-call-row';
-
-  const card = document.createElement('div');
-  card.className = 'tool-call-card running';
-
-  const head = document.createElement('div');
-  head.className = 'tool-call-head';
-  head.innerHTML = `
-    <span class="tool-badge">${escapeHtml(String(label).toUpperCase())}</span>
-    <span class="tool-iter">#${escapeHtml(String(iteration))}</span>
-    <span class="tool-status"><span class="dot"></span><span class="tool-status-text">running</span></span>
-  `;
-
-  const commandEl = document.createElement('div');
-  commandEl.className = 'tool-call-command';
-  commandEl.textContent = command || '';
-
-  const outputWrap = document.createElement('div');
-  outputWrap.className = 'tool-call-output-wrap';
-  outputWrap.style.display = 'none';
-
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.className = 'tool-call-output-toggle';
-  toggle.innerHTML = `
-    <span class="toggle-label">output</span>
-    <span class="caret">▸</span>
-  `;
-  toggle.addEventListener('click', () => {
-    outputWrap.classList.toggle('open');
+  const handle = createToolCallCard({
+    iteration,
+    command,
+    label,
+    running: true,
   });
-
-  const output = document.createElement('pre');
-  output.className = 'tool-call-output';
-
-  outputWrap.appendChild(toggle);
-  outputWrap.appendChild(output);
-
-  const meta = document.createElement('div');
-  meta.className = 'tool-call-meta';
-  meta.style.display = 'none';
-
-  card.appendChild(head);
-  card.appendChild(commandEl);
-  card.appendChild(outputWrap);
-  card.appendChild(meta);
-  row.appendChild(card);
+  const { row } = handle;
   els.messageList.appendChild(row);
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 
-  return {
-    row,
-    card,
-    head,
-    commandEl,
-    outputWrap,
-    output,
-    meta,
-    startedAt: Date.now(),
-    iteration,
-  };
+  return handle;
 };
 
 export const updateToolCall = (handle, {
@@ -474,19 +647,10 @@ export const updateToolCall = (handle, {
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
 };
 
-const formatBytes = (bytes) => {
-  const value = Number(bytes) || 0;
-  if (value < 1024) return `${value}B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)}KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)}MB`;
-};
-
 export const appendIterationDivider = (iteration) => {
   els.emptyState.style.display = 'none';
 
-  const divider = document.createElement('div');
-  divider.className = 'iteration-divider';
-  divider.innerHTML = `<span>iteration #${escapeHtml(String(iteration))}</span>`;
+  const divider = createIterationDivider(iteration);
   els.messageList.appendChild(divider);
   els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
   return divider;

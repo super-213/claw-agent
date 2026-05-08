@@ -40,6 +40,11 @@ export const hasMarker = (text, marker) => {
   return new RegExp(`^\\s*[\\[［]\\s*${escaped}\\s*[\\]］]`).test(text || '');
 };
 
+const markerRegex = (marker) => {
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`[\\[［]\\s*${escaped}\\s*[\\]］]`);
+};
+
 export const isFormatNudge = (text) => {
   if (!text) return false;
   return text.includes('请严格按照格式回复')
@@ -118,4 +123,77 @@ export const isImageAttachment = (item) => {
   const type = String(item?.type || item?.mime_type || item?.mimeType || '').toLowerCase();
   const source = imageSourceFrom(item);
   return type.startsWith('image/') || looksLikeImageSource(source);
+};
+
+/**
+ * Detect if a stored message is a tool call (assistant with [命令] marker).
+ */
+export const isToolCallMessage = (msg) => {
+  return msg?.role === 'assistant' && markerRegex('命令').test(msg.content || '');
+};
+
+/**
+ * Detect if a stored message is a tool result (user with [执行完成] marker).
+ */
+export const isToolResultMessage = (msg) => {
+  return msg?.role === 'user' && markerRegex('执行完成').test(msg.content || '');
+};
+
+/**
+ * Extract the command string from a [命令] message content.
+ * Mirrors the Python InputParser.extract_command logic (simplified).
+ */
+export const extractCommandFromContent = (content) => {
+  const text = content || '';
+  const match = markerRegex('命令').exec(text);
+  if (!match) return '';
+  let raw = text.slice(match.index + match[0].length).trim();
+  if (!raw) return '';
+
+  const lines = raw.split('\n');
+  if (lines[0].trim().startsWith('```')) {
+    const inner = [];
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim().startsWith('```')) break;
+      inner.push(lines[i]);
+    }
+    raw = inner.join('\n').trim();
+  }
+
+  const commandLines = raw.split('\n');
+  if (!commandLines.length) return '';
+
+  const firstLine = commandLines[0].trim();
+  const heredocMatch = firstLine.match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
+  if (!heredocMatch) return firstLine;
+
+  const delimiter = heredocMatch[2];
+  const collected = [commandLines[0]];
+  for (let i = 1; i < commandLines.length; i++) {
+    collected.push(commandLines[i]);
+    if (commandLines[i].trim() === delimiter) break;
+  }
+  return collected.join('\n').trim();
+};
+
+/**
+ * Extract output text from a [执行完成] message content.
+ */
+export const extractToolOutput = (content) => {
+  const text = content || '';
+  const match = markerRegex('执行完成').exec(text);
+  if (!match) return { output: text, success: null, returnCode: null };
+  const body = text.slice(match.index + match[0].length).trim();
+
+  // Try to parse "命令执行失败，退出码 X: ..." or "命令执行成功"
+  const failMatch = body.match(/^命令执行失败[，,]\s*退出码\s*(-?\d+)\s*[:：]\s*([\s\S]*)/);
+  if (failMatch) {
+    return { output: failMatch[2].trim(), success: false, returnCode: Number(failMatch[1]) };
+  }
+  const successPrefix = body.startsWith('命令执行成功');
+  if (successPrefix) {
+    const rest = body.replace(/^命令执行成功[，,：:\s]*/, '').trim();
+    return { output: rest, success: true, returnCode: 0 };
+  }
+  return { output: body, success: true, returnCode: 0 };
 };
