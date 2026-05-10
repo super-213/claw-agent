@@ -10,6 +10,11 @@
 - **依赖注入**：便于测试和维护
 - **安全增强**：命令执行黑名单、超时保护
 - **Web UI + API**：内置 Web 界面与会话 API
+- **流式输出**：基于 NDJSON 的实时流式响应，前端逐步渲染
+- **Token 用量估算**：基于 tiktoken 的 token 统计与分类
+- **LLM 调用可视化**：前端展示每轮模型调用的元信息（模型名、轮次、消息数、耗时）
+- **响应式布局**：桌面端与移动端自适应显示
+- **多会话并发安全**：会话切换时流式事件正确隔离，不会串台
 
 ## 目录结构
 
@@ -21,7 +26,8 @@ claw/
 ├── core/                # 核心业务逻辑
 │   ├── orchestrator.py  # Agent 编排器
 │   ├── conversation.py  # 对话管理
-│   └── context.py       # 执行上下文
+│   ├── context.py       # 执行上下文
+│   └── context_compressor.py # 上下文压缩
 ├── skills/              # 技能系统
 │   ├── base.py          # 技能基类
 │   ├── registry.py      # 技能注册表
@@ -34,11 +40,26 @@ claw/
 ├── services/            # 基础服务
 │   ├── llm_client.py    # LLM 客户端
 │   ├── executor.py      # 命令执行器
-│   └── conversation_store.py # JSON 对话持久化
+│   ├── conversation_store.py # JSON 对话持久化
+│   └── token_usage.py   # Token 用量估算
 ├── utils/               # 工具函数
 │   └── parser.py        # 输入解析
-├── web/                 # Web UI 静态资源
-│   └── index.html       # Web UI 页面
+├── web/                 # Web UI 静态资源（模块化）
+│   ├── index.html       # 页面入口
+│   ├── styles.css       # 样式（响应式布局）
+│   └── js/              # 前端 JS 模块
+│       ├── app.js       # 应用初始化
+│       ├── api.js       # API 请求封装
+│       ├── config.js    # 配置面板
+│       ├── dom.js       # DOM 工具
+│       ├── markdown.js  # Markdown 渲染
+│       ├── messages.js  # 消息与流式渲染
+│       ├── sessions.js  # 会话管理
+│       ├── skills.js    # 技能面板
+│       ├── state.js     # 全局状态
+│       └── utils.js     # 通用工具
+├── files/               # 生成文件目录
+├── docs/                # 项目文档
 ├── web_app.py           # Web UI 服务入口
 └── main.py              # CLI 入口
 ```
@@ -89,7 +110,26 @@ CLI 内置模型配置命令：
 python web_app.py
 ```
 
-默认访问 `http://localhost:8000`。侧边栏的“模型设置”可修改 API URL、API KEY 和模型名称。Web 端只展示脱敏 API KEY；保存时 API KEY 留空会保留原值，不会把完整密钥返回给浏览器。对话历史会保存在 `.data/conversations` 下的 JSON 文件中，可通过 `CONVERSATION_DIR` 修改路径。
+默认访问 `http://localhost:8000`。侧边栏的"模型设置"可修改 API URL、API KEY 和模型名称。Web 端只展示脱敏 API KEY；保存时 API KEY 留空会保留原值，不会把完整密钥返回给浏览器。对话历史会保存在 `.data/conversations` 下的 JSON 文件中，可通过 `CONVERSATION_DIR` 修改路径。
+
+**前端特性：**
+
+- 流式输出：消息逐字渲染，过程步骤实时展示
+- LLM 调用卡片：每轮模型请求展示元信息（模型名、轮次、消息数、耗时）
+- 过程卡片重建：刷新页面后自动从历史消息重建过程可视化
+- 响应式布局：桌面端与移动端自适应，统一显示效果
+- 多会话隔离：切换会话时流式事件不会串到其他会话视图
+- 图片与附件：支持在消息中展示图片和附件
+
+### Token 用量估算
+
+系统内置基于 tiktoken（`cl100k_base`）的 token 近似估算，可通过 `GET /api/token-usage` 查看：
+
+- 系统提示词 token 数
+- 各技能文件 token 数
+- 各会话累计 token 用量（按角色、工具调用分类统计）
+
+可通过 `TOKEN_ENCODING` 环境变量切换编码方式。
 
 ### 对话持久化
 
@@ -132,9 +172,9 @@ curl http://localhost:8000/api/sessions
 2. `POST /api/sessions` 新建会话（可选传 `title`）
 
 ```bash
-curl -X POST http://localhost:8000/api/sessions \\
-  -H 'Content-Type: application/json' \\
-  -d '{\"title\":\"我的新对话\"}'
+curl -X POST http://localhost:8000/api/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"我的新对话"}'
 ```
 
 响应示例：
@@ -160,9 +200,9 @@ curl http://localhost:8000/api/skills
 4. `POST /api/skills` 添加技能
 
 ```bash
-curl -X POST http://localhost:8000/api/skills \\
-  -H 'Content-Type: application/json' \\
-  -d '{\"name\":\"demo\",\"content\":\"# demo\\n技能说明\"}'
+curl -X POST http://localhost:8000/api/skills \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"demo","content":"# demo\n技能说明"}'
 ```
 
 5. `POST /api/skills/reload` 手动重载技能目录
@@ -193,25 +233,12 @@ curl http://localhost:8000/api/sessions/d4b4b0...
 }
 ```
 
-7. `POST /api/chat` 发送消息
+7. `POST /api/chat` 发送消息（同步）
 
 ```bash
-curl -X POST http://localhost:8000/api/chat \\
-  -H 'Content-Type: application/json' \\
-  -d '{\"session_id\":\"d4b4b0...\",\"message\":\"你好\"}'
-```
-
-也可以附带图片或附件元数据；本地生成文件会统一放在 `files/`（可通过 `GENERATED_FILES_DIR` 修改），通过 `/generated/<文件名>` 或 `/files/<文件名>` 访问：
-
-```bash
-curl -X POST http://localhost:8000/api/chat \\
-  -H 'Content-Type: application/json' \\
-  -d '{
-    "session_id":"d4b4b0...",
-    "message":"请看这张图",
-    "images":[{"url":"/generated/example.png","alt":"example"}],
-    "attachments":[{"name":"原图","url":"https://example.com/a.png","type":"image/png"}]
-  }'
+curl -X POST http://localhost:8000/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"d4b4b0...","message":"你好"}'
 ```
 
 响应示例：
@@ -224,6 +251,58 @@ curl -X POST http://localhost:8000/api/chat \\
     { "role": "assistant", "content": "[完成] 你好" }
   ]
 }
+```
+
+8. `POST /api/chat/stream` 发送消息（流式）
+
+以 NDJSON（每行一个 JSON 对象）格式返回实时事件流：
+
+```bash
+curl -X POST http://localhost:8000/api/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"d4b4b0...","message":"你好"}'
+```
+
+事件类型：
+
+| type | 说明 |
+|------|------|
+| `step` | 过程步骤（stage: request/save） |
+| `llm_call` | 模型调用开始，含 model、round、message_count |
+| `content` | 流式文本片段 |
+| `tool_call` | 工具/命令调用 |
+| `tool_result` | 工具执行结果 |
+| `done` | 响应完成，含最终 messages |
+| `error` | 错误信息 |
+
+9. `GET /api/token-usage` 获取 Token 用量估算
+
+```bash
+curl http://localhost:8000/api/token-usage
+```
+
+返回系统提示词、技能文件、各会话的 token 统计。
+
+10. `GET /api/config` / `POST /api/config` 查看/修改模型配置
+
+```bash
+curl http://localhost:8000/api/config
+curl -X POST http://localhost:8000/api/config \
+  -H 'Content-Type: application/json' \
+  -d '{"base_url":"...","model":"qwen-max","api_key":"..."}'
+```
+
+也可以在消息中附带图片或附件元数据；本地生成文件会统一放在 `files/`（可通过 `GENERATED_FILES_DIR` 修改），通过 `/generated/<文件名>` 或 `/files/<文件名>` 访问：
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id":"d4b4b0...",
+    "message":"请看这张图",
+    "images":[{"url":"/generated/example.png","alt":"example"}],
+    "attachments":[{"name":"原图","url":"https://example.com/a.png","type":"image/png"}]
+  }'
 ```
 
 ## 使用示例
@@ -254,7 +333,7 @@ AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
 
 1. 在 `skills/` 下创建技能目录
 2. 创建 `{skill_name}.md` 或 `{skill_name}.skill` 文件
-3. 系统会热重载并自动发现；也可以通过 CLI 的 `/add-skill` 或 Web 侧边栏的“添加技能”创建
+3. 系统会热重载并自动发现；也可以通过 CLI 的 `/add-skill` 或 Web 侧边栏的"添加技能"创建
 
 ### 添加新的响应处理器
 
@@ -280,12 +359,22 @@ AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
 | 命令执行 | 无保护 | 安全检查 + 超时 |
 | 可测试性 | 困难 | 依赖注入 |
 | 扩展性 | 需修改核心 | 插件式扩展 |
+| 输出方式 | 同步阻塞 | 流式 NDJSON |
+| Token 统计 | 无 | tiktoken 估算 |
+| 前端架构 | 单文件 | 模块化 JS |
 
 ## 后续优化方向
 
 - [ ] 添加日志系统
 - [ ] 单元测试覆盖
-- [ ] 异步执行支持
+- [ ] 异步执行支持（asyncio）
 - [x] Web API 接口（会话/聊天）
 - [x] 技能热重载
 - [x] 对话历史持久化（JSON 文件）
+- [x] 流式输出（NDJSON SSE）
+- [x] Token 用量估算
+- [x] 前端模块化拆分
+- [x] 响应式布局（桌面/移动端）
+- [x] 多会话并发安全
+- [x] LLM 调用过程可视化
+- [x] 图片与附件支持
