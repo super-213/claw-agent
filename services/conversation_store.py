@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Any
 
+from core.branch_engine import BranchEngine
 from .token_usage import TokenUsageEstimator
 
 
@@ -79,13 +80,21 @@ class ConversationStore:
     def create_session(self, system_prompt: str, title: str | None = None) -> Dict[str, Any]:
         session_id = uuid.uuid4().hex
         now = self._now_iso()
+        system_node_id = uuid.uuid4().hex
         session = {
             "id": session_id,
             "title": title or "新对话",
             "created_at": now,
             "updated_at": now,
+            "active_node_id": system_node_id,
             "messages": [
-                {"role": "system", "content": system_prompt, "ts": now},
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                    "ts": now,
+                    "node_id": system_node_id,
+                    "parent_id": None,
+                },
             ],
             "summary": "",
             "summarized_until": 1,
@@ -100,6 +109,19 @@ class ConversationStore:
         if not path.exists():
             raise KeyError(f"Session not found: {session_id}")
         data = json.loads(path.read_text(encoding="utf-8"))
+
+        # 检测旧格式：如果消息列表中存在没有 node_id 的消息，自动迁移
+        messages = data.get("messages", [])
+        if messages and any("node_id" not in msg for msg in messages):
+            engine = BranchEngine([])
+            migrated_messages = engine.migrate_linear(messages)
+            data["messages"] = migrated_messages
+            # 设置 active_node_id 为最后一条消息的 node_id
+            data["active_node_id"] = migrated_messages[-1]["node_id"]
+            # 持久化迁移结果，避免每次 load 生成不同的 node_id
+            data["updated_at"] = self._now_iso()
+            self._write_session(session_id, data)
+
         return self._with_usage(data)
 
     def delete_session(self, session_id: str) -> None:
@@ -113,23 +135,37 @@ class ConversationStore:
         self._drop_session_lock(session_id)
 
     def clone_session(self, session_id: str) -> Dict[str, Any]:
+        """复制会话，保留完整的分支树结构。
+
+        克隆会话时保留所有 node_id/parent_id 关系、active_node_id
+        以及 summarized_nodes 等分支相关元数据，确保新会话拥有与
+        源会话完全相同的树结构。
+        """
         # 只锁源会话读取；目标会话是新 id，独立锁。
         with self._session_lock(session_id):
             source = self.load_session(session_id)
         new_id = uuid.uuid4().hex
         now = self._now_iso()
+
+        # 深拷贝消息列表，保留每条消息的 node_id 和 parent_id（分支树结构）
+        cloned_messages = [
+            {**message, "ts": message.get("ts", now)}
+            for message in source.get("messages", [])
+        ]
+
         cloned = {
-            **source,
             "id": new_id,
             "title": f"{source.get('title') or '新对话'} 副本",
             "created_at": now,
             "updated_at": now,
-            "messages": [
-                {**message, "ts": message.get("ts", now)}
-                for message in source.get("messages", [])
-            ],
+            # 保留分支树的活跃节点指针
+            "active_node_id": source.get("active_node_id"),
+            # 保留完整的消息列表（含 node_id/parent_id 树结构）
+            "messages": cloned_messages,
             "summary": source.get("summary", ""),
             "summarized_until": source.get("summarized_until", 1),
+            # 保留已压缩节点列表（分支模式下的压缩记录）
+            "summarized_nodes": list(source.get("summarized_nodes", [])),
         }
         self._annotate_session_usage(cloned)
         with self._session_lock(new_id):
@@ -142,6 +178,8 @@ class ConversationStore:
         messages: List[Dict[str, Any]],
         summary: str | None = None,
         summarized_until: int | None = None,
+        active_node_id: str | None = None,
+        summarized_nodes: List[str] | None = None,
     ) -> Dict[str, Any]:
         with self._session_lock(session_id):
             data = self.load_session(session_id)
@@ -149,22 +187,73 @@ class ConversationStore:
             now = self._now_iso()
             new_messages: List[Dict[str, Any]] = []
 
+            # 构建已存储消息的 node_id 索引，用于按 node_id 匹配
+            stored_by_node_id: Dict[str, Dict[str, Any]] = {}
+            for msg in stored:
+                nid = msg.get("node_id")
+                if nid:
+                    stored_by_node_id[nid] = msg
+
             for idx, msg in enumerate(messages):
                 message_payload = self._message_payload(msg)
-                if (
+                node_id = msg.get("node_id")
+                parent_id = msg.get("parent_id")
+
+                # 优先按 node_id 匹配已存储的消息
+                matched_stored = None
+                if node_id and node_id in stored_by_node_id:
+                    stored_msg = stored_by_node_id[node_id]
+                    if self._message_payload(stored_msg) == message_payload:
+                        matched_stored = stored_msg
+                elif (
                     idx < len(stored)
                     and self._message_payload(stored[idx]) == message_payload
                 ):
+                    # 回退到按索引匹配（向后兼容无 node_id 的情况）
+                    matched_stored = stored[idx]
+
+                if matched_stored is not None:
                     stored_message = {
                         key: value
-                        for key, value in stored[idx].items()
+                        for key, value in matched_stored.items()
                         if key != "usage"
                     }
+                    # 确保 node_id 和 parent_id 被保留
+                    if node_id:
+                        stored_message["node_id"] = node_id
+                    if parent_id is not None or "parent_id" in msg:
+                        stored_message["parent_id"] = parent_id
+                    # 保留 context_nodes 字段（优先使用新传入的值）
+                    if "context_nodes" in msg:
+                        stored_message["context_nodes"] = msg["context_nodes"]
                     new_messages.append(stored_message)
                 else:
-                    new_messages.append({**message_payload, "ts": now})
+                    new_msg: Dict[str, Any] = {**message_payload, "ts": now}
+                    # 保留 node_id 和 parent_id 字段
+                    if node_id:
+                        new_msg["node_id"] = node_id
+                    if parent_id is not None or "parent_id" in msg:
+                        new_msg["parent_id"] = msg.get("parent_id")
+                    # 保留 context_nodes 字段
+                    if "context_nodes" in msg:
+                        new_msg["context_nodes"] = msg["context_nodes"]
+                    new_messages.append(new_msg)
 
             data["messages"] = new_messages
+
+            # 保存 active_node_id
+            if active_node_id is not None:
+                data["active_node_id"] = active_node_id
+            elif "active_node_id" not in data and new_messages:
+                # 如果没有显式传入且 data 中也没有，设置为最后一条消息的 node_id
+                last_node_id = new_messages[-1].get("node_id")
+                if last_node_id:
+                    data["active_node_id"] = last_node_id
+
+            # 保存 summarized_nodes
+            if summarized_nodes is not None:
+                data["summarized_nodes"] = summarized_nodes
+
             if summary is not None:
                 data["summary"] = summary
             if summarized_until is not None:

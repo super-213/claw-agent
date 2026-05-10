@@ -5,6 +5,7 @@ import {
   submitConfig,
 } from './config.js';
 import { els, fitMessageInput, isMobileLayout, setMobileSidebar } from './dom.js';
+import { initMessageContextMenu } from './messages.js';
 import {
   createSession,
   loadSessions,
@@ -19,6 +20,7 @@ import {
   submitSkill,
 } from './skills.js';
 import { state } from './state.js';
+import { initTreePanel } from './tree-panel.js';
 
 els.messageInput.addEventListener('input', fitMessageInput);
 els.messageInput.addEventListener('keydown', (event) => {
@@ -76,6 +78,8 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('load', async () => {
+  initTreePanel();
+  initMessageContextMenu();
   await loadConfig();
   await loadSkills();
   await loadSessions();

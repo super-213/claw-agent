@@ -150,15 +150,36 @@ class AgentOrchestrator:
     def _process_ai_loop(self):
         """处理 AI 回复循环"""
         while True:
-            # 获取 AI 回复
-            if self.context_compressor:
+            # 构建上下文消息
+            context_node_ids: List[str] = []
+            if (self.conversation.branch_engine is not None
+                    and self.conversation.active_node_id is not None):
+                # 从分支树构建上下文路径
+                branch_messages = self.conversation.branch_engine.build_context(
+                    self.conversation.active_node_id
+                )
+                context_node_ids = [
+                    msg["node_id"] for msg in branch_messages if "node_id" in msg
+                ]
+                # 如果有上下文压缩器，仍然走压缩流程（内部会调用 get_messages 获取分支路径）
+                if self.context_compressor:
+                    messages = self.context_compressor.build_messages(self.conversation)
+                else:
+                    messages = branch_messages
+            elif self.context_compressor:
                 messages = self.context_compressor.build_messages(self.conversation)
             else:
                 messages = self.conversation.get_messages()
+
+            # 获取 AI 回复
             reply = self.llm_client.chat(messages)
             
             print(f"\n[AI 回复]:\n{reply}\n")
             self.conversation.add_assistant_message(reply)
+
+            # 记录 context_nodes 到 assistant 消息
+            if context_node_ids and self.conversation._messages:
+                self.conversation._messages[-1]["context_nodes"] = context_node_ids
             
             # 使用责任链处理回复
             result = self.handler_chain.handle(reply, self.context)
@@ -188,7 +209,22 @@ class AgentOrchestrator:
                 "message": "构建模型上下文",
                 "iteration": iteration,
             }
-            if self.context_compressor:
+            context_node_ids: List[str] = []
+            if (self.conversation.branch_engine is not None
+                    and self.conversation.active_node_id is not None):
+                # 从分支树构建上下文路径
+                branch_messages = self.conversation.branch_engine.build_context(
+                    self.conversation.active_node_id
+                )
+                context_node_ids = [
+                    msg["node_id"] for msg in branch_messages if "node_id" in msg
+                ]
+                # 如果有上下文压缩器，仍然走压缩流程（内部会调用 get_messages 获取分支路径）
+                if self.context_compressor:
+                    messages = self.context_compressor.build_messages(self.conversation)
+                else:
+                    messages = branch_messages
+            elif self.context_compressor:
                 messages = self.context_compressor.build_messages(self.conversation)
             else:
                 messages = self.conversation.get_messages()
@@ -222,6 +258,10 @@ class AgentOrchestrator:
 
             print(f"\n[AI 回复]:\n{reply}\n")
             self.conversation.add_assistant_message(reply)
+
+            # 记录 context_nodes 到 assistant 消息
+            if context_node_ids and self.conversation._messages:
+                self.conversation._messages[-1]["context_nodes"] = context_node_ids
 
             yield {
                 "type": "step",

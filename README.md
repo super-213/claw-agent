@@ -15,6 +15,7 @@
 - **LLM 调用可视化**：前端展示每轮模型调用的元信息（模型名、轮次、消息数、耗时）
 - **响应式布局**：桌面端与移动端自适应显示
 - **多会话并发安全**：会话切换时流式事件正确隔离，不会串台
+- **会话分支**：树状对话结构，支持在任意消息位置创建分支、切换路径、上下文高亮
 
 ## 目录结构
 
@@ -26,6 +27,7 @@ claw/
 ├── core/                # 核心业务逻辑
 │   ├── orchestrator.py  # Agent 编排器
 │   ├── conversation.py  # 对话管理
+│   ├── branch_engine.py # 分支管理引擎
 │   ├── context.py       # 执行上下文
 │   └── context_compressor.py # 上下文压缩
 ├── skills/              # 技能系统
@@ -50,7 +52,9 @@ claw/
 │   └── js/              # 前端 JS 模块
 │       ├── app.js       # 应用初始化
 │       ├── api.js       # API 请求封装
+│       ├── branch-tree.js # 树状图渲染
 │       ├── config.js    # 配置面板
+│       ├── context-highlight.js # 上下文高亮
 │       ├── dom.js       # DOM 工具
 │       ├── markdown.js  # Markdown 渲染
 │       ├── messages.js  # 消息与流式渲染
@@ -305,6 +309,147 @@ curl -X POST http://localhost:8000/api/chat \
   }'
 ```
 
+## 会话分支
+
+会话分支功能允许用户在对话的任意消息位置创建分支，形成树状对话结构。这是对"复制会话"的升级——从全量复制进化为精确的节点级分支。
+
+**核心能力：**
+
+- 在任意消息位置创建分支，探索不同对话方向
+- 树状图可视化展示完整分支结构
+- 上下文高亮：标记大模型实际使用的历史消息路径
+- 分支切换保留所有分支数据，不丢失历史内容
+- 向后兼容：历史线性会话自动迁移为树结构
+
+**数据模型：**
+
+每条消息作为树节点，包含 `node_id`（唯一标识）和 `parent_id`（父节点标识）。会话维护 `active_node_id` 指向当前活跃叶节点。所有分支的消息以扁平列表存储在同一个 JSON 文件中。
+
+**前端交互：**
+
+- 消息右键菜单可选择"从此处创建分支"
+- 右侧面板（桌面端）或底部抽屉（移动端）展示树状图
+- 点击树状图节点切换到对应分支
+- 活跃路径和上下文路径用不同颜色区分
+
+### 分支 API
+
+11. `POST /api/sessions/<id>/branch` 在指定消息处创建分支
+
+```bash
+curl -X POST http://localhost:8000/api/sessions/d4b4b0.../branch \
+  -H 'Content-Type: application/json' \
+  -d '{"branch_point_node_id":"node-uuid"}'
+```
+
+响应示例：
+
+```json
+{
+  "ok": true,
+  "branch_node_id": "new-leaf-uuid",
+  "ancestor_path": ["root", "n1", "n2"]
+}
+```
+
+12. `POST /api/sessions/<id>/switch` 切换到指定节点的路径
+
+```bash
+curl -X POST http://localhost:8000/api/sessions/d4b4b0.../switch \
+  -H 'Content-Type: application/json' \
+  -d '{"target_node_id":"node-uuid"}'
+```
+
+响应示例：
+
+```json
+{
+  "ok": true,
+  "active_node_id": "node-uuid",
+  "messages": [
+    {"node_id": "root", "role": "system", "content": "..."},
+    {"node_id": "n1", "role": "user", "content": "..."},
+    {"node_id": "n2", "role": "assistant", "content": "..."}
+  ]
+}
+```
+
+13. `GET /api/sessions/<id>/tree` 获取会话的树结构摘要
+
+```bash
+curl http://localhost:8000/api/sessions/d4b4b0.../tree
+```
+
+响应示例：
+
+```json
+{
+  "nodes": [
+    {
+      "node_id": "root",
+      "parent_id": null,
+      "role": "system",
+      "summary": "你是一个智能助手...",
+      "is_active": true,
+      "child_count": 1
+    },
+    {
+      "node_id": "n1",
+      "parent_id": "root",
+      "role": "user",
+      "summary": "你好，请帮我写一段代码...",
+      "is_active": true,
+      "child_count": 2
+    }
+  ],
+  "active_node_id": "n3"
+}
+```
+
+14. `DELETE /api/sessions/<id>/branch/<node_id>` 删除指定分支
+
+```bash
+curl -X DELETE http://localhost:8000/api/sessions/d4b4b0.../branch/node-uuid
+```
+
+响应示例：
+
+```json
+{
+  "ok": true,
+  "removed_count": 5
+}
+```
+
+**注意事项：**
+
+- 不能删除当前活跃分支，需先切换到其他分支
+- 不能删除主干路径（根到第一个分支点的路径）
+- 删除操作会移除目标节点及其所有子节点
+
+### 流式响应中的分支信息
+
+`POST /api/chat/stream` 的 `done` 事件中包含 `context_nodes` 字段，记录本次请求实际使用的上下文消息节点列表：
+
+```json
+{"type": "done", "messages": [...], "context_nodes": ["root", "n1", "n2", "n3"]}
+```
+
+### 会话详情中的分支信息
+
+`GET /api/sessions/<id>` 响应中包含分支相关字段：
+
+```json
+{
+  "id": "d4b4b0...",
+  "active_node_id": "n3",
+  "messages": [
+    {"node_id": "root", "parent_id": null, "role": "system", "content": "..."},
+    {"node_id": "n1", "parent_id": "root", "role": "user", "content": "..."}
+  ]
+}
+```
+
 ## 使用示例
 
 ### 执行系统命令
@@ -378,3 +523,4 @@ AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
 - [x] 多会话并发安全
 - [x] LLM 调用过程可视化
 - [x] 图片与附件支持
+- [x] 会话分支（树状对话结构）

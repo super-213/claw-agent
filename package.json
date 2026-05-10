@@ -1,0 +1,27 @@
+{
+  "name": "agent",
+  "version": "1.0.0",
+  "description": "基于分层架构和插件化设计的智能 Agent 系统。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/super-213/claw-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/super-213/claw-agent/issues"
+  },
+  "homepage": "https://github.com/super-213/claw-agent#readme",
+  "devDependencies": {
+    "jsdom": "^27.0.1"
+  }
+}

@@ -69,29 +69,65 @@
           <div class="dot"></div>
           <span id="statusText">就绪</span>
         </div>
-      </div>
-    </div>
-
-    <div class="chat-window" id="chatWindow">
-      <div class="messages-wrap" id="messageList">
-        <div class="empty-state" id="emptyState">
-          <div class="empty-icon">◈</div>
-          <div class="empty-text">// 开始输入以启动对话</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="composer-area">
-      <div class="composer">
-        <textarea id="messageInput" placeholder="输入指令或问题…" rows="1"></textarea>
-        <button class="send-btn" id="sendBtn" title="发送 (Enter)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        <button class="tree-toggle-btn" id="treePanelToggle" type="button" aria-label="切换分支树面板" aria-expanded="false" aria-controls="treePanel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="4" r="2"></circle>
+            <circle cx="6" cy="12" r="2"></circle>
+            <circle cx="18" cy="12" r="2"></circle>
+            <circle cx="6" cy="20" r="2"></circle>
+            <circle cx="18" cy="20" r="2"></circle>
+            <line x1="12" y1="6" x2="6" y2="10"></line>
+            <line x1="12" y1="6" x2="18" y2="10"></line>
+            <line x1="6" y1="14" x2="6" y2="18"></line>
+            <line x1="18" y1="14" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
-      <div class="composer-hint">↵ Enter 发送 · Shift+Enter 换行</div>
+    </div>
+
+    <div class="main-content">
+      <div class="chat-area">
+        <div class="chat-window" id="chatWindow">
+          <div class="messages-wrap" id="messageList">
+            <div class="empty-state" id="emptyState">
+              <div class="empty-icon">◈</div>
+              <div class="empty-text">// 开始输入以启动对话</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer-area">
+          <div class="composer">
+            <textarea id="messageInput" placeholder="输入指令或问题…" rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" title="发送 (Enter)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+          <div class="composer-hint">↵ Enter 发送 · Shift+Enter 换行</div>
+        </div>
+      </div>
+
+      <!-- TREE PANEL (desktop: right side, mobile: bottom drawer) -->
+      <aside class="tree-panel" id="treePanel" aria-label="分支树状图" aria-hidden="true">
+        <div class="tree-panel-resize" id="treePanelResize" aria-hidden="true"></div>
+        <div class="tree-panel-header">
+          <span class="tree-panel-title">// Branch Tree</span>
+          <button class="tree-panel-close" id="treePanelClose" type="button" aria-label="关闭分支树面板">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="tree-panel-body" id="treePanelBody">
+          <div class="tree-panel-empty">
+            <span>// 暂无分支数据</span>
+          </div>
+        </div>
+      </aside>
     </div>
   </main>
 </div>

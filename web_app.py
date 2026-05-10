@@ -333,6 +333,150 @@ def copy_session(session_id: str):
     return jsonify(session)
 
 
+@app.post("/api/sessions/<session_id>/branch")
+def create_branch(session_id: str):
+    payload = request.get_json(silent=True) or {}
+    branch_point_node_id = payload.get("branch_point_node_id")
+
+    if not branch_point_node_id:
+        return jsonify({"error": "missing_field", "message": "branch_point_node_id is required"}), 400
+
+    try:
+        session = store.load_session(session_id)
+    except KeyError:
+        return jsonify({"error": "session_not_found"}), 404
+
+    # Build ConversationManager and load messages to initialize BranchEngine
+    conversation = ConversationManager(agent_prompt)
+    stored_messages = session.get("messages", [])
+    if stored_messages:
+        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
+
+    try:
+        result = conversation.create_branch(branch_point_node_id)
+    except ValueError as e:
+        return jsonify({"error": "invalid_node_id", "message": str(e)}), 404
+
+    # Persist all messages (full flat list from branch engine) and updated active_node_id
+    all_messages = list(conversation.branch_engine._nodes.values())
+    store.save_messages(
+        session_id,
+        all_messages,
+        active_node_id=conversation.active_node_id,
+    )
+
+    return jsonify({
+        "ok": True,
+        "branch_node_id": result["branch_node_id"],
+        "ancestor_path": result["ancestor_path"],
+    })
+
+
+@app.post("/api/sessions/<session_id>/switch")
+def switch_branch(session_id: str):
+    payload = request.get_json(silent=True) or {}
+    target_node_id = payload.get("target_node_id")
+
+    if not target_node_id:
+        return jsonify({"error": "missing_field", "message": "target_node_id is required"}), 400
+
+    try:
+        session = store.load_session(session_id)
+    except KeyError:
+        return jsonify({"error": "session_not_found"}), 404
+
+    # Build ConversationManager and load messages to initialize BranchEngine
+    conversation = ConversationManager(agent_prompt)
+    stored_messages = session.get("messages", [])
+    if stored_messages:
+        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
+
+    try:
+        path_messages = conversation.switch_branch(target_node_id)
+    except ValueError as e:
+        return jsonify({"error": "invalid_node_id", "message": str(e)}), 404
+
+    # Persist the updated active_node_id
+    all_messages = list(conversation.branch_engine._nodes.values())
+    store.save_messages(
+        session_id,
+        all_messages,
+        active_node_id=conversation.active_node_id,
+    )
+
+    return jsonify({
+        "ok": True,
+        "active_node_id": target_node_id,
+        "messages": path_messages,
+    })
+
+
+@app.get("/api/sessions/<session_id>/tree")
+def get_session_tree(session_id: str):
+    try:
+        session = store.load_session(session_id)
+    except KeyError:
+        return jsonify({"error": "session_not_found"}), 404
+
+    # Build ConversationManager and load messages to initialize BranchEngine
+    conversation = ConversationManager(agent_prompt)
+    stored_messages = session.get("messages", [])
+    if stored_messages:
+        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
+
+    if conversation.branch_engine is None:
+        return jsonify({"nodes": [], "active_node_id": None})
+
+    active_node_id = conversation.active_node_id or ""
+    nodes = conversation.branch_engine.get_tree_summary(active_node_id)
+
+    return jsonify({
+        "nodes": nodes,
+        "active_node_id": active_node_id,
+    })
+
+
+@app.delete("/api/sessions/<session_id>/branch/<node_id>")
+def delete_branch(session_id: str, node_id: str):
+    try:
+        session = store.load_session(session_id)
+    except KeyError:
+        return jsonify({"error": "session_not_found"}), 404
+
+    # Build ConversationManager and load messages to initialize BranchEngine
+    conversation = ConversationManager(agent_prompt)
+    stored_messages = session.get("messages", [])
+    if stored_messages:
+        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
+
+    if conversation.branch_engine is None:
+        return jsonify({"error": "invalid_node_id", "message": f"节点不存在: {node_id}"}), 404
+
+    active_node_id = conversation.active_node_id or ""
+
+    try:
+        removed_count = conversation.branch_engine.delete_branch(node_id, active_node_id)
+    except ValueError as e:
+        error_msg = str(e)
+        if "不存在" in error_msg:
+            return jsonify({"error": "invalid_node_id", "message": error_msg}), 404
+        # Active path or root node deletion attempts → 400 Bad Request
+        return jsonify({"error": "delete_rejected", "message": error_msg}), 400
+
+    # Persist updated messages (without the deleted nodes)
+    all_messages = list(conversation.branch_engine._nodes.values())
+    store.save_messages(
+        session_id,
+        all_messages,
+        active_node_id=active_node_id,
+    )
+
+    return jsonify({
+        "ok": True,
+        "removed_count": removed_count,
+    })
+
+
 @app.post("/api/chat")
 def chat():
     payload = request.get_json(silent=True) or {}
@@ -358,7 +502,7 @@ def chat():
     conversation = orchestrator.conversation
     stored_messages = session.get("messages", [])
     if stored_messages:
-        conversation.load_messages(stored_messages)
+        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
     conversation.load_summary(
         session.get("summary", ""),
         session.get("summarized_until", 1),
@@ -374,11 +518,18 @@ def chat():
         )
 
     messages = conversation.get_messages()
+    # Save all nodes (including other branches) to preserve the full tree
+    all_messages = (
+        list(conversation.branch_engine._nodes.values())
+        if conversation.branch_engine is not None
+        else messages
+    )
     store.save_messages(
         session_id,
-        messages,
+        all_messages,
         summary=conversation.get_summary(),
         summarized_until=conversation.get_summarized_until(),
+        active_node_id=conversation.active_node_id,
     )
 
     new_messages = messages[before_len:]
@@ -419,7 +570,7 @@ def chat_stream():
         conversation = orchestrator.conversation
         stored_messages = session.get("messages", [])
         if stored_messages:
-            conversation.load_messages(stored_messages)
+            conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
         conversation.load_summary(
             session.get("summary", ""),
             session.get("summarized_until", 1),
@@ -447,19 +598,40 @@ def chat_stream():
                 "stage": "save",
                 "message": "保存会话记录",
             })
+            # Save all nodes (including other branches) to preserve the full tree
+            all_messages = (
+                list(conversation.branch_engine._nodes.values())
+                if conversation.branch_engine is not None
+                else messages
+            )
             store.save_messages(
                 session_id,
-                messages,
+                all_messages,
                 summary=conversation.get_summary(),
                 summarized_until=conversation.get_summarized_until(),
+                active_node_id=conversation.active_node_id,
             )
-            yield _stream_event({
+
+            # Extract context_nodes from the last assistant message for the frontend
+            new_messages = messages[before_len:]
+            context_nodes = None
+            for msg in reversed(new_messages):
+                if msg.get("role") == "assistant" and "context_nodes" in msg:
+                    context_nodes = msg["context_nodes"]
+                    break
+
+            done_event = {
                 "type": "done",
                 "stage": "done",
                 "message": "响应完成",
-                "messages": messages[before_len:],
+                "messages": new_messages,
                 "session_id": session_id,
-            })
+            }
+            if context_nodes is not None:
+                done_event["context_nodes"] = context_nodes
+            if conversation.active_node_id is not None:
+                done_event["active_node_id"] = conversation.active_node_id
+            yield _stream_event(done_event)
         except Exception as e:
             yield _stream_event({
                 "type": "error",

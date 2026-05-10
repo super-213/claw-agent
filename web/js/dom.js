@@ -36,6 +36,12 @@ export const els = {
   skillContentInput: document.getElementById('skillContentInput'),
   skillFormError: document.getElementById('skillFormError'),
   skillSaveBtn: document.getElementById('skillSaveBtn'),
+  // Tree panel
+  treePanel: document.getElementById('treePanel'),
+  treePanelToggle: document.getElementById('treePanelToggle'),
+  treePanelClose: document.getElementById('treePanelClose'),
+  treePanelResize: document.getElementById('treePanelResize'),
+  treePanelBody: document.getElementById('treePanelBody'),
 };
 
 export const isMobileLayout = () => window.matchMedia('(max-width: 860px)').matches;

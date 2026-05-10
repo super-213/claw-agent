@@ -114,3 +114,18 @@ export const chatApi = {
     body: JSON.stringify({ session_id: sessionId, message, attachments, images }),
   }, onEvent),
 };
+
+export const branchApi = {
+  switch: (sessionId, targetNodeId) => jsonRequest(`/api/sessions/${sessionId}/switch`, {
+    method: 'POST',
+    body: JSON.stringify({ target_node_id: targetNodeId }),
+  }),
+  tree: (sessionId) => jsonRequest(`/api/sessions/${sessionId}/tree`),
+  create: (sessionId, branchPointNodeId) => jsonRequest(`/api/sessions/${sessionId}/branch`, {
+    method: 'POST',
+    body: JSON.stringify({ branch_point_node_id: branchPointNodeId }),
+  }),
+  delete: (sessionId, nodeId) => jsonRequest(`/api/sessions/${sessionId}/branch/${nodeId}`, {
+    method: 'DELETE',
+  }),
+};

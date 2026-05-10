@@ -20,7 +20,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 814
-      }
+      },
+      "node_id": "4e7b13ef-a96f-479b-8962-00c2b50d3030",
+      "parent_id": null
     },
     {
       "role": "user",
@@ -38,7 +40,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 829
-      }
+      },
+      "node_id": "8373411a-39d7-4563-b461-0eb4bcce24ae",
+      "parent_id": "4e7b13ef-a96f-479b-8962-00c2b50d3030"
     },
     {
       "role": "assistant",
@@ -56,7 +60,9 @@
         "tool_call_tokens": 18,
         "tool_result_tokens": 0,
         "cumulative_tokens": 847
-      }
+      },
+      "node_id": "e6825ad2-1323-486d-b41b-2c8d8ab92f2c",
+      "parent_id": "8373411a-39d7-4563-b461-0eb4bcce24ae"
     },
     {
       "role": "user",
@@ -74,7 +80,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 10,
         "cumulative_tokens": 857
-      }
+      },
+      "node_id": "944d2db5-ebfb-4cf9-8979-718a44e2df87",
+      "parent_id": "e6825ad2-1323-486d-b41b-2c8d8ab92f2c"
     },
     {
       "role": "assistant",
@@ -92,7 +100,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 874
-      }
+      },
+      "node_id": "3bdd0bba-9afc-49b9-a6f8-155824242816",
+      "parent_id": "944d2db5-ebfb-4cf9-8979-718a44e2df87"
     }
   ],
   "summary": "",
@@ -112,5 +122,6 @@
     "tool_tokens": 28,
     "tool_call_tokens": 18,
     "tool_result_tokens": 10
-  }
+  },
+  "active_node_id": "3bdd0bba-9afc-49b9-a6f8-155824242816"
 }

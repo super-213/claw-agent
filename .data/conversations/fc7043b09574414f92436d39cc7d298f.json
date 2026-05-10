@@ -20,7 +20,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 1176
-      }
+      },
+      "node_id": "fa89935e-0572-44aa-a5fa-8d4b0e47fffb",
+      "parent_id": null
     },
     {
       "role": "user",
@@ -38,7 +40,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 1194
-      }
+      },
+      "node_id": "9307cf63-0976-4ca3-bd2c-4d02179a4a6a",
+      "parent_id": "fa89935e-0572-44aa-a5fa-8d4b0e47fffb"
     },
     {
       "role": "assistant",
@@ -56,7 +60,9 @@
         "tool_call_tokens": 234,
         "tool_result_tokens": 0,
         "cumulative_tokens": 1428
-      }
+      },
+      "node_id": "bc3760f4-6f3e-402f-a082-ff507bb20083",
+      "parent_id": "9307cf63-0976-4ca3-bd2c-4d02179a4a6a"
     },
     {
       "role": "user",
@@ -74,7 +80,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 1460
-      }
+      },
+      "node_id": "df5e6e55-c61a-4794-8993-2acf2f011a9a",
+      "parent_id": "bc3760f4-6f3e-402f-a082-ff507bb20083"
     },
     {
       "role": "assistant",
@@ -92,7 +100,9 @@
         "tool_call_tokens": 234,
         "tool_result_tokens": 0,
         "cumulative_tokens": 1694
-      }
+      },
+      "node_id": "0df5eb92-03a0-4182-b0b0-cdea9334254f",
+      "parent_id": "df5e6e55-c61a-4794-8993-2acf2f011a9a"
     },
     {
       "role": "user",
@@ -110,7 +120,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 1726
-      }
+      },
+      "node_id": "f9b57489-4e7d-4451-a0a5-94b0ae939131",
+      "parent_id": "0df5eb92-03a0-4182-b0b0-cdea9334254f"
     },
     {
       "role": "assistant",
@@ -128,7 +140,9 @@
         "tool_call_tokens": 237,
         "tool_result_tokens": 0,
         "cumulative_tokens": 1963
-      }
+      },
+      "node_id": "ce477976-5c94-40c1-b2a6-ac00a2f7ea41",
+      "parent_id": "f9b57489-4e7d-4451-a0a5-94b0ae939131"
     },
     {
       "role": "user",
@@ -146,7 +160,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 1995
-      }
+      },
+      "node_id": "a5f39a47-6a9b-4906-a101-1e24c13eb7a8",
+      "parent_id": "ce477976-5c94-40c1-b2a6-ac00a2f7ea41"
     },
     {
       "role": "assistant",
@@ -164,7 +180,9 @@
         "tool_call_tokens": 238,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2233
-      }
+      },
+      "node_id": "7a968827-6317-4b8b-adaf-99b0b8a512aa",
+      "parent_id": "a5f39a47-6a9b-4906-a101-1e24c13eb7a8"
     },
     {
       "role": "user",
@@ -182,7 +200,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 17,
         "cumulative_tokens": 2250
-      }
+      },
+      "node_id": "8f3dd978-e996-4b01-bce9-5c4a4154e23b",
+      "parent_id": "7a968827-6317-4b8b-adaf-99b0b8a512aa"
     },
     {
       "role": "assistant",
@@ -200,7 +220,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2285
-      }
+      },
+      "node_id": "b3322165-13e4-4e24-9b37-6f617d7a4301",
+      "parent_id": "8f3dd978-e996-4b01-bce9-5c4a4154e23b"
     },
     {
       "role": "user",
@@ -218,7 +240,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2299
-      }
+      },
+      "node_id": "2eb86443-7996-47d0-9fe5-a9f85fd1384f",
+      "parent_id": "b3322165-13e4-4e24-9b37-6f617d7a4301"
     },
     {
       "role": "assistant",
@@ -236,7 +260,9 @@
         "tool_call_tokens": 17,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2316
-      }
+      },
+      "node_id": "0b994a63-a9bd-48bc-a1b7-5b0ee6bc78f3",
+      "parent_id": "2eb86443-7996-47d0-9fe5-a9f85fd1384f"
     },
     {
       "role": "user",
@@ -254,7 +280,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 50,
         "cumulative_tokens": 2366
-      }
+      },
+      "node_id": "99f82701-481f-4222-be8a-f6a4ab3e53cc",
+      "parent_id": "0b994a63-a9bd-48bc-a1b7-5b0ee6bc78f3"
     },
     {
       "role": "assistant",
@@ -272,7 +300,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2608
-      }
+      },
+      "node_id": "d4cdcf61-fe89-4f02-8228-11fbf5d25e26",
+      "parent_id": "99f82701-481f-4222-be8a-f6a4ab3e53cc"
     },
     {
       "role": "user",
@@ -290,7 +320,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2625
-      }
+      },
+      "node_id": "069ef4fa-600f-48ef-ae2f-12d62481c8e0",
+      "parent_id": "d4cdcf61-fe89-4f02-8228-11fbf5d25e26"
     },
     {
       "role": "assistant",
@@ -308,7 +340,9 @@
         "tool_call_tokens": 230,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2855
-      }
+      },
+      "node_id": "4d93f939-8262-4172-91f2-dbaf68def0d5",
+      "parent_id": "069ef4fa-600f-48ef-ae2f-12d62481c8e0"
     },
     {
       "role": "user",
@@ -326,7 +360,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 2887
-      }
+      },
+      "node_id": "12d59513-fdfc-41e0-8d08-0eb1019789ca",
+      "parent_id": "4d93f939-8262-4172-91f2-dbaf68def0d5"
     },
     {
       "role": "assistant",
@@ -344,7 +380,9 @@
         "tool_call_tokens": 242,
         "tool_result_tokens": 0,
         "cumulative_tokens": 3129
-      }
+      },
+      "node_id": "09603f53-d8ef-4e49-aa1f-eca7a72a0693",
+      "parent_id": "12d59513-fdfc-41e0-8d08-0eb1019789ca"
     },
     {
       "role": "user",
@@ -362,7 +400,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 33,
         "cumulative_tokens": 3162
-      }
+      },
+      "node_id": "54512887-4519-4638-aafb-4fba18734a31",
+      "parent_id": "09603f53-d8ef-4e49-aa1f-eca7a72a0693"
     },
     {
       "role": "assistant",
@@ -380,7 +420,9 @@
         "tool_call_tokens": 245,
         "tool_result_tokens": 0,
         "cumulative_tokens": 3407
-      }
+      },
+      "node_id": "4f080d92-2bf4-4359-bcd0-ed5b233428fc",
+      "parent_id": "54512887-4519-4638-aafb-4fba18734a31"
     },
     {
       "role": "user",
@@ -398,7 +440,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 3439
-      }
+      },
+      "node_id": "e861bf28-4bee-43e0-97e9-e6748070c715",
+      "parent_id": "4f080d92-2bf4-4359-bcd0-ed5b233428fc"
     },
     {
       "role": "assistant",
@@ -416,7 +460,9 @@
         "tool_call_tokens": 28,
         "tool_result_tokens": 0,
         "cumulative_tokens": 3467
-      }
+      },
+      "node_id": "b40399a2-9f8f-4f3c-a3e2-42c17ab5cca8",
+      "parent_id": "e861bf28-4bee-43e0-97e9-e6748070c715"
     },
     {
       "role": "user",
@@ -434,7 +480,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 78,
         "cumulative_tokens": 3545
-      }
+      },
+      "node_id": "677d19ba-b513-4f5d-b174-060b68e09e90",
+      "parent_id": "b40399a2-9f8f-4f3c-a3e2-42c17ab5cca8"
     },
     {
       "role": "assistant",
@@ -452,7 +500,9 @@
         "tool_call_tokens": 233,
         "tool_result_tokens": 0,
         "cumulative_tokens": 3778
-      }
+      },
+      "node_id": "f1a0d1f6-dc9f-4e00-8b8e-b126becb28be",
+      "parent_id": "677d19ba-b513-4f5d-b174-060b68e09e90"
     },
     {
       "role": "user",
@@ -470,7 +520,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 3810
-      }
+      },
+      "node_id": "a8ff4e21-1a2e-4672-853d-836baba9e41f",
+      "parent_id": "f1a0d1f6-dc9f-4e00-8b8e-b126becb28be"
     },
     {
       "role": "assistant",
@@ -488,7 +540,9 @@
         "tool_call_tokens": 234,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4044
-      }
+      },
+      "node_id": "af9882cb-8d6c-4890-ad98-260f58541ccb",
+      "parent_id": "a8ff4e21-1a2e-4672-853d-836baba9e41f"
     },
     {
       "role": "user",
@@ -506,7 +560,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 17,
         "cumulative_tokens": 4061
-      }
+      },
+      "node_id": "b1448822-4e52-4384-a5ec-a92962ceebbd",
+      "parent_id": "af9882cb-8d6c-4890-ad98-260f58541ccb"
     },
     {
       "role": "assistant",
@@ -524,7 +580,9 @@
         "tool_call_tokens": 23,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4084
-      }
+      },
+      "node_id": "c7b37f0a-8a20-419f-bfa1-0906f45cd806",
+      "parent_id": "b1448822-4e52-4384-a5ec-a92962ceebbd"
     },
     {
       "role": "user",
@@ -542,7 +600,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 39,
         "cumulative_tokens": 4123
-      }
+      },
+      "node_id": "f0c1c2bf-ce12-45e4-bff6-2bb0f82635d7",
+      "parent_id": "c7b37f0a-8a20-419f-bfa1-0906f45cd806"
     },
     {
       "role": "assistant",
@@ -560,7 +620,9 @@
         "tool_call_tokens": 29,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4152
-      }
+      },
+      "node_id": "1c2ee734-e6a9-4239-bcb0-5eec3abb21a8",
+      "parent_id": "f0c1c2bf-ce12-45e4-bff6-2bb0f82635d7"
     },
     {
       "role": "user",
@@ -578,7 +640,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 39,
         "cumulative_tokens": 4191
-      }
+      },
+      "node_id": "77f267c0-4941-4f71-8597-f5a13759c1d4",
+      "parent_id": "1c2ee734-e6a9-4239-bcb0-5eec3abb21a8"
     },
     {
       "role": "assistant",
@@ -596,7 +660,9 @@
         "tool_call_tokens": 246,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4437
-      }
+      },
+      "node_id": "c313ae3d-9766-440e-920a-6eb0b95125c5",
+      "parent_id": "77f267c0-4941-4f71-8597-f5a13759c1d4"
     },
     {
       "role": "user",
@@ -614,7 +680,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 4469
-      }
+      },
+      "node_id": "b7853a0e-8721-4120-b8eb-c08b261367db",
+      "parent_id": "c313ae3d-9766-440e-920a-6eb0b95125c5"
     },
     {
       "role": "assistant",
@@ -632,7 +700,9 @@
         "tool_call_tokens": 245,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4714
-      }
+      },
+      "node_id": "d51d2d74-b172-4558-b442-4d5a68ac0cb7",
+      "parent_id": "b7853a0e-8721-4120-b8eb-c08b261367db"
     },
     {
       "role": "user",
@@ -650,7 +720,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 4746
-      }
+      },
+      "node_id": "75347032-e9e2-4efe-bfb3-3b4ae6e8d8ed",
+      "parent_id": "d51d2d74-b172-4558-b442-4d5a68ac0cb7"
     },
     {
       "role": "assistant",
@@ -668,7 +740,9 @@
         "tool_call_tokens": 98,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4844
-      }
+      },
+      "node_id": "7fe819e0-8950-48a7-a3f2-816ac607abf0",
+      "parent_id": "75347032-e9e2-4efe-bfb3-3b4ae6e8d8ed"
     },
     {
       "role": "user",
@@ -686,7 +760,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 17,
         "cumulative_tokens": 4861
-      }
+      },
+      "node_id": "7398d03e-4908-4036-886e-1937b7e1ef0d",
+      "parent_id": "7fe819e0-8950-48a7-a3f2-816ac607abf0"
     },
     {
       "role": "assistant",
@@ -704,7 +780,9 @@
         "tool_call_tokens": 21,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4882
-      }
+      },
+      "node_id": "453b8add-23ea-4ce2-823d-4ec552d0ddba",
+      "parent_id": "7398d03e-4908-4036-886e-1937b7e1ef0d"
     },
     {
       "role": "user",
@@ -722,7 +800,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 45,
         "cumulative_tokens": 4927
-      }
+      },
+      "node_id": "a7002d9a-0c4a-4bef-a676-fc187a142b51",
+      "parent_id": "453b8add-23ea-4ce2-823d-4ec552d0ddba"
     },
     {
       "role": "assistant",
@@ -740,7 +820,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5035
-      }
+      },
+      "node_id": "4e14ac05-889a-4974-afdf-af145242db72",
+      "parent_id": "a7002d9a-0c4a-4bef-a676-fc187a142b51"
     },
     {
       "role": "user",
@@ -758,7 +840,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5055
-      }
+      },
+      "node_id": "a29eafd2-aa44-4427-a238-23b1857e2591",
+      "parent_id": "4e14ac05-889a-4974-afdf-af145242db72"
     },
     {
       "role": "assistant",
@@ -776,7 +860,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5222
-      }
+      },
+      "node_id": "c5bb8a1c-6ee1-465a-9a8a-d0187e63b874",
+      "parent_id": "a29eafd2-aa44-4427-a238-23b1857e2591"
     },
     {
       "role": "user",
@@ -794,7 +880,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5246
-      }
+      },
+      "node_id": "d0bce10b-513f-4d7f-b18b-a5f28d984539",
+      "parent_id": "c5bb8a1c-6ee1-465a-9a8a-d0187e63b874"
     },
     {
       "role": "assistant",
@@ -812,7 +900,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5434
-      }
+      },
+      "node_id": "9b7827b7-57e2-452c-9637-bc1443f6b1fb",
+      "parent_id": "d0bce10b-513f-4d7f-b18b-a5f28d984539"
     },
     {
       "role": "user",
@@ -830,7 +920,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5444
-      }
+      },
+      "node_id": "af9dd2be-b546-4d23-8242-a37d7ad3ebe0",
+      "parent_id": "9b7827b7-57e2-452c-9637-bc1443f6b1fb"
     },
     {
       "role": "assistant",
@@ -848,7 +940,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5698
-      }
+      },
+      "node_id": "5f6ab020-d305-41f9-bc00-f9e4f1516128",
+      "parent_id": "af9dd2be-b546-4d23-8242-a37d7ad3ebe0"
     },
     {
       "role": "user",
@@ -866,7 +960,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5712
-      }
+      },
+      "node_id": "d4349ab6-4a25-4db0-b14c-4ab3091e32ae",
+      "parent_id": "5f6ab020-d305-41f9-bc00-f9e4f1516128"
     },
     {
       "role": "assistant",
@@ -884,7 +980,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5969
-      }
+      },
+      "node_id": "01e51011-0d12-4804-9460-1584b83002c6",
+      "parent_id": "d4349ab6-4a25-4db0-b14c-4ab3091e32ae"
     },
     {
       "role": "user",
@@ -902,7 +1000,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 5982
-      }
+      },
+      "node_id": "fe31f90a-5b55-4583-b70a-cacfea33296a",
+      "parent_id": "01e51011-0d12-4804-9460-1584b83002c6"
     },
     {
       "role": "assistant",
@@ -920,7 +1020,9 @@
         "tool_call_tokens": 25,
         "tool_result_tokens": 0,
         "cumulative_tokens": 6007
-      }
+      },
+      "node_id": "b213b289-2b22-4ca7-8b41-7e36f7bfae36",
+      "parent_id": "fe31f90a-5b55-4583-b70a-cacfea33296a"
     },
     {
       "role": "user",
@@ -938,7 +1040,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 32,
         "cumulative_tokens": 6039
-      }
+      },
+      "node_id": "115b8885-69ac-43da-9b28-df5926c4c329",
+      "parent_id": "b213b289-2b22-4ca7-8b41-7e36f7bfae36"
     },
     {
       "role": "assistant",
@@ -956,7 +1060,9 @@
         "tool_call_tokens": 77,
         "tool_result_tokens": 0,
         "cumulative_tokens": 6116
-      }
+      },
+      "node_id": "8b593907-ce50-4f57-b0c6-9c8754be23a9",
+      "parent_id": "115b8885-69ac-43da-9b28-df5926c4c329"
     },
     {
       "role": "user",
@@ -974,7 +1080,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 17,
         "cumulative_tokens": 6133
-      }
+      },
+      "node_id": "890ce790-79e0-4267-a3ab-ab8e7ac76223",
+      "parent_id": "8b593907-ce50-4f57-b0c6-9c8754be23a9"
     },
     {
       "role": "assistant",
@@ -992,7 +1100,9 @@
         "tool_call_tokens": 23,
         "tool_result_tokens": 0,
         "cumulative_tokens": 6156
-      }
+      },
+      "node_id": "3b706f58-8efb-4bbd-9590-0f686c21f37c",
+      "parent_id": "890ce790-79e0-4267-a3ab-ab8e7ac76223"
     },
     {
       "role": "user",
@@ -1010,7 +1120,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 47,
         "cumulative_tokens": 6203
-      }
+      },
+      "node_id": "b0fbff06-64ab-4479-883a-97e61ffcb8a6",
+      "parent_id": "3b706f58-8efb-4bbd-9590-0f686c21f37c"
     },
     {
       "role": "assistant",
@@ -1028,7 +1140,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 6349
-      }
+      },
+      "node_id": "27df8ae3-fbaf-4a2a-9516-8582238e2d24",
+      "parent_id": "b0fbff06-64ab-4479-883a-97e61ffcb8a6"
     }
   ],
   "summary": "",
@@ -1048,5 +1162,6 @@
     "tool_tokens": 3646,
     "tool_call_tokens": 2959,
     "tool_result_tokens": 687
-  }
+  },
+  "active_node_id": "27df8ae3-fbaf-4a2a-9516-8582238e2d24"
 }

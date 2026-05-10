@@ -20,7 +20,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 814
-      }
+      },
+      "node_id": "42da629d-5cf8-4c2c-a8f0-5369e12215a3",
+      "parent_id": null
     },
     {
       "role": "user",
@@ -38,7 +40,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 2495
-      }
+      },
+      "node_id": "d3263305-fa14-4b0a-8f3e-c1fd09d9659a",
+      "parent_id": "42da629d-5cf8-4c2c-a8f0-5369e12215a3"
     },
     {
       "role": "assistant",
@@ -56,7 +60,9 @@
         "tool_call_tokens": 1821,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4316
-      }
+      },
+      "node_id": "bcd9f726-15c1-41a0-a47b-431e7f6f88d7",
+      "parent_id": "d3263305-fa14-4b0a-8f3e-c1fd09d9659a"
     },
     {
       "role": "user",
@@ -74,7 +80,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 9,
         "cumulative_tokens": 4325
-      }
+      },
+      "node_id": "09f120ec-bc39-4459-8f56-e48d0a8a567f",
+      "parent_id": "bcd9f726-15c1-41a0-a47b-431e7f6f88d7"
     },
     {
       "role": "assistant",
@@ -92,7 +100,9 @@
         "tool_call_tokens": 32,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4357
-      }
+      },
+      "node_id": "0179f8db-4fcb-4e6b-9e04-017f4557c504",
+      "parent_id": "09f120ec-bc39-4459-8f56-e48d0a8a567f"
     },
     {
       "role": "user",
@@ -110,7 +120,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 10,
         "cumulative_tokens": 4367
-      }
+      },
+      "node_id": "8b1c71cb-da62-4323-b0d6-18c3672b0b84",
+      "parent_id": "0179f8db-4fcb-4e6b-9e04-017f4557c504"
     },
     {
       "role": "assistant",
@@ -128,7 +140,9 @@
         "tool_call_tokens": 47,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4414
-      }
+      },
+      "node_id": "06beed41-6dc5-4138-9cd9-fc87fa6704f0",
+      "parent_id": "8b1c71cb-da62-4323-b0d6-18c3672b0b84"
     },
     {
       "role": "user",
@@ -146,7 +160,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 10,
         "cumulative_tokens": 4424
-      }
+      },
+      "node_id": "f3f19522-be6c-4ee7-89c8-e522121291e2",
+      "parent_id": "06beed41-6dc5-4138-9cd9-fc87fa6704f0"
     },
     {
       "role": "assistant",
@@ -164,7 +180,9 @@
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
         "cumulative_tokens": 4512
-      }
+      },
+      "node_id": "f00674dc-529c-44b6-b473-0fdd42b93eae",
+      "parent_id": "f3f19522-be6c-4ee7-89c8-e522121291e2"
     }
   ],
   "summary": "",
@@ -184,5 +202,6 @@
     "tool_tokens": 1929,
     "tool_call_tokens": 1900,
     "tool_result_tokens": 29
-  }
+  },
+  "active_node_id": "f00674dc-529c-44b6-b473-0fdd42b93eae"
 }

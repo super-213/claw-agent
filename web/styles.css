@@ -675,6 +675,7 @@ body::after {
   height: 100svh;
   overflow: hidden;
   background: var(--bg-1);
+  min-width: 0;
 }
 
 /* Top bar */
@@ -1797,5 +1798,521 @@ textarea::placeholder {
     font-size: 8px;
     letter-spacing: 0.18em;
     margin: 4px 0 -2px;
+  }
+}
+
+/* ─── TREE PANEL ─── */
+
+/* Main content area: flex container for chat + tree panel */
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Tree toggle button in topbar */
+.tree-toggle-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+
+.tree-toggle-btn:hover {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.tree-toggle-btn[aria-expanded="true"] {
+  color: var(--neon);
+  border-color: rgba(0, 229, 200, 0.4);
+  background: var(--neon-dim);
+}
+
+.tree-toggle-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Tree panel (desktop: right side panel) */
+.tree-panel {
+  display: none;
+  flex-direction: column;
+  width: 320px;
+  min-width: 200px;
+  max-width: 50vw;
+  border-left: 1px solid var(--stroke);
+  background: rgba(8, 11, 16, 0.95);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.tree-panel.open {
+  display: flex;
+}
+
+/* Resize handle (desktop only) */
+.tree-panel-resize {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  transition: background 0.18s;
+}
+
+.tree-panel-resize:hover,
+.tree-panel-resize.dragging {
+  background: rgba(0, 229, 200, 0.3);
+}
+
+/* Tree panel header */
+.tree-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--stroke-soft);
+  background: rgba(13, 17, 23, 0.8);
+  flex-shrink: 0;
+}
+
+.tree-panel-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.tree-panel-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+
+.tree-panel-close:hover {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.tree-panel-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Tree panel body (hosts the SVG tree) */
+.tree-panel-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.tree-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-ghost);
+  opacity: 0.5;
+}
+
+/* ─── TREE PANEL MOBILE (bottom drawer) ─── */
+@media (max-width: 860px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .tree-panel {
+    width: 100% !important;
+    min-width: unset;
+    max-width: unset;
+    border-left: none;
+    border-top: 1px solid var(--stroke);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 40vh;
+    min-height: 180px;
+    max-height: 70vh;
+    z-index: 15;
+    transform: translateY(100%);
+    transition: transform 0.28s ease;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .tree-panel.open {
+    display: flex;
+    transform: translateY(0);
+  }
+
+  /* Hide the left resize handle on mobile */
+  .tree-panel-resize {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: auto;
+    width: 100%;
+    height: 20px;
+    cursor: grab;
+  }
+
+  .tree-panel-resize::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--ink-ghost);
+  }
+
+  .tree-panel-resize:hover::after,
+  .tree-panel-resize.dragging::after {
+    background: var(--neon);
+  }
+
+  .tree-panel-header {
+    padding-top: 22px;
+  }
+}
+
+/* ─── CONTEXT HIGHLIGHT ─── */
+
+/* Generic context highlight: subtle left border indicator for all context messages */
+.message-row.context-highlight {
+  position: relative;
+}
+
+.message-row.context-highlight::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--neon);
+  opacity: 0.5;
+}
+
+/* Full context: messages sent completely to the model */
+.message-row.context-highlight-full {
+  position: relative;
+}
+
+.message-row.context-highlight-full::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--neon);
+  opacity: 0.8;
+}
+
+.message-row.context-highlight-full > .message {
+  border-color: rgba(0, 229, 200, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 229, 200, 0.05), inset 0 0 12px rgba(0, 229, 200, 0.03);
+}
+
+/* Context state badge for full messages */
+.message-row.context-highlight-full::after {
+  content: '● FULL';
+  position: absolute;
+  top: 4px;
+  right: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--neon);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Summarized context: messages compressed as summary before sending */
+.message-row.context-highlight-summarized {
+  position: relative;
+  opacity: 0.7;
+}
+
+.message-row.context-highlight-summarized::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--amber);
+  opacity: 0.7;
+}
+
+.message-row.context-highlight-summarized > .message {
+  border-color: rgba(245, 166, 35, 0.25);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+/* Context state badge for summarized messages */
+.message-row.context-highlight-summarized::after {
+  content: '◌ SUMMARIZED';
+  position: absolute;
+  top: 4px;
+  right: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Mobile adjustments for context highlight */
+@media (max-width: 860px) {
+  .message-row.context-highlight::before,
+  .message-row.context-highlight-full::before,
+  .message-row.context-highlight-summarized::before {
+    left: -4px;
+    width: 2px;
+  }
+
+  .message-row.context-highlight-full::after,
+  .message-row.context-highlight-summarized::after {
+    font-size: 8px;
+    top: 2px;
+  }
+}
+
+/* ─── MESSAGE CONTEXT MENU (branch creation) ─── */
+.message-context-menu,
+.tree-node-context-menu {
+  min-width: 180px;
+  padding: 5px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: rgba(13, 17, 23, 0.98);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition: color 0.16s, background 0.16s;
+}
+
+.context-menu-item:hover {
+  color: var(--neon);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.context-menu-item.danger {
+  color: #ff453a;
+}
+
+.context-menu-item.danger:hover {
+  color: #ff6961;
+  background: rgba(255, 69, 58, 0.1);
+}
+
+.context-menu-icon {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.context-menu-label {
+  flex: 1;
+}
+
+/* ─── MESSAGE ACTION BUTTONS (hover branch button) ─── */
+.message-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.18s;
+  pointer-events: none;
+}
+
+.message-row:hover .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.message-row {
+  position: relative;
+}
+
+.message-action-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(13, 17, 23, 0.92);
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: color 0.16s, border-color 0.16s, background 0.16s;
+}
+
+.message-action-btn:hover {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.1);
+}
+
+.action-icon {
+  line-height: 1;
+}
+
+/* ─── BRANCH TREE SVG STYLES ─── */
+
+/* SVG container */
+.branch-tree-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Node group: interactive cursor and hover effect */
+.branch-tree-node {
+  cursor: pointer;
+  transition: opacity 0.18s;
+}
+
+.branch-tree-node:hover {
+  opacity: 0.85;
+}
+
+/* Node circles: base style with subtle shadow filter */
+.node-circle {
+  transition: stroke 0.2s, stroke-width 0.2s, filter 0.2s;
+}
+
+/* Role-based node fill colors (applied via inline attrs, these add hover effects) */
+.node-circle.role-user:hover {
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.5));
+}
+
+.node-circle.role-assistant:hover {
+  filter: drop-shadow(0 0 6px rgba(52, 199, 89, 0.5));
+}
+
+.node-circle.role-system:hover {
+  filter: drop-shadow(0 0 6px rgba(142, 142, 147, 0.4));
+}
+
+/* Active path node: glow effect */
+.node-circle.active {
+  filter: drop-shadow(0 0 8px rgba(255, 149, 0, 0.6));
+}
+
+.node-circle.active:hover {
+  filter: drop-shadow(0 0 12px rgba(255, 149, 0, 0.8));
+}
+
+/* Edge (connection line) styles */
+.branch-tree-edge {
+  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
+  opacity: 0.6;
+}
+
+/* Active path edges: brighter and more opaque */
+.branch-tree-edge.active {
+  opacity: 1;
+  filter: drop-shadow(0 0 3px rgba(255, 149, 0, 0.4));
+}
+
+/* ─── BRANCH BUTTON (specific style for the branch action button) ─── */
+.message-action-btn.branch-btn {
+  font-size: 16px;
+}
+
+.message-action-btn.branch-btn:hover {
+  color: var(--amber);
+  border-color: rgba(245, 166, 35, 0.4);
+  background: rgba(245, 166, 35, 0.1);
+}
+
+/* ─── ACTIVE PATH HIGHLIGHT (message list) ─── */
+
+/* Messages on the active path get a subtle left accent (distinct from context highlight) */
+.message-row.active-path-highlight {
+  position: relative;
+}
+
+.message-row.active-path-highlight::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--amber);
+  opacity: 0.5;
+}
+
+/* Mobile adjustments for active path highlight */
+@media (max-width: 860px) {
+  .message-row.active-path-highlight::before {
+    left: -6px;
   }
 }

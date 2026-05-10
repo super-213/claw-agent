@@ -1,6 +1,8 @@
+import { branchApi } from './api.js';
 import { els } from './dom.js';
 import { markdownToHtml } from './markdown.js';
 import { state } from './state.js';
+import { clearHighlights } from './context-highlight.js';
 import {
   escapeHtml,
   extractCommandFromContent,
@@ -258,6 +260,7 @@ export const setStatus = (text, busy = false) => {
 };
 
 export const renderMessages = (messages) => {
+  clearHighlights();
   state.messages = messages;
   const visibleMessages = messages.filter((message) => message.role !== 'system');
   els.emptyState.style.display = visibleMessages.length === 0 ? 'flex' : 'none';
@@ -294,6 +297,10 @@ export const renderMessages = (messages) => {
       const commandMessage = displayMessages[0];
       const row = document.createElement('div');
       row.className = 'message-row assistant-row';
+      if (msg.node_id) {
+        row.dataset.nodeId = msg.node_id;
+        addBranchActionButton(row, msg.node_id);
+      }
       row.appendChild(createLlmHeader({
         iteration,
         message_count: Math.max(0, messages.indexOf(msg)),
@@ -355,6 +362,10 @@ export const renderMessages = (messages) => {
 
         const row = document.createElement('div');
         row.className = `message-row ${view.role}-row`;
+        if (msg.node_id) {
+          row.dataset.nodeId = msg.node_id;
+          addBranchActionButton(row, msg.node_id);
+        }
         if (index === 0) {
           row.appendChild(createLlmHeader({
             iteration,
@@ -394,6 +405,10 @@ export const renderMessages = (messages) => {
 
       const row = document.createElement('div');
       row.className = `message-row ${view.role}-row`;
+      if (msg.node_id) {
+        row.dataset.nodeId = msg.node_id;
+        addBranchActionButton(row, msg.node_id);
+      }
 
       const label = document.createElement('div');
       label.className = 'msg-label';
@@ -677,4 +692,154 @@ export const showThinking = () => {
 
 export const hideThinking = () => {
   document.getElementById('thinking-row')?.remove();
+};
+
+// ─── 消息右键菜单：从此处创建分支 ─────────────────────────────────────────────────
+
+/** 当前显示的上下文菜单元素 */
+let _contextMenu = null;
+
+/**
+ * 关闭并移除当前上下文菜单
+ */
+const dismissContextMenu = () => {
+  if (_contextMenu) {
+    _contextMenu.remove();
+    _contextMenu = null;
+  }
+};
+
+/**
+ * 创建分支操作：调用 API 并更新树状图
+ * @param {string} nodeId - 分支点的 node_id
+ */
+const createBranchFromNode = async (nodeId) => {
+  const sessionId = state.currentSessionId;
+  if (!sessionId || !nodeId) return;
+
+  try {
+    const result = await branchApi.create(sessionId, nodeId);
+    if (result && result.ok) {
+      // 自动打开树状图面板，让用户看到新分支
+      try {
+        const { openTreePanel, getTreePanelBody } = await import('./tree-panel.js');
+        openTreePanel();
+
+        // 确保 SVG 容器已初始化，然后渲染树
+        const { initSvg, setTreeData } = await import('./branch-tree.js');
+        const panelBody = getTreePanelBody();
+        if (panelBody) {
+          initSvg(panelBody);
+          const treeData = await branchApi.tree(sessionId);
+          if (treeData && treeData.nodes) {
+            setTreeData(treeData.nodes, treeData.active_node_id);
+          }
+        }
+      } catch (treeError) {
+        console.warn('[messages] 更新树状图失败:', treeError);
+      }
+    }
+  } catch (error) {
+    console.warn('[messages] 创建分支失败:', error);
+    alert('创建分支失败: ' + (error.message || '未知错误'));
+  }
+};
+
+/**
+ * 显示消息上下文菜单
+ * @param {MouseEvent} event - 右键事件
+ * @param {string} nodeId - 消息的 node_id
+ */
+const showMessageContextMenu = (event, nodeId) => {
+  dismissContextMenu();
+
+  const menu = document.createElement('div');
+  menu.className = 'message-context-menu';
+  menu.innerHTML = `
+    <button type="button" class="context-menu-item" data-action="create-branch">
+      <span class="context-menu-icon">⑂</span>
+      <span class="context-menu-label">从此处创建分支</span>
+    </button>
+  `;
+
+  // 定位菜单
+  menu.style.position = 'fixed';
+  menu.style.left = `${event.clientX}px`;
+  menu.style.top = `${event.clientY}px`;
+  menu.style.zIndex = '9999';
+
+  // 绑定菜单项点击
+  menu.querySelector('[data-action="create-branch"]').addEventListener('click', () => {
+    dismissContextMenu();
+    createBranchFromNode(nodeId);
+  });
+
+  document.body.appendChild(menu);
+  _contextMenu = menu;
+
+  // 确保菜单不超出视口
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${window.innerWidth - rect.width - 8}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${window.innerHeight - rect.height - 8}px`;
+    }
+  });
+};
+
+/**
+ * 初始化消息区域的右键菜单监听
+ * 应在 DOM 就绪后调用一次
+ */
+export const initMessageContextMenu = () => {
+  // 点击任意位置关闭菜单
+  document.addEventListener('click', dismissContextMenu);
+  document.addEventListener('contextmenu', (event) => {
+    // 如果右键点击的不是消息区域，关闭已有菜单
+    if (!event.target.closest('.message-row[data-node-id]')) {
+      dismissContextMenu();
+    }
+  });
+
+  // 在消息列表上监听右键事件（事件委托）
+  els.messageList.addEventListener('contextmenu', (event) => {
+    const row = event.target.closest('.message-row[data-node-id]');
+    if (!row) return;
+
+    const nodeId = row.dataset.nodeId;
+    if (!nodeId) return;
+
+    event.preventDefault();
+    showMessageContextMenu(event, nodeId);
+  });
+};
+
+/**
+ * 为消息行添加"创建分支"操作按钮（hover 时显示）
+ * 在 renderMessages 中为每个带 data-node-id 的消息行调用
+ * @param {HTMLElement} row - 消息行 DOM 元素
+ * @param {string} nodeId - 消息的 node_id
+ */
+export const addBranchActionButton = (row, nodeId) => {
+  if (!row || !nodeId) return;
+
+  const actionsWrap = document.createElement('div');
+  actionsWrap.className = 'message-actions';
+
+  const branchBtn = document.createElement('button');
+  branchBtn.type = 'button';
+  branchBtn.className = 'message-action-btn branch-btn';
+  branchBtn.title = '从此处创建分支';
+  branchBtn.setAttribute('aria-label', '从此处创建分支');
+  branchBtn.innerHTML = '<span class="action-icon">⑂</span>';
+
+  branchBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    createBranchFromNode(nodeId);
+  });
+
+  actionsWrap.appendChild(branchBtn);
+  row.appendChild(actionsWrap);
 };
