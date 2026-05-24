@@ -2282,20 +2282,24 @@ textarea::placeholder {
   stroke-width: 2.4;
 }
 
-.branch-message-card.role-user .branch-message-role {
+.branch-message-slot.role-user .branch-message-role {
   fill: #75a7ff;
 }
 
-.branch-message-card.role-assistant .branch-message-role {
+.branch-message-slot.role-assistant .branch-message-role {
   fill: #52d987;
 }
 
-.branch-message-card.role-tool .branch-message-role {
+.branch-message-slot.role-tool .branch-message-role {
   fill: var(--amber);
 }
 
-.branch-message-card.role-system .branch-message-role {
+.branch-message-slot.role-system .branch-message-role {
   fill: #a5b0bf;
+}
+
+.branch-message-slot.muted {
+  opacity: 0.48;
 }
 
 .branch-message-role,

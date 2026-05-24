@@ -3,7 +3,7 @@
  * 运行: node web/js/branch-tree.test.mjs
  */
 
-import { calculateLayout, buildTree, computeActivePath, markActivePath, TREE_CONSTANTS } from './branch-tree.js';
+import { calculateLayout, buildTree, buildDisplayTree, computeActivePath, markActivePath, TREE_CONSTANTS } from './branch-tree.js';
 
 let passed = 0;
 let failed = 0;
@@ -315,6 +315,55 @@ console.log('Test 15: buildTree computes active path independently of API is_act
   assert(nodeMap.get('n1').isActive === true, 'n1 should be active (computed from activeNodeId)');
   assert(nodeMap.get('n2').isActive === true, 'n2 should be active (computed from activeNodeId)');
   assert(nodeMap.get('n3').isActive === false, 'n3 should NOT be active (despite API is_active=true)');
+}
+
+// ─── Test 16: buildDisplayTree groups one conversation flow into a single block ───
+console.log('Test 16: buildDisplayTree groups user/tool/model flow into one block');
+{
+  const apiNodes = [
+    { node_id: 'root', parent_id: null, role: 'system', summary: 'sys' },
+    { node_id: 'u1', parent_id: 'root', role: 'user', summary: 'list files' },
+    { node_id: 'cmd1', parent_id: 'u1', role: 'assistant', summary: '[命令] ls' },
+    { node_id: 'res1', parent_id: 'cmd1', role: 'user', summary: '[执行完成] ok' },
+    { node_id: 'a1', parent_id: 'res1', role: 'assistant', summary: '[完成] done' },
+  ];
+  const { root, nodeMap } = buildTree(apiNodes, 'a1');
+  const display = buildDisplayTree(root, nodeMap);
+  const turn = display.root.children[0];
+
+  assert(display.root.role === 'system', 'system remains its own display block');
+  assert(display.root.children.length === 1, 'system has one turn child');
+  assert(turn.role === 'turn', 'conversation flow is a turn block');
+  assert(turn.nodeId === 'a1', 'turn target node is the final model output');
+  assert(turn.nodeIds.join(',') === 'u1,cmd1,res1,a1', 'turn contains user, tool call, tool result, and model nodes');
+  assert(turn.userSummary === 'list files', 'turn keeps user input summary');
+  assert(turn.toolCount === 1, 'turn counts one tool call');
+  assert(turn.modelSummary === '[完成] done', 'turn keeps final model summary');
+}
+
+// ─── Test 17: buildDisplayTree keeps sibling branches as turn blocks ───
+console.log('Test 17: buildDisplayTree keeps sibling branches as separate turn blocks');
+{
+  const apiNodes = [
+    { node_id: 'root', parent_id: null, role: 'system', summary: 'sys' },
+    { node_id: 'u1', parent_id: 'root', role: 'user', summary: '2+3' },
+    { node_id: 'a1', parent_id: 'u1', role: 'assistant', summary: '[完成] 5' },
+    { node_id: 'u2', parent_id: 'a1', role: 'user', summary: '再加5' },
+    { node_id: 'a2', parent_id: 'u2', role: 'assistant', summary: '[完成] 10' },
+    { node_id: 'blank', parent_id: 'a1', role: 'user', summary: '' },
+    { node_id: 'u3', parent_id: 'blank', role: 'user', summary: '再加7' },
+    { node_id: 'a3', parent_id: 'u3', role: 'assistant', summary: '[完成] 12' },
+  ];
+  const { root, nodeMap } = buildTree(apiNodes, 'a2');
+  const display = buildDisplayTree(root, nodeMap);
+  const firstTurn = display.root.children[0];
+  const branchIds = firstTurn.children.map((node) => node.nodeId).sort();
+
+  assert(firstTurn.nodeId === 'a1', 'first turn ends at first model output');
+  assert(firstTurn.children.length === 2, 'first turn has two branch turn children');
+  assert(branchIds.join(',') === 'a2,a3', `branch turn ids should be a2,a3, got ${branchIds.join(',')}`);
+  assert(display.nodeMap.get('a2').isActive === true, 'active branch turn is highlighted');
+  assert(display.nodeMap.get('a3').isActive === false, 'inactive branch turn is subdued');
 }
 
 // ─── Summary ───

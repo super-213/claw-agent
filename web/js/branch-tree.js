@@ -25,15 +25,15 @@ export const TREE_CONSTANTS = {
   /** 分支块宽度 */
   nodeWidth: 240,
   /** 分支块高度 */
-  nodeHeight: 128,
+  nodeHeight: 152,
   /** 分支块内部消息条宽度 */
-  messageWidth: 176,
+  messageWidth: 204,
   /** 分支块内部消息条高度 */
-  messageHeight: 34,
+  messageHeight: 30,
   /** 同层节点水平间距 */
   siblingSpacing: 320,
   /** 层级间垂直间距 */
-  levelSpacing: 190,
+  levelSpacing: 220,
   /** 树的内边距 */
   padding: 36,
   /** 最小 SVG 宽度 */
@@ -78,6 +78,11 @@ export const EDGE_STYLES = {
  * @property {number} x - 布局计算后的 x 坐标
  * @property {number} y - 布局计算后的 y 坐标
  * @property {TreeNode[]} children - 子节点引用列表
+ * @property {string[]} [nodeIds] - 聚合显示块包含的原始节点 ID 列表
+ * @property {string} [userSummary] - 聚合块的用户输入摘要
+ * @property {string} [toolSummary] - 聚合块的工具调用摘要
+ * @property {string} [modelSummary] - 聚合块的模型输出摘要
+ * @property {number} [toolCount] - 聚合块中的工具调用次数
  */
 
 /**
@@ -170,6 +175,184 @@ export const buildTree = (apiNodes, activeNodeId) => {
   return { root, nodeMap };
 };
 
+const hasContent = (node) => Boolean((node?.summary || '').trim());
+
+const isToolCallNode = (node) => (
+  node?.role === 'assistant' && (node.summary || '').trim().startsWith('[命令]')
+);
+
+const isToolResultNode = (node) => (
+  node?.role === 'user' && (node.summary || '').trim().startsWith('[执行完成]')
+);
+
+const isPlaceholderNode = (node) => node?.role === 'user' && !hasContent(node);
+
+const isUserInputNode = (node) => (
+  node?.role === 'user' && hasContent(node) && !isToolResultNode(node)
+);
+
+const createDisplayNode = ({
+  nodeId,
+  parentId,
+  role,
+  summary,
+  isActive,
+  nodeIds,
+  userSummary = '',
+  toolSummary = '',
+  modelSummary = '',
+  toolCount = 0,
+}) => ({
+  nodeId,
+  parentId,
+  role,
+  summary,
+  isActive,
+  childCount: 0,
+  x: 0,
+  y: 0,
+  children: [],
+  nodeIds,
+  userSummary,
+  toolSummary,
+  modelSummary,
+  toolCount,
+});
+
+const markDisplayNodeActive = (displayNode, rawNodeMap) => {
+  displayNode.isActive = displayNode.nodeIds.some((nodeId) => rawNodeMap.get(nodeId)?.isActive);
+};
+
+const collectTurnBlock = (userNode, parentDisplayId, rawNodeMap) => {
+  const members = [userNode];
+  let terminal = userNode;
+  let cursor = userNode;
+  let toolCount = 0;
+  let modelSummary = '';
+  let nextChildren = userNode.children;
+
+  while (cursor.children.length === 1) {
+    const child = cursor.children[0];
+
+    if (isToolCallNode(child)) {
+      toolCount += 1;
+      members.push(child);
+      terminal = child;
+      cursor = child;
+      nextChildren = child.children;
+      continue;
+    }
+
+    if (isToolResultNode(child)) {
+      members.push(child);
+      terminal = child;
+      cursor = child;
+      nextChildren = child.children;
+      continue;
+    }
+
+    if (child.role === 'assistant') {
+      members.push(child);
+      terminal = child;
+      modelSummary = child.summary || '';
+      nextChildren = child.children;
+    }
+    break;
+  }
+
+  const displayNode = createDisplayNode({
+    nodeId: terminal.nodeId,
+    parentId: parentDisplayId,
+    role: 'turn',
+    summary: modelSummary || userNode.summary || '',
+    isActive: false,
+    nodeIds: members.map((node) => node.nodeId),
+    userSummary: userNode.summary || '',
+    toolSummary: toolCount > 0 ? `工具调用 x${toolCount}` : '工具调用：无',
+    modelSummary: modelSummary || '等待模型输出',
+    toolCount,
+  });
+  markDisplayNodeActive(displayNode, rawNodeMap);
+
+  return { displayNode, nextChildren };
+};
+
+/**
+ * 将原始消息树折叠成用于展示的流程块树。
+ *
+ * 原始树仍按单条消息存储，显示树把一次 user -> tool calls -> model output
+ * 聚合成一个可视化分支块；system 保持为独立块。
+ *
+ * @param {TreeNode|null} rawRoot
+ * @param {Map<string, TreeNode>} rawNodeMap
+ * @returns {{ root: TreeNode|null, nodeMap: Map<string, TreeNode> }}
+ */
+export const buildDisplayTree = (rawRoot, rawNodeMap) => {
+  if (!rawRoot) {
+    return { root: null, nodeMap: new Map() };
+  }
+
+  const displayMap = new Map();
+
+  const appendNode = (node) => {
+    displayMap.set(node.nodeId, node);
+    return node;
+  };
+
+  const buildMany = (rawNodes, parentDisplayId) => {
+    const displayNodes = [];
+    for (const rawNode of rawNodes) {
+      displayNodes.push(...buildOne(rawNode, parentDisplayId));
+    }
+    return displayNodes;
+  };
+
+  const buildOne = (rawNode, parentDisplayId) => {
+    if (isPlaceholderNode(rawNode)) {
+      return buildMany(rawNode.children, parentDisplayId);
+    }
+
+    if (rawNode.role === 'system') {
+      const displayNode = appendNode(createDisplayNode({
+        nodeId: rawNode.nodeId,
+        parentId: parentDisplayId,
+        role: 'system',
+        summary: rawNode.summary || '',
+        isActive: rawNode.isActive,
+        nodeIds: [rawNode.nodeId],
+        modelSummary: rawNode.summary || '',
+      }));
+      displayNode.children = buildMany(rawNode.children, displayNode.nodeId);
+      displayNode.childCount = displayNode.children.length;
+      return [displayNode];
+    }
+
+    if (isUserInputNode(rawNode)) {
+      const { displayNode, nextChildren } = collectTurnBlock(rawNode, parentDisplayId, rawNodeMap);
+      appendNode(displayNode);
+      displayNode.children = buildMany(nextChildren, displayNode.nodeId);
+      displayNode.childCount = displayNode.children.length;
+      return [displayNode];
+    }
+
+    const displayNode = appendNode(createDisplayNode({
+      nodeId: rawNode.nodeId,
+      parentId: parentDisplayId,
+      role: rawNode.role || 'message',
+      summary: rawNode.summary || '',
+      isActive: rawNode.isActive,
+      nodeIds: [rawNode.nodeId],
+      modelSummary: rawNode.summary || '',
+    }));
+    displayNode.children = buildMany(rawNode.children, displayNode.nodeId);
+    displayNode.childCount = displayNode.children.length;
+    return [displayNode];
+  };
+
+  const roots = buildOne(rawRoot, null);
+  return { root: roots[0] || null, nodeMap: displayMap };
+};
+
 // ─── SVG 容器管理 ─────────────────────────────────────────────────────────────
 
 /** 缩放/平移常量 */
@@ -198,6 +381,8 @@ const _state = {
   treeRoot: null,
   /** @type {Map<string, TreeNode>} 节点索引 */
   nodeMap: new Map(),
+  /** @type {Map<string, TreeNode>} 原始消息节点索引 */
+  rawNodeMap: new Map(),
   /** @type {string|null} 当前活跃节点 ID */
   activeNodeId: null,
   /** @type {number} 当前树布局所需宽度 */
@@ -928,27 +1113,52 @@ const createMessageCardElement = (node) => {
   card.setAttribute('class', `branch-message-card role-${node.role}${node.isActive ? ' active' : ''}`);
 
   const x = (TREE_CONSTANTS.nodeWidth - TREE_CONSTANTS.messageWidth) / 2;
-  const y = (TREE_CONSTANTS.nodeHeight - TREE_CONSTANTS.messageHeight) / 2;
 
-  const rect = document.createElementNS(SVG_NS, 'rect');
-  rect.setAttribute('x', String(x));
-  rect.setAttribute('y', String(y));
-  rect.setAttribute('width', String(TREE_CONSTANTS.messageWidth));
-  rect.setAttribute('height', String(TREE_CONSTANTS.messageHeight));
-  rect.setAttribute('rx', '7');
-  rect.setAttribute('class', 'branch-message-rect');
+  const appendSlot = ({ role, label, text, y, muted = false }) => {
+    const slot = document.createElementNS(SVG_NS, 'g');
+    slot.setAttribute('class', `branch-message-slot role-${role}${muted ? ' muted' : ''}`);
 
-  const roleLabel = createTextElement(`${getRoleLabel(node.role)}:`, x + 18, y + 22, 'branch-message-role');
-  const summary = createTextElement(
-    truncateSummary(node.summary || 'empty', 18),
-    x + 82,
-    y + 22,
-    'branch-message-summary',
-  );
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(y));
+    rect.setAttribute('width', String(TREE_CONSTANTS.messageWidth));
+    rect.setAttribute('height', String(TREE_CONSTANTS.messageHeight));
+    rect.setAttribute('rx', '7');
+    rect.setAttribute('class', 'branch-message-rect');
 
-  card.appendChild(rect);
-  card.appendChild(roleLabel);
-  card.appendChild(summary);
+    const roleLabel = createTextElement(`${label}:`, x + 14, y + 19, 'branch-message-role');
+    const summary = createTextElement(
+      truncateSummary(text || 'empty', 15),
+      x + 78,
+      y + 19,
+      'branch-message-summary',
+    );
+
+    slot.appendChild(rect);
+    slot.appendChild(roleLabel);
+    slot.appendChild(summary);
+    card.appendChild(slot);
+  };
+
+  if (node.role === 'turn') {
+    appendSlot({ role: 'user', label: 'user', text: node.userSummary, y: 22 });
+    appendSlot({
+      role: 'tool',
+      label: 'tool',
+      text: node.toolSummary,
+      y: 61,
+      muted: !node.toolCount,
+    });
+    appendSlot({ role: 'assistant', label: 'model', text: node.modelSummary, y: 100 });
+  } else {
+    appendSlot({
+      role: node.role || 'system',
+      label: getRoleLabel(node.role),
+      text: node.modelSummary || node.summary,
+      y: (TREE_CONSTANTS.nodeHeight - TREE_CONSTANTS.messageHeight) / 2,
+    });
+  }
+
   return card;
 };
 
@@ -961,6 +1171,7 @@ export const createNodeElement = (node) => {
   const group = document.createElementNS(SVG_NS, 'g');
   group.setAttribute('class', `branch-tree-node${node.isActive ? ' active' : ' inactive'}`);
   group.setAttribute('data-node-id', node.nodeId);
+  group.setAttribute('data-delete-node-id', node.role === 'turn' ? node.nodeIds[0] : node.nodeId);
   group.setAttribute('transform', `translate(${node.x}, ${node.y})`);
 
   const block = document.createElementNS(SVG_NS, 'rect');
@@ -978,7 +1189,15 @@ export const createNodeElement = (node) => {
 
   // Tooltip（SVG title 元素，浏览器原生 tooltip）
   const title = document.createElementNS(SVG_NS, 'title');
-  title.textContent = `${getRoleLabel(node.role)}: ${truncateSummary(node.summary, 80)}`;
+  if (node.role === 'turn') {
+    title.textContent = [
+      `user: ${truncateSummary(node.userSummary, 80)}`,
+      `tool: ${node.toolSummary}`,
+      `model: ${truncateSummary(node.modelSummary, 80)}`,
+    ].join('\n');
+  } else {
+    title.textContent = `${getRoleLabel(node.role)}: ${truncateSummary(node.summary, 80)}`;
+  }
   group.appendChild(title);
 
   // 点击事件：触发分支切换
@@ -1149,9 +1368,11 @@ export const clearEdges = (rootGroup) => {
  * @returns {{ root: TreeNode|null, width: number, height: number }}
  */
 export const setTreeData = (apiNodes, activeNodeId) => {
-  const { root, nodeMap } = buildTree(apiNodes, activeNodeId);
+  const { root: rawRoot, nodeMap: rawNodeMap } = buildTree(apiNodes, activeNodeId);
+  const { root, nodeMap } = buildDisplayTree(rawRoot, rawNodeMap);
   _state.treeRoot = root;
   _state.nodeMap = nodeMap;
+  _state.rawNodeMap = rawNodeMap;
   _state.activeNodeId = activeNodeId;
 
   const { width, height } = calculateLayout(root);
@@ -1210,13 +1431,16 @@ export const getActiveNodeId = () => _state.activeNodeId;
  * @param {string} newActiveNodeId - 新的活跃节点 ID
  */
 export const updateActivePath = (newActiveNodeId) => {
-  if (!_state.nodeMap || _state.nodeMap.size === 0) return;
+  if (!_state.rawNodeMap || _state.rawNodeMap.size === 0) return;
 
   _state.activeNodeId = newActiveNodeId;
 
   // 重新计算活跃路径
-  const activePathSet = computeActivePath(_state.nodeMap, newActiveNodeId);
-  markActivePath(_state.nodeMap, activePathSet);
+  const activePathSet = computeActivePath(_state.rawNodeMap, newActiveNodeId);
+  markActivePath(_state.rawNodeMap, activePathSet);
+  for (const displayNode of _state.nodeMap.values()) {
+    markDisplayNodeActive(displayNode, _state.rawNodeMap);
+  }
 
   // 更新 SVG 中的节点样式
   if (_state.rootGroup) {
@@ -1443,7 +1667,7 @@ const bindContextMenuEvents = () => {
       }
 
       event.preventDefault();
-      const nodeId = nodeGroup.getAttribute('data-node-id');
+      const nodeId = nodeGroup.getAttribute('data-delete-node-id') || nodeGroup.getAttribute('data-node-id');
       if (nodeId) {
         showTreeNodeContextMenu(event, nodeId);
       }
@@ -1487,6 +1711,7 @@ export const cleanup = () => {
   _state.container = null;
   _state.treeRoot = null;
   _state.nodeMap = new Map();
+  _state.rawNodeMap = new Map();
   _state.activeNodeId = null;
   _state.contentWidth = TREE_CONSTANTS.minWidth;
   _state.contentHeight = TREE_CONSTANTS.minHeight;
