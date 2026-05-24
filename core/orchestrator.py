@@ -20,18 +20,21 @@ class AgentOrchestrator:
         skill_registry: SkillRegistry,
         executor: CommandExecutor,
         context_compressor: Optional[ContextCompressor] = None,
+        max_command_failures: int = 3,
     ):
         self.llm_client = llm_client
         self.conversation = conversation
         self.skill_registry = skill_registry
         self.executor = executor
         self.context_compressor = context_compressor
+        self.max_command_failures = max_command_failures
         self.context = ExecutionContext()
         
-        # 构建责任链：完成 -> 命令 -> 技能输出 -> 默认
-        self.handler_chain = CompletionHandler(
-            CommandHandler(
-                executor,
+        # 命令优先于完成标记，避免模型在同一回复里输出 [完成] 和 [命令]
+        # 时跳过真实执行。
+        self.handler_chain = CommandHandler(
+            executor,
+            CompletionHandler(
                 SkillOutputHandler()
             )
         )
@@ -189,6 +192,9 @@ class AgentOrchestrator:
             elif result == HandlerResult.CONTINUE:
                 # 命令执行后，添加执行结果
                 if exec_result := self.context.metadata.get('execution_result'):
+                    if self._command_failure_limit_reached(exec_result):
+                        self._record_command_abort(exec_result)
+                        break
                     self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
                 continue
             elif result == HandlerResult.RETRY:
@@ -269,8 +275,9 @@ class AgentOrchestrator:
                 "message": "解析模型回复",
                 "iteration": iteration,
             }
-            command = self._extract_command(reply)
-            if command:
+            commands = self._extract_commands(reply)
+            command = "\n\n".join(commands)
+            if commands:
                 yield {
                     "type": "command_start",
                     "stage": "command",
@@ -281,7 +288,7 @@ class AgentOrchestrator:
 
             result = self.handler_chain.handle(reply, self.context)
 
-            if command:
+            if commands:
                 exec_result = self.context.metadata.get("execution_result")
                 if exec_result:
                     yield {
@@ -305,6 +312,15 @@ class AgentOrchestrator:
                 break
             elif result == HandlerResult.CONTINUE:
                 if exec_result := self.context.metadata.get("execution_result"):
+                    if self._command_failure_limit_reached(exec_result):
+                        abort_message = self._record_command_abort(exec_result)
+                        yield {
+                            "type": "step",
+                            "stage": "command_abort",
+                            "message": abort_message,
+                            "iteration": iteration,
+                        }
+                        break
                     self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
                     yield {
                         "type": "step",
@@ -328,3 +344,25 @@ class AgentOrchestrator:
     @staticmethod
     def _extract_command(response: str) -> str:
         return InputParser.extract_command(response)
+
+    @staticmethod
+    def _extract_commands(response: str) -> List[str]:
+        return InputParser.extract_commands(response)
+
+    def _command_failure_limit_reached(self, exec_result) -> bool:
+        if exec_result.success:
+            return False
+        return (
+            self.context.metadata.get("command_failure_count", 0)
+            >= self.max_command_failures
+        )
+
+    def _record_command_abort(self, exec_result) -> str:
+        failure_count = self.context.metadata.get("command_failure_count", 0)
+        message = (
+            f"命令连续失败 {failure_count} 次，已停止自动重试。"
+            f"最后一次错误：\n{exec_result.feedback}"
+        )
+        self.conversation.add_user_message(f"[执行中止]\n{message}")
+        print(message)
+        return message

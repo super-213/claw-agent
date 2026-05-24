@@ -22,7 +22,7 @@ const _state = {
   /** 面板是否打开 */
   isOpen: false,
   /** 桌面端面板宽度（px） */
-  panelWidth: 320,
+  panelWidth: 420,
   /** 移动端面板高度（vh 百分比，40-70） */
   panelHeight: 40,
   /** 是否正在拖拽调整尺寸 */
@@ -111,9 +111,9 @@ const handleResizeMouseMove = (event) => {
   const delta = _state.resizeStartPos - event.clientX;
   let newWidth = _state.resizeStartSize + delta;
 
-  // Clamp width between 200px and 50% of viewport
-  const maxWidth = window.innerWidth * 0.5;
-  newWidth = Math.max(200, Math.min(maxWidth, newWidth));
+  // Clamp width between 320px and 60% of viewport
+  const maxWidth = window.innerWidth * 0.6;
+  newWidth = Math.max(320, Math.min(maxWidth, newWidth));
 
   _state.panelWidth = newWidth;
   panel.style.width = newWidth + 'px';

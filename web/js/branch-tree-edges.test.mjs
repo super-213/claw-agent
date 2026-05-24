@@ -91,11 +91,10 @@ console.log('Test 1: computeEdgePath generates valid cubic Bézier path');
   assert(path.includes(' C '), `path contains C command: "${path}"`);
 
   // Parse coordinates
-  const r = TREE_CONSTANTS.nodeRadius;
-  const expectedStartX = parent.x;
-  const expectedStartY = parent.y + r;
-  const expectedEndX = child.x;
-  const expectedEndY = child.y - r;
+  const expectedStartX = parent.x + TREE_CONSTANTS.nodeWidth / 2;
+  const expectedStartY = parent.y + TREE_CONSTANTS.nodeHeight;
+  const expectedEndX = child.x + TREE_CONSTANTS.nodeWidth / 2;
+  const expectedEndY = child.y;
 
   assert(path.includes(`M ${expectedStartX} ${expectedStartY}`),
     `path starts at parent bottom (${expectedStartX}, ${expectedStartY})`);
@@ -110,16 +109,16 @@ console.log('Test 2: computeEdgePath control points at vertical midpoint');
   const child = makeNode('c', 'p', { x: 120, y: 100 });
 
   const path = computeEdgePath(parent, child);
-  const r = TREE_CONSTANTS.nodeRadius;
-
-  const y1 = parent.y + r;
-  const y2 = child.y - r;
+  const x1 = parent.x + TREE_CONSTANTS.nodeWidth / 2;
+  const x2 = child.x + TREE_CONSTANTS.nodeWidth / 2;
+  const y1 = parent.y + TREE_CONSTANTS.nodeHeight;
+  const y2 = child.y;
   const midY = (y1 + y2) / 2;
 
   // Control points should use midY
   // Path format: M x1 y1 C cp1x cp1y, cp2x cp2y, x2 y2
-  assert(path.includes(`${parent.x} ${midY}`), `first control point at (parent.x, midY)`);
-  assert(path.includes(`${child.x} ${midY}`), `second control point at (child.x, midY)`);
+  assert(path.includes(`${x1} ${midY}`), `first control point at (parent center, midY)`);
+  assert(path.includes(`${x2} ${midY}`), `second control point at (child center, midY)`);
 }
 
 // ─── Test 3: computeEdgePath for vertically aligned nodes ───
@@ -129,15 +128,14 @@ console.log('Test 3: computeEdgePath for vertically aligned nodes (same x)');
   const child = makeNode('c', 'p', { x: 80, y: 100 });
 
   const path = computeEdgePath(parent, child);
-  const r = TREE_CONSTANTS.nodeRadius;
-
   // When x is the same, the curve should be a straight vertical line
   // (control points have same x as start/end)
-  const y1 = parent.y + r;
-  const y2 = child.y - r;
+  const x = parent.x + TREE_CONSTANTS.nodeWidth / 2;
+  const y1 = parent.y + TREE_CONSTANTS.nodeHeight;
+  const y2 = child.y;
   const midY = (y1 + y2) / 2;
 
-  assert(path === `M 80 ${y1} C 80 ${midY}, 80 ${midY}, 80 ${y2}`,
+  assert(path === `M ${x} ${y1} C ${x} ${midY}, ${x} ${midY}, ${x} ${y2}`,
     `straight vertical path when x aligned: "${path}"`);
 }
 
@@ -170,7 +168,7 @@ console.log('Test 5: createEdgeElement creates SVG path with correct attributes'
   assert(el.tagName === 'path', 'element is a path');
   assert(el.attributes['fill'] === 'none', 'fill is none');
   assert(el.attributes['stroke'] === EDGE_STYLES.activeColor, 'stroke is activeColor for active edge');
-  assert(el.attributes['stroke-width'] === String(EDGE_STYLES.width), 'stroke-width matches');
+  assert(el.attributes['stroke-width'] === String(EDGE_STYLES.width + 1), 'active stroke-width is emphasized');
   assert(el.attributes['class'].includes('branch-tree-edge'), 'has edge class');
   assert(el.attributes['class'].includes('active'), 'has active class');
   assert(el.attributes['data-from'] === 'p1', 'data-from is parent nodeId');

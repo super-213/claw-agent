@@ -1,6 +1,10 @@
 """完成处理器"""
+from typing import TYPE_CHECKING
+
 from .base import ResponseHandler, HandlerResult
-from core.context import ExecutionContext
+
+if TYPE_CHECKING:
+    from core.context import ExecutionContext
 
 
 class CompletionHandler(ResponseHandler):
@@ -11,10 +15,10 @@ class CompletionHandler(ResponseHandler):
         "failed", "failure", "error", "not ", "no ", "cannot", "can't",
     )
     
-    def can_handle(self, response: str, context: ExecutionContext) -> bool:
+    def can_handle(self, response: str, context: "ExecutionContext") -> bool:
         return "[完成]" in response
     
-    def process(self, response: str, context: ExecutionContext) -> HandlerResult:
+    def process(self, response: str, context: "ExecutionContext") -> HandlerResult:
         last_result = context.metadata.get("execution_result")
         if last_result and not last_result.success and not self._acknowledges_failure(response):
             print("上一条命令失败，拒绝以成功状态完成\n")

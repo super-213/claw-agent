@@ -20,37 +20,46 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** 节点尺寸与间距 */
 export const TREE_CONSTANTS = {
-  /** 节点圆形半径 */
+  /** 兼容旧测试/调用方的节点半径，块状视图不再直接使用 */
   nodeRadius: 14,
+  /** 分支块宽度 */
+  nodeWidth: 240,
+  /** 分支块高度 */
+  nodeHeight: 128,
+  /** 分支块内部消息条宽度 */
+  messageWidth: 176,
+  /** 分支块内部消息条高度 */
+  messageHeight: 34,
   /** 同层节点水平间距 */
-  siblingSpacing: 50,
+  siblingSpacing: 320,
   /** 层级间垂直间距 */
-  levelSpacing: 70,
+  levelSpacing: 190,
   /** 树的内边距 */
-  padding: 30,
+  padding: 36,
   /** 最小 SVG 宽度 */
-  minWidth: 200,
+  minWidth: 320,
   /** 最小 SVG 高度 */
-  minHeight: 200,
+  minHeight: 260,
 };
 
 /** 节点颜色（按角色区分） */
 export const NODE_COLORS = {
-  user: '#4a9eff',
-  assistant: '#34c759',
+  user: '#75a7ff',
+  assistant: '#52d987',
+  tool: '#f5a623',
   system: '#8e8e93',
   /** 活跃路径上的节点描边色 */
-  activeBorder: '#ff9500',
+  activeBorder: '#00e5c8',
   /** 默认描边色 */
-  defaultBorder: '#c7c7cc',
+  defaultBorder: 'rgba(122, 143, 168, 0.5)',
 };
 
 /** 连线样式 */
 export const EDGE_STYLES = {
   /** 默认连线颜色 */
-  color: '#c7c7cc',
+  color: 'rgba(122, 143, 168, 0.36)',
   /** 活跃路径连线颜色 */
-  activeColor: '#ff9500',
+  activeColor: '#00e5c8',
   /** 连线宽度 */
   width: 2,
 };
@@ -191,6 +200,10 @@ const _state = {
   nodeMap: new Map(),
   /** @type {string|null} 当前活跃节点 ID */
   activeNodeId: null,
+  /** @type {number} 当前树布局所需宽度 */
+  contentWidth: TREE_CONSTANTS.minWidth,
+  /** @type {number} 当前树布局所需高度 */
+  contentHeight: TREE_CONSTANTS.minHeight,
   /** @type {boolean} 是否正在切换分支（防止重复点击） */
   switching: false,
   /** @type {Function|null} 外部注册的节点点击回调 */
@@ -300,8 +313,8 @@ export const initSvg = (container) => {
  */
 const handleResize = (width, height) => {
   if (!_state.svg) return;
-  const w = Math.max(width || TREE_CONSTANTS.minWidth, TREE_CONSTANTS.minWidth);
-  const h = Math.max(height || TREE_CONSTANTS.minHeight, TREE_CONSTANTS.minHeight);
+  const w = Math.max(width || TREE_CONSTANTS.minWidth, _state.contentWidth, TREE_CONSTANTS.minWidth);
+  const h = Math.max(height || TREE_CONSTANTS.minHeight, _state.contentHeight, TREE_CONSTANTS.minHeight);
   _state.svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 };
 
@@ -832,9 +845,12 @@ export const calculateLayout = (root) => {
     maxX += offsetX;
   }
 
-  const totalWidth = Math.max(maxX + TREE_CONSTANTS.padding, TREE_CONSTANTS.minWidth);
+  const totalWidth = Math.max(
+    maxX + TREE_CONSTANTS.nodeWidth + TREE_CONSTANTS.padding,
+    TREE_CONSTANTS.minWidth,
+  );
   const totalHeight = Math.max(
-    (maxDepth + 1) * TREE_CONSTANTS.levelSpacing + TREE_CONSTANTS.padding * 2,
+    maxDepth * TREE_CONSTANTS.levelSpacing + TREE_CONSTANTS.nodeHeight + TREE_CONSTANTS.padding * 2,
     TREE_CONSTANTS.minHeight,
   );
 
@@ -874,31 +890,96 @@ export const getNodeBorderColor = (isActive) => {
 };
 
 /**
- * 创建单个节点的 SVG 组元素（圆形 + tooltip）
+ * 获取节点角色在分支块里的显示名称
+ * @param {string} role - 消息角色
+ * @returns {string}
+ */
+const getRoleLabel = (role) => {
+  if (role === 'assistant') return 'model';
+  if (role === 'tool') return 'tool';
+  if (role === 'system') return 'system';
+  return 'user';
+};
+
+/**
+ * 创建 SVG 文本元素
+ * @param {string} text
+ * @param {number} x
+ * @param {number} y
+ * @param {string} className
+ * @returns {SVGTextElement}
+ */
+const createTextElement = (text, x, y, className) => {
+  const el = document.createElementNS(SVG_NS, 'text');
+  el.setAttribute('x', String(x));
+  el.setAttribute('y', String(y));
+  el.setAttribute('class', className);
+  el.textContent = text;
+  return el;
+};
+
+/**
+ * 创建单个消息条，放在分支块内部
+ * @param {TreeNode} node - 树节点数据
+ * @returns {SVGGElement}
+ */
+const createMessageCardElement = (node) => {
+  const card = document.createElementNS(SVG_NS, 'g');
+  card.setAttribute('class', `branch-message-card role-${node.role}${node.isActive ? ' active' : ''}`);
+
+  const x = (TREE_CONSTANTS.nodeWidth - TREE_CONSTANTS.messageWidth) / 2;
+  const y = (TREE_CONSTANTS.nodeHeight - TREE_CONSTANTS.messageHeight) / 2;
+
+  const rect = document.createElementNS(SVG_NS, 'rect');
+  rect.setAttribute('x', String(x));
+  rect.setAttribute('y', String(y));
+  rect.setAttribute('width', String(TREE_CONSTANTS.messageWidth));
+  rect.setAttribute('height', String(TREE_CONSTANTS.messageHeight));
+  rect.setAttribute('rx', '7');
+  rect.setAttribute('class', 'branch-message-rect');
+
+  const roleLabel = createTextElement(`${getRoleLabel(node.role)}:`, x + 18, y + 22, 'branch-message-role');
+  const summary = createTextElement(
+    truncateSummary(node.summary || 'empty', 18),
+    x + 82,
+    y + 22,
+    'branch-message-summary',
+  );
+
+  card.appendChild(rect);
+  card.appendChild(roleLabel);
+  card.appendChild(summary);
+  return card;
+};
+
+/**
+ * 创建单个节点的 SVG 组元素（分支块 + 消息摘要 + tooltip）
  * @param {TreeNode} node - 树节点数据
  * @returns {SVGGElement} 节点的 SVG 组元素
  */
 export const createNodeElement = (node) => {
   const group = document.createElementNS(SVG_NS, 'g');
-  group.setAttribute('class', 'branch-tree-node');
+  group.setAttribute('class', `branch-tree-node${node.isActive ? ' active' : ' inactive'}`);
   group.setAttribute('data-node-id', node.nodeId);
   group.setAttribute('transform', `translate(${node.x}, ${node.y})`);
 
-  // 圆形节点
-  const circle = document.createElementNS(SVG_NS, 'circle');
-  circle.setAttribute('r', String(TREE_CONSTANTS.nodeRadius));
-  circle.setAttribute('fill', getNodeColor(node.role));
-  circle.setAttribute('stroke', getNodeBorderColor(node.isActive));
-  circle.setAttribute('stroke-width', node.isActive ? '3' : '2');
-  circle.setAttribute('class', `node-circle role-${node.role}${node.isActive ? ' active' : ''}`);
-  circle.style.cursor = 'pointer';
+  const block = document.createElementNS(SVG_NS, 'rect');
+  block.setAttribute('width', String(TREE_CONSTANTS.nodeWidth));
+  block.setAttribute('height', String(TREE_CONSTANTS.nodeHeight));
+  block.setAttribute('rx', '18');
+  block.setAttribute('fill', 'transparent');
+  block.setAttribute('stroke', getNodeBorderColor(node.isActive));
+  block.setAttribute('stroke-width', node.isActive ? '2.6' : '1.8');
+  block.setAttribute('class', `branch-block role-${node.role}${node.isActive ? ' active' : ''}`);
+  block.style.cursor = 'pointer';
 
-  group.appendChild(circle);
+  group.appendChild(block);
+  group.appendChild(createMessageCardElement(node));
 
   // Tooltip（SVG title 元素，浏览器原生 tooltip）
   const title = document.createElementNS(SVG_NS, 'title');
-  title.textContent = truncateSummary(node.summary);
-  circle.appendChild(title);
+  title.textContent = `${getRoleLabel(node.role)}: ${truncateSummary(node.summary, 80)}`;
+  group.appendChild(title);
 
   // 点击事件：触发分支切换
   group.addEventListener('click', (event) => {
@@ -958,8 +1039,7 @@ export const clearNodes = (rootGroup) => {
 /**
  * 生成连接父节点底部到子节点顶部的三次贝塞尔曲线路径字符串
  *
- * 曲线从父节点底部（parent.x, parent.y + nodeRadius）出发，
- * 到达子节点顶部（child.x, child.y - nodeRadius），
+ * 曲线从父分支块底部中心出发，到达子分支块顶部中心。
  * 控制点在垂直方向中点处，使曲线平滑过渡。
  *
  * @param {TreeNode} parent - 父节点（已有布局坐标）
@@ -967,15 +1047,13 @@ export const clearNodes = (rootGroup) => {
  * @returns {string} SVG path 的 d 属性值
  */
 export const computeEdgePath = (parent, child) => {
-  const r = TREE_CONSTANTS.nodeRadius;
+  // 起点：父分支块底部中心
+  const x1 = parent.x + TREE_CONSTANTS.nodeWidth / 2;
+  const y1 = parent.y + TREE_CONSTANTS.nodeHeight;
 
-  // 起点：父节点底部
-  const x1 = parent.x;
-  const y1 = parent.y + r;
-
-  // 终点：子节点顶部
-  const x2 = child.x;
-  const y2 = child.y - r;
+  // 终点：子分支块顶部中心
+  const x2 = child.x + TREE_CONSTANTS.nodeWidth / 2;
+  const y2 = child.y;
 
   // 控制点：垂直方向中点，水平方向分别对齐起点和终点
   const midY = (y1 + y2) / 2;
@@ -1077,10 +1155,15 @@ export const setTreeData = (apiNodes, activeNodeId) => {
   _state.activeNodeId = activeNodeId;
 
   const { width, height } = calculateLayout(root);
+  _state.contentWidth = width;
+  _state.contentHeight = height;
 
   // 更新 SVG viewBox 以适应布局
   if (_state.svg) {
-    _state.svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    const rect = _state.container?.getBoundingClientRect();
+    const viewWidth = Math.max(rect?.width || 0, width);
+    const viewHeight = Math.max(rect?.height || 0, height);
+    _state.svg.setAttribute('viewBox', `0 0 ${viewWidth} ${viewHeight}`);
   }
 
   // 重置缩放/平移状态（新树数据从默认视图开始）
@@ -1143,16 +1226,19 @@ export const updateActivePath = (newActiveNodeId) => {
       const node = _state.nodeMap.get(nodeId);
       if (!node) continue;
 
-      const circle = nodeEl.querySelector('.node-circle');
-      if (circle) {
-        circle.setAttribute('stroke', getNodeBorderColor(node.isActive));
-        circle.setAttribute('stroke-width', node.isActive ? '3' : '2');
-        // 更新 CSS 类
-        if (node.isActive) {
-          circle.classList.add('active');
-        } else {
-          circle.classList.remove('active');
-        }
+      nodeEl.classList.toggle('active', node.isActive);
+      nodeEl.classList.toggle('inactive', !node.isActive);
+
+      const block = nodeEl.querySelector('.branch-block');
+      if (block) {
+        block.setAttribute('stroke', getNodeBorderColor(node.isActive));
+        block.setAttribute('stroke-width', node.isActive ? '2.6' : '1.8');
+        block.classList.toggle('active', node.isActive);
+      }
+
+      const messageCard = nodeEl.querySelector('.branch-message-card');
+      if (messageCard) {
+        messageCard.classList.toggle('active', node.isActive);
       }
     }
 
@@ -1402,6 +1488,8 @@ export const cleanup = () => {
   _state.treeRoot = null;
   _state.nodeMap = new Map();
   _state.activeNodeId = null;
+  _state.contentWidth = TREE_CONSTANTS.minWidth;
+  _state.contentHeight = TREE_CONSTANTS.minHeight;
   _state.switching = false;
   // 重置缩放/平移状态
   _state.scale = 1;

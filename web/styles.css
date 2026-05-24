@@ -1855,9 +1855,9 @@ textarea::placeholder {
 .tree-panel {
   display: none;
   flex-direction: column;
-  width: 320px;
-  min-width: 200px;
-  max-width: 50vw;
+  width: 420px;
+  min-width: 320px;
+  max-width: 60vw;
   border-left: 1px solid var(--stroke);
   background: rgba(8, 11, 16, 0.95);
   position: relative;
@@ -2228,56 +2228,107 @@ textarea::placeholder {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background-color: rgba(255, 255, 255, 0.012);
+  background-image:
+    linear-gradient(rgba(122, 143, 168, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 143, 168, 0.07) 1px, transparent 1px),
+    linear-gradient(rgba(122, 143, 168, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 143, 168, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px, 12px 12px, 12px 12px;
 }
 
-/* Node group: interactive cursor and hover effect */
+/* Node group: branch block inspired by the provided sketch */
 .branch-tree-node {
   cursor: pointer;
-  transition: opacity 0.18s;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.branch-tree-node.inactive {
+  opacity: 0.36;
+}
+
+.branch-tree-node.inactive:hover {
+  opacity: 0.68;
+}
+
+.branch-tree-node.active {
+  filter: drop-shadow(0 0 10px rgba(0, 229, 200, 0.16));
 }
 
 .branch-tree-node:hover {
-  opacity: 0.85;
+  filter: drop-shadow(0 0 12px rgba(0, 229, 200, 0.22));
 }
 
-/* Node circles: base style with subtle shadow filter */
-.node-circle {
-  transition: stroke 0.2s, stroke-width 0.2s, filter 0.2s;
+.branch-block {
+  stroke-dasharray: 7 7;
+  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
 }
 
-/* Role-based node fill colors (applied via inline attrs, these add hover effects) */
-.node-circle.role-user:hover {
-  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.5));
+.branch-block.active {
+  stroke-dasharray: none;
+  fill: rgba(0, 229, 200, 0.035);
 }
 
-.node-circle.role-assistant:hover {
-  filter: drop-shadow(0 0 6px rgba(52, 199, 89, 0.5));
+.branch-message-rect {
+  fill: rgba(8, 11, 16, 0.9);
+  stroke: rgba(232, 237, 245, 0.72);
+  stroke-width: 1.8;
+  transition: stroke 0.2s, fill 0.2s;
 }
 
-.node-circle.role-system:hover {
-  filter: drop-shadow(0 0 6px rgba(142, 142, 147, 0.4));
+.branch-message-card.active .branch-message-rect {
+  fill: rgba(0, 229, 200, 0.08);
+  stroke: rgba(0, 229, 200, 0.92);
+  stroke-width: 2.4;
 }
 
-/* Active path node: glow effect */
-.node-circle.active {
-  filter: drop-shadow(0 0 8px rgba(255, 149, 0, 0.6));
+.branch-message-card.role-user .branch-message-role {
+  fill: #75a7ff;
 }
 
-.node-circle.active:hover {
-  filter: drop-shadow(0 0 12px rgba(255, 149, 0, 0.8));
+.branch-message-card.role-assistant .branch-message-role {
+  fill: #52d987;
+}
+
+.branch-message-card.role-tool .branch-message-role {
+  fill: var(--amber);
+}
+
+.branch-message-card.role-system .branch-message-role {
+  fill: #a5b0bf;
+}
+
+.branch-message-role,
+.branch-message-summary {
+  font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+  dominant-baseline: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
+.branch-message-summary {
+  fill: var(--ink);
+}
+
+.branch-tree-node.inactive .branch-message-summary {
+  fill: var(--ink-dim);
 }
 
 /* Edge (connection line) styles */
 .branch-tree-edge {
   transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
-  opacity: 0.6;
+  opacity: 0.42;
+  stroke-dasharray: 7 7;
 }
 
 /* Active path edges: brighter and more opaque */
 .branch-tree-edge.active {
   opacity: 1;
-  filter: drop-shadow(0 0 3px rgba(255, 149, 0, 0.4));
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 4px rgba(0, 229, 200, 0.36));
 }
 
 /* ─── BRANCH BUTTON (specific style for the branch action button) ─── */

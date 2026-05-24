@@ -458,6 +458,20 @@ def test_parser():
             "[完成] 已写入"
         )
         assert heredoc == "cat > index.html <<'EOF'\n<html>ok</html>\nEOF"
+
+        multi = InputParser.extract_commands(
+            "[完成] 准备写入\n"
+            "[命令] echo html > index.html\n\n"
+            "[命令] cat > style.css <<'EOF'\n"
+            "body { color: red; }\n"
+            "EOF\n\n"
+            "[命令] echo js > script.js\n"
+        )
+        assert multi == [
+            "echo html > index.html",
+            "cat > style.css <<'EOF'\nbody { color: red; }\nEOF",
+            "echo js > script.js",
+        ]
         
         print("✅ 输入解析器正常")
         return True
@@ -470,9 +484,11 @@ def test_handlers():
     """测试处理器链"""
     print("\n测试处理器链...")
     try:
-        from handlers import CompletionHandler, HandlerResult
+        from tempfile import TemporaryDirectory
+
+        from handlers import CommandHandler, CompletionHandler, HandlerResult
         from core import ExecutionContext
-        from services import ExecutionResult
+        from services import CommandExecutor, ExecutionResult
         
         handler = CompletionHandler()
         context = ExecutionContext()
@@ -495,6 +511,27 @@ def test_handlers():
         result = handler.handle("[完成] 文件没有生成，源文件不存在", failed_context)
         assert result == HandlerResult.BREAK
         assert not failed_context.should_continue
+
+        with TemporaryDirectory() as temp_dir:
+            files_dir = Path(temp_dir)
+            command_handler = CommandHandler(
+                CommandExecutor(cwd=files_dir, generated_files_dir=files_dir)
+            )
+            command_context = ExecutionContext()
+            result = command_handler.handle(
+                "[完成] 准备写入\n"
+                "[命令] printf html > index.html\n"
+                "[命令] printf css > style.css\n"
+                "[命令] printf js > script.js\n",
+                command_context,
+            )
+            assert result == HandlerResult.CONTINUE
+            assert command_context.metadata["execution_result"].success
+            assert sorted(path.name for path in files_dir.glob("*")) == [
+                "index.html",
+                "script.js",
+                "style.css",
+            ]
         
         print("✅ 处理器链正常")
         return True
