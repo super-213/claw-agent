@@ -1,5 +1,6 @@
 """Agent 编排器"""
-from typing import Any, Dict, Iterator, List, Optional
+import asyncio
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 from .conversation import ConversationManager
 from .context import ExecutionContext
 from .context_compressor import ContextCompressor
@@ -80,6 +81,42 @@ class AgentOrchestrator:
         
         return self.context.should_continue
 
+    async def process_user_input_async(
+        self,
+        user_input: str,
+        attachments: List[Dict[str, Any]] | None = None,
+        images: List[Dict[str, Any]] | None = None,
+    ) -> bool:
+        """异步处理用户输入，返回是否继续。"""
+        if not user_input.strip() and not attachments and not images:
+            return True
+
+        skill_name, cleaned_input = InputParser.parse_user_input(user_input)
+
+        if skill_name:
+            if self._load_skill(skill_name):
+                user_input = cleaned_input if cleaned_input else user_input
+            else:
+                print(f"[警告] 未找到技能：{skill_name}")
+
+        if InputParser.needs_realtime_search(user_input):
+            self.conversation.add_system_message(
+                "## 提醒：用户的问题涉及实时信息\n"
+                "你的训练数据有截止日期，不具备实时信息。"
+                "请先使用 [命令] curl 等方式搜索获取最新数据，"
+                "然后基于搜索结果回答。禁止凭记忆编造实时数据。"
+            )
+
+        self.conversation.add_user_message(
+            user_input,
+            attachments=attachments,
+            images=images,
+        )
+
+        await self._process_ai_loop_async()
+
+        return self.context.should_continue
+
     def process_user_input_stream(
         self,
         user_input: str,
@@ -136,6 +173,64 @@ class AgentOrchestrator:
         yield {"type": "step", "stage": "conversation", "message": "用户消息已写入上下文"}
 
         yield from self._process_ai_loop_stream()
+        yield {"type": "done", "should_continue": self.context.should_continue}
+
+    async def process_user_input_stream_async(
+        self,
+        user_input: str,
+        attachments: List[Dict[str, Any]] | None = None,
+        images: List[Dict[str, Any]] | None = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """异步处理用户输入，并逐步产出前端可展示的过程事件。"""
+        if not user_input.strip() and not attachments and not images:
+            yield {"type": "done", "should_continue": self.context.should_continue}
+            return
+
+        yield {"type": "step", "stage": "parse", "message": "解析用户输入"}
+        skill_name, cleaned_input = InputParser.parse_user_input(user_input)
+
+        if skill_name:
+            yield {
+                "type": "step",
+                "stage": "skill",
+                "message": f"加载技能上下文：{skill_name}",
+            }
+            if self._load_skill(skill_name):
+                user_input = cleaned_input if cleaned_input else user_input
+                yield {
+                    "type": "step",
+                    "stage": "skill_loaded",
+                    "message": f"技能已激活：{skill_name}",
+                }
+            else:
+                yield {
+                    "type": "step",
+                    "stage": "skill_missing",
+                    "message": f"未找到技能：{skill_name}",
+                }
+
+        if InputParser.needs_realtime_search(user_input):
+            self.conversation.add_system_message(
+                "## 提醒：用户的问题涉及实时信息\n"
+                "你的训练数据有截止日期，不具备实时信息。"
+                "请先使用 [命令] curl 等方式搜索获取最新数据，"
+                "然后基于搜索结果回答。禁止凭记忆编造实时数据。"
+            )
+            yield {
+                "type": "step",
+                "stage": "realtime_hint",
+                "message": "检测到实时查询意图，已注入搜索提醒",
+            }
+
+        self.conversation.add_user_message(
+            user_input,
+            attachments=attachments,
+            images=images,
+        )
+        yield {"type": "step", "stage": "conversation", "message": "用户消息已写入上下文"}
+
+        async for event in self._process_ai_loop_stream_async():
+            yield event
         yield {"type": "done", "should_continue": self.context.should_continue}
     
     def _load_skill(self, skill_name: str) -> bool:
@@ -199,6 +294,56 @@ class AgentOrchestrator:
                 continue
             elif result == HandlerResult.RETRY:
                 # 格式不正确，提醒 AI
+                self.conversation.add_user_message(
+                    "请严格按照格式回复：[命令]XXX 或 [完成]XXX"
+                )
+                continue
+
+    async def _process_ai_loop_async(self):
+        """异步处理 AI 回复循环。"""
+        while True:
+            context_node_ids: List[str] = []
+            if (self.conversation.branch_engine is not None
+                    and self.conversation.active_node_id is not None):
+                branch_messages = self.conversation.branch_engine.build_context(
+                    self.conversation.active_node_id
+                )
+                context_node_ids = [
+                    msg["node_id"] for msg in branch_messages if "node_id" in msg
+                ]
+                if self.context_compressor:
+                    messages = await self.context_compressor.build_messages_async(self.conversation)
+                else:
+                    messages = branch_messages
+            elif self.context_compressor:
+                messages = await self.context_compressor.build_messages_async(self.conversation)
+            else:
+                messages = self.conversation.get_messages()
+
+            reply = await self.llm_client.achat(messages)
+
+            print(f"\n[AI 回复]:\n{reply}\n")
+            self.conversation.add_assistant_message(reply)
+
+            if context_node_ids and self.conversation._messages:
+                self.conversation._messages[-1]["context_nodes"] = context_node_ids
+
+            result = await asyncio.to_thread(
+                self.handler_chain.handle,
+                reply,
+                self.context,
+            )
+
+            if result == HandlerResult.BREAK:
+                break
+            elif result == HandlerResult.CONTINUE:
+                if exec_result := self.context.metadata.get('execution_result'):
+                    if self._command_failure_limit_reached(exec_result):
+                        self._record_command_abort(exec_result)
+                        break
+                    self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
+                continue
+            elif result == HandlerResult.RETRY:
                 self.conversation.add_user_message(
                     "请严格按照格式回复：[命令]XXX 或 [完成]XXX"
                 )
@@ -287,6 +432,144 @@ class AgentOrchestrator:
                 }
 
             result = self.handler_chain.handle(reply, self.context)
+
+            if commands:
+                exec_result = self.context.metadata.get("execution_result")
+                if exec_result:
+                    yield {
+                        "type": "command_result",
+                        "stage": "command",
+                        "message": "命令执行完成" if exec_result.success else "命令执行失败",
+                        "iteration": iteration,
+                        "command": command,
+                        "success": exec_result.success,
+                        "return_code": exec_result.return_code,
+                        "output": exec_result.feedback,
+                    }
+
+            if result == HandlerResult.BREAK:
+                yield {
+                    "type": "step",
+                    "stage": "complete",
+                    "message": "任务完成",
+                    "iteration": iteration,
+                }
+                break
+            elif result == HandlerResult.CONTINUE:
+                if exec_result := self.context.metadata.get("execution_result"):
+                    if self._command_failure_limit_reached(exec_result):
+                        abort_message = self._record_command_abort(exec_result)
+                        yield {
+                            "type": "step",
+                            "stage": "command_abort",
+                            "message": abort_message,
+                            "iteration": iteration,
+                        }
+                        break
+                    self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
+                    yield {
+                        "type": "step",
+                        "stage": "conversation",
+                        "message": "命令结果已写回上下文，继续请求模型",
+                        "iteration": iteration,
+                    }
+                continue
+            elif result == HandlerResult.RETRY:
+                self.conversation.add_user_message(
+                    "请严格按照格式回复：[命令]XXX 或 [完成]XXX"
+                )
+                yield {
+                    "type": "step",
+                    "stage": "retry",
+                    "message": "模型回复格式不符合协议，已追加格式提醒",
+                    "iteration": iteration,
+                }
+                continue
+
+    async def _process_ai_loop_stream_async(self) -> AsyncIterator[Dict[str, Any]]:
+        """异步处理 AI 回复循环，并输出模型调用、解析和命令执行事件。"""
+        iteration = 0
+        while True:
+            iteration += 1
+            yield {
+                "type": "step",
+                "stage": "context",
+                "message": "构建模型上下文",
+                "iteration": iteration,
+            }
+            context_node_ids: List[str] = []
+            if (self.conversation.branch_engine is not None
+                    and self.conversation.active_node_id is not None):
+                branch_messages = self.conversation.branch_engine.build_context(
+                    self.conversation.active_node_id
+                )
+                context_node_ids = [
+                    msg["node_id"] for msg in branch_messages if "node_id" in msg
+                ]
+                if self.context_compressor:
+                    messages = await self.context_compressor.build_messages_async(self.conversation)
+                else:
+                    messages = branch_messages
+            elif self.context_compressor:
+                messages = await self.context_compressor.build_messages_async(self.conversation)
+            else:
+                messages = self.conversation.get_messages()
+
+            yield {
+                "type": "model_start",
+                "stage": "model",
+                "message": "发送模型请求",
+                "iteration": iteration,
+                "model": self.llm_client.model,
+                "message_count": len(messages),
+            }
+            reply_parts: List[str] = []
+            async for delta in self.llm_client.astream_chat(messages):
+                reply_parts.append(delta)
+                yield {
+                    "type": "model_delta",
+                    "stage": "model",
+                    "iteration": iteration,
+                    "delta": delta,
+                }
+
+            reply = "".join(reply_parts)
+            yield {
+                "type": "model_done",
+                "stage": "model",
+                "message": "模型输出完成",
+                "iteration": iteration,
+                "content": reply,
+            }
+
+            print(f"\n[AI 回复]:\n{reply}\n")
+            self.conversation.add_assistant_message(reply)
+
+            if context_node_ids and self.conversation._messages:
+                self.conversation._messages[-1]["context_nodes"] = context_node_ids
+
+            yield {
+                "type": "step",
+                "stage": "handler",
+                "message": "解析模型回复",
+                "iteration": iteration,
+            }
+            commands = self._extract_commands(reply)
+            command = "\n\n".join(commands)
+            if commands:
+                yield {
+                    "type": "command_start",
+                    "stage": "command",
+                    "message": f"执行命令：{command}",
+                    "iteration": iteration,
+                    "command": command,
+                }
+
+            result = await asyncio.to_thread(
+                self.handler_chain.handle,
+                reply,
+                self.context,
+            )
 
             if commands:
                 exec_result = self.context.metadata.get("execution_result")

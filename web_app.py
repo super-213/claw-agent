@@ -2,11 +2,14 @@
 """Web UI 入口"""
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime
 import json
 import os
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Request
@@ -56,6 +59,34 @@ class ChatRequest(BaseModel):
     message: str | None = None
     images: Any = None
     attachments: Any = None
+
+
+class SessionRunLocks:
+    """Per-session async run locks for chat requests.
+
+    Different sessions acquire different locks and can stream concurrently.
+    Requests targeting the same session are serialized to avoid active_node_id
+    and message-tree write races.
+    """
+
+    def __init__(self):
+        self._guard = Lock()
+        self._locks: dict[str, Lock] = {}
+
+    @asynccontextmanager
+    async def locked(self, session_id: str):
+        with self._guard:
+            lock = self._locks.get(session_id)
+            if lock is None:
+                lock = Lock()
+                self._locks[session_id] = lock
+
+        while not lock.acquire(blocking=False):
+            await asyncio.sleep(0.05)
+        try:
+            yield
+        finally:
+            lock.release()
 
 
 app = FastAPI(
@@ -197,6 +228,7 @@ if not conversation_root.is_absolute():
     conversation_root = PROJECT_ROOT / conversation_root
 token_estimator = TokenUsageEstimator(config["token_encoding"])
 store = ConversationStore(conversation_root, token_estimator=token_estimator)
+session_run_locks = SessionRunLocks()
 skills_dir = Path(config["skills_dir"])
 if not skills_dir.is_absolute():
     skills_dir = PROJECT_ROOT / skills_dir
@@ -682,7 +714,7 @@ def delete_branch(session_id: str, node_id: str):
 
 
 @app.post("/api/chat", tags=["chat"])
-def chat(payload: ChatRequest | None = Body(default=None)):
+async def chat(payload: ChatRequest | None = Body(default=None)):
     payload_data = _payload(payload)
     session_id = payload_data.get("session_id")
     user_message = (payload_data.get("message") or "").strip()
@@ -698,45 +730,52 @@ def chat(payload: ChatRequest | None = Body(default=None)):
         return _json({"error": "empty_message"}, 400)
 
     try:
-        session = store.load_session(session_id)
+        await asyncio.to_thread(store.load_session, session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
 
-    orchestrator = _build_orchestrator()
-    conversation = orchestrator.conversation
-    stored_messages = session.get("messages", [])
-    if stored_messages:
-        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-    conversation.load_summary(
-        session.get("summary", ""),
-        session.get("summarized_until", 1),
-    )
+    async with session_run_locks.locked(session_id):
+        try:
+            session = await asyncio.to_thread(store.load_session, session_id)
+        except KeyError:
+            return _json({"error": "session_not_found"}, 404)
 
-    before_len = len(conversation.get_messages())
-
-    with orchestrator.llm_client:
-        orchestrator.process_user_input(
-            user_message,
-            attachments=attachments,
-            images=images,
+        orchestrator = _build_orchestrator()
+        conversation = orchestrator.conversation
+        stored_messages = session.get("messages", [])
+        if stored_messages:
+            conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
+        conversation.load_summary(
+            session.get("summary", ""),
+            session.get("summarized_until", 1),
         )
 
-    messages = conversation.get_messages()
-    # Save all nodes (including other branches) to preserve the full tree
-    all_messages = (
-        list(conversation.branch_engine._nodes.values())
-        if conversation.branch_engine is not None
-        else messages
-    )
-    store.save_messages(
-        session_id,
-        all_messages,
-        summary=conversation.get_summary(),
-        summarized_until=conversation.get_summarized_until(),
-        active_node_id=conversation.active_node_id,
-    )
+        before_len = len(conversation.get_messages())
 
-    new_messages = messages[before_len:]
+        async with orchestrator.llm_client:
+            await orchestrator.process_user_input_async(
+                user_message,
+                attachments=attachments,
+                images=images,
+            )
+
+        messages = conversation.get_messages()
+        # Save all nodes (including other branches) to preserve the full tree
+        all_messages = (
+            list(conversation.branch_engine._nodes.values())
+            if conversation.branch_engine is not None
+            else messages
+        )
+        await asyncio.to_thread(
+            store.save_messages,
+            session_id,
+            all_messages,
+            summary=conversation.get_summary(),
+            summarized_until=conversation.get_summarized_until(),
+            active_node_id=conversation.active_node_id,
+        )
+
+        new_messages = messages[before_len:]
 
     return {
         "messages": new_messages,
@@ -749,7 +788,7 @@ def _stream_event(payload: dict[str, Any]) -> str:
 
 
 @app.post("/api/chat/stream", tags=["chat"])
-def chat_stream(payload: ChatRequest | None = Body(default=None)):
+async def chat_stream(payload: ChatRequest | None = Body(default=None)):
     payload_data = _payload(payload)
     session_id = payload_data.get("session_id")
     user_message = (payload_data.get("message") or "").strip()
@@ -765,77 +804,85 @@ def chat_stream(payload: ChatRequest | None = Body(default=None)):
         return _json({"error": "empty_message"}, 400)
 
     try:
-        session = store.load_session(session_id)
+        await asyncio.to_thread(store.load_session, session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
 
-    def generate():
-        orchestrator = _build_orchestrator()
-        conversation = orchestrator.conversation
-        stored_messages = session.get("messages", [])
-        if stored_messages:
-            conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-        conversation.load_summary(
-            session.get("summary", ""),
-            session.get("summarized_until", 1),
-        )
-
-        before_len = len(conversation.get_messages())
+    async def generate():
         try:
-            with orchestrator.llm_client:
-                yield _stream_event({
-                    "type": "step",
-                    "stage": "request",
-                    "message": "开始处理请求",
-                })
-                for event in orchestrator.process_user_input_stream(
-                    user_message,
-                    attachments=attachments,
-                    images=images,
-                ):
-                    if event.get("type") != "done":
-                        yield _stream_event(event)
-
-            messages = conversation.get_messages()
             yield _stream_event({
                 "type": "step",
-                "stage": "save",
-                "message": "保存会话记录",
+                "stage": "request",
+                "message": "开始处理请求",
             })
-            # Save all nodes (including other branches) to preserve the full tree
-            all_messages = (
-                list(conversation.branch_engine._nodes.values())
-                if conversation.branch_engine is not None
-                else messages
-            )
-            store.save_messages(
-                session_id,
-                all_messages,
-                summary=conversation.get_summary(),
-                summarized_until=conversation.get_summarized_until(),
-                active_node_id=conversation.active_node_id,
-            )
 
-            # Extract context_nodes from the last assistant message for the frontend
-            new_messages = messages[before_len:]
-            context_nodes = None
-            for msg in reversed(new_messages):
-                if msg.get("role") == "assistant" and "context_nodes" in msg:
-                    context_nodes = msg["context_nodes"]
-                    break
+            async with session_run_locks.locked(session_id):
+                session = await asyncio.to_thread(store.load_session, session_id)
+                orchestrator = _build_orchestrator()
+                conversation = orchestrator.conversation
+                stored_messages = session.get("messages", [])
+                if stored_messages:
+                    conversation.load_messages(
+                        stored_messages,
+                        active_node_id=session.get("active_node_id"),
+                    )
+                conversation.load_summary(
+                    session.get("summary", ""),
+                    session.get("summarized_until", 1),
+                )
 
-            done_event = {
-                "type": "done",
-                "stage": "done",
-                "message": "响应完成",
-                "messages": new_messages,
-                "session_id": session_id,
-            }
-            if context_nodes is not None:
-                done_event["context_nodes"] = context_nodes
-            if conversation.active_node_id is not None:
-                done_event["active_node_id"] = conversation.active_node_id
-            yield _stream_event(done_event)
+                before_len = len(conversation.get_messages())
+
+                async with orchestrator.llm_client:
+                    async for event in orchestrator.process_user_input_stream_async(
+                        user_message,
+                        attachments=attachments,
+                        images=images,
+                    ):
+                        if event.get("type") != "done":
+                            yield _stream_event(event)
+
+                messages = conversation.get_messages()
+                yield _stream_event({
+                    "type": "step",
+                    "stage": "save",
+                    "message": "保存会话记录",
+                })
+                # Save all nodes (including other branches) to preserve the full tree
+                all_messages = (
+                    list(conversation.branch_engine._nodes.values())
+                    if conversation.branch_engine is not None
+                    else messages
+                )
+                await asyncio.to_thread(
+                    store.save_messages,
+                    session_id,
+                    all_messages,
+                    summary=conversation.get_summary(),
+                    summarized_until=conversation.get_summarized_until(),
+                    active_node_id=conversation.active_node_id,
+                )
+
+                # Extract context_nodes from the last assistant message for the frontend
+                new_messages = messages[before_len:]
+                context_nodes = None
+                for msg in reversed(new_messages):
+                    if msg.get("role") == "assistant" and "context_nodes" in msg:
+                        context_nodes = msg["context_nodes"]
+                        break
+
+                done_event = {
+                    "type": "done",
+                    "stage": "done",
+                    "message": "响应完成",
+                    "messages": new_messages,
+                    "session_id": session_id,
+                }
+                if context_nodes is not None:
+                    done_event["context_nodes"] = context_nodes
+                if conversation.active_node_id is not None:
+                    done_event["active_node_id"] = conversation.active_node_id
+                yield _stream_event(done_event)
         except Exception as e:
             yield _stream_event({
                 "type": "error",
@@ -854,8 +901,6 @@ app.mount("/", StaticFiles(directory=str(WEB_DIR), html=False), name="web_static
 
 
 if __name__ == "__main__":
-    # FastAPI runs sync route handlers in a threadpool, preserving the current
-    # blocking execution model while leaving room to migrate routes to async.
     uvicorn.run(
         app,
         host=os.environ.get("WEB_HOST", "127.0.0.1"),

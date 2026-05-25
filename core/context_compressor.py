@@ -58,6 +58,41 @@ class ContextCompressor:
 
         return self._trim_recent_overflow(prompt_messages)
 
+    async def build_messages_async(self, conversation) -> List[Dict[str, str]]:
+        """异步返回发给模型的消息列表，必要时先增量压缩旧历史。"""
+        messages = conversation.get_messages()
+        if len(messages) <= 1:
+            return messages
+
+        summarized_until = self._normalized_until(
+            conversation.get_summarized_until(),
+            len(messages),
+        )
+        prompt_messages = self._build_prompt_messages(
+            messages,
+            conversation.get_summary(),
+            summarized_until,
+        )
+        if self._count_chars(prompt_messages) <= self.max_context_chars:
+            return prompt_messages
+
+        await self._compress_old_messages_async(conversation, messages, summarized_until)
+
+        updated_messages = conversation.get_messages()
+        updated_until = self._normalized_until(
+            conversation.get_summarized_until(),
+            len(updated_messages),
+        )
+        prompt_messages = self._build_prompt_messages(
+            updated_messages,
+            conversation.get_summary(),
+            updated_until,
+        )
+        if self._count_chars(prompt_messages) <= self.max_context_chars:
+            return prompt_messages
+
+        return self._trim_recent_overflow(prompt_messages)
+
     def _compress_old_messages(
         self,
         conversation,
@@ -71,6 +106,22 @@ class ContextCompressor:
         summary = conversation.get_summary()
         for batch in self._message_batches(messages[summarized_until:keep_from]):
             summary = self._summarize_batch(summary, batch)
+
+        conversation.set_summary(summary, keep_from)
+
+    async def _compress_old_messages_async(
+        self,
+        conversation,
+        messages: List[Dict[str, str]],
+        summarized_until: int,
+    ) -> None:
+        keep_from = max(1, len(messages) - self.recent_messages)
+        if keep_from <= summarized_until:
+            return
+
+        summary = conversation.get_summary()
+        for batch in self._message_batches(messages[summarized_until:keep_from]):
+            summary = await self._summarize_batch_async(summary, batch)
 
         conversation.set_summary(summary, keep_from)
 
@@ -100,6 +151,40 @@ class ContextCompressor:
         ]
         try:
             summary = self.llm_client.chat(summary_messages).strip()
+        except Exception as exc:
+            print(f"[上下文压缩警告] 摘要生成失败，使用本地回退摘要: {exc}")
+            summary = self._fallback_summary(existing_summary, messages)
+
+        if len(summary) > self.summary_target_chars:
+            summary = summary[: self.summary_target_chars].rstrip()
+        return summary
+
+    async def _summarize_batch_async(
+        self,
+        existing_summary: str,
+        messages: List[Dict[str, str]],
+    ) -> str:
+        formatted_history = self._format_messages(messages)
+        summary_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是对话历史压缩器。请把历史对话压缩成可继续对话的长期记忆，"
+                    "保留用户目标、关键约束、已做决策、文件路径、命令结果、错误、"
+                    "未完成事项和后续必须记住的事实。不要编造，不要输出无关解释。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"现有摘要：\n{existing_summary or '无'}\n\n"
+                    f"新增历史：\n{formatted_history}\n\n"
+                    f"请输出更新后的中文摘要，控制在 {self.summary_target_chars} 字符以内。"
+                ),
+            },
+        ]
+        try:
+            summary = (await self.llm_client.achat(summary_messages)).strip()
         except Exception as exc:
             print(f"[上下文压缩警告] 摘要生成失败，使用本地回退摘要: {exc}")
             summary = self._fallback_summary(existing_summary, messages)
