@@ -1,72 +1,71 @@
-# Claw Agent - 重构版
+# Claw Agent
 
-基于分层架构和插件化设计的智能 Agent 系统。
+基于 FastAPI、分层架构和插件化技能系统的本地智能 Agent。项目当前同时提供 CLI、Web Chat UI、后台数据看板、会话分支树、流式响应、文件级持久化、token 估算和命令执行安全控制。
 
-## 架构特点
+## 核心能力
 
-- **分层架构**：表现层、应用层、领域层、基础设施层清晰分离
-- **责任链模式**：灵活的响应处理机制
-- **插件化技能系统**：易于扩展的技能注册表
-- **依赖注入**：便于测试和维护
-- **安全增强**：命令执行黑名单、超时保护
-- **FastAPI Web UI + API**：内置 Web 界面、会话 API 与 OpenAPI 文档
-- **流式输出**：基于 NDJSON 的实时流式响应，前端逐步渲染
-- **Token 用量估算**：基于 tiktoken 的 token 统计与分类
-- **LLM 调用可视化**：前端展示每轮模型调用的元信息（模型名、轮次、消息数、耗时）
-- **响应式布局**：桌面端与移动端自适应显示
-- **多会话并发安全**：会话切换时流式事件正确隔离，不会串台
-- **会话分支**：树状对话结构，支持在任意消息位置创建分支、切换路径、上下文高亮
+- **分层架构**：`core`、`services`、`handlers`、`skills`、`web` 边界清晰，便于扩展和测试。
+- **异步 Agent 编排**：同步入口保留兼容，Web 聊天走 async 主流程，支持模型流式输出和命令执行循环。
+- **插件化技能系统**：支持 `.md` 和 `.skill` 技能文件，CLI/Web 均可添加和热重载技能。
+- **FastAPI Web UI + API**：内置聊天页、后台看板、OpenAPI 文档和静态资源服务。
+- **NDJSON 流式响应**：前端逐步渲染解析、模型输出、命令执行、保存和完成事件。
+- **会话分支树**：每条消息有 `node_id`/`parent_id`，支持任意节点创建分支、切换路径、删除非活跃分支和上下文高亮。
+- **会话复制与迁移**：旧线性会话自动迁移为树结构，复制会话时保留完整分支树。
+- **文件级持久化**：会话保存到 JSON 文件，按 session 加锁，并通过临时文件 + `os.replace` 原子写入。
+- **Token 与看板分析**：基于 `tiktoken` 估算系统提示词、技能、会话、工具调用、摘要等 token，并提供使用趋势、词云、热力图和工具统计。
+- **图片与附件元数据**：聊天 API 支持 `images` 与 `attachments`，生成文件统一通过 `/generated/*` 或 `/files/*` 访问。
+- **安全执行**：命令黑名单、交互式命令拦截、超时保护、连续失败中止、API Key 脱敏展示。
 
 ## 目录结构
 
-```
-claw/
-├── config/              # 配置管理
-│   ├── settings.py      # ConfigManager
-│   └── .env.example     # 环境变量示例
-├── core/                # 核心业务逻辑
-│   ├── orchestrator.py  # Agent 编排器
-│   ├── conversation.py  # 对话管理
-│   ├── branch_engine.py # 分支管理引擎
-│   ├── context.py       # 执行上下文
-│   └── context_compressor.py # 上下文压缩
-├── skills/              # 技能系统
-│   ├── base.py          # 技能基类
-│   ├── registry.py      # 技能注册表
-│   └── calculator/      # 示例技能
-├── handlers/            # 响应处理器
-│   ├── base.py          # 处理器基类
-│   ├── command.py       # 命令处理
-│   ├── completion.py    # 完成处理
-│   └── skill.py         # 技能输出处理
-├── services/            # 基础服务
-│   ├── llm_client.py    # LLM 客户端
-│   ├── executor.py      # 命令执行器
-│   ├── conversation_store.py # JSON 对话持久化
-│   └── token_usage.py   # Token 用量估算
-├── utils/               # 工具函数
-│   └── parser.py        # 输入解析
-├── web/                 # Web UI 静态资源（模块化）
-│   ├── index.html       # 页面入口
-│   ├── styles.css       # 样式聚合入口
-│   ├── css/             # CSS 模块（布局、会话、消息、工具调用、分支树等）
-│   └── js/              # 前端 JS 模块
-│       ├── app.js       # 应用初始化
-│       ├── api.js       # API 请求封装
-│       ├── branch-tree.js # 树状图渲染
-│       ├── config.js    # 配置面板
-│       ├── context-highlight.js # 上下文高亮
-│       ├── dom.js       # DOM 工具
-│       ├── markdown.js  # Markdown 渲染
-│       ├── messages.js  # 消息与流式渲染
-│       ├── sessions.js  # 会话管理
-│       ├── skills.js    # 技能面板
-│       ├── state.js     # 全局状态
-│       └── utils.js     # 通用工具
-├── files/               # 生成文件目录
-├── docs/                # 项目文档
-├── web_app.py           # FastAPI Web UI 服务入口
-└── main.py              # CLI 入口
+```text
+.
+├── Agent.md                         # Agent 系统指令
+├── main.py                          # CLI 入口
+├── web_app.py                       # FastAPI Web 服务入口
+├── config/
+│   ├── settings.py                  # 配置加载、校验、.env 写入
+│   └── .env.example                 # 环境变量示例
+├── core/
+│   ├── orchestrator.py              # Agent 编排、流式事件、命令循环
+│   ├── conversation.py              # 对话管理和分支状态
+│   ├── branch_engine.py             # 树状分支索引与操作
+│   ├── context.py                   # 执行上下文
+│   └── context_compressor.py        # 长上下文压缩
+├── handlers/
+│   ├── command.py                   # [命令] 输出处理
+│   ├── completion.py                # [完成] 输出处理
+│   └── skill.py                     # 技能输出处理
+├── services/
+│   ├── chat_runner.py               # Web 聊天运行器与 session 级运行锁
+│   ├── conversation_store.py        # JSON 会话持久化、复制、迁移、token 标注
+│   ├── branch_service.py            # 分支 API 服务层
+│   ├── dashboard_metrics.py         # 看板指标聚合
+│   ├── executor.py                  # 命令执行与安全控制
+│   ├── llm_client.py                # OpenAI-compatible LLM 客户端
+│   ├── message_media.py             # 图片/附件请求归一化
+│   ├── session_state.py             # 会话加载与保存辅助
+│   └── token_usage.py               # token 估算与分类
+├── skills/
+│   ├── registry.py                  # 技能注册表
+│   └── */*.md|*.skill               # 技能定义
+├── web/
+│   ├── index.html                   # Chat UI
+│   ├── dashboard.html               # 后台看板
+│   ├── css/                         # 基础、布局、消息、分支树、移动端等样式模块
+│   └── js/
+│       ├── app.js                   # Chat UI 初始化
+│       ├── api.js                   # API 封装
+│       ├── messages.js              # 消息生命周期协调
+│       ├── stream-renderer.js       # NDJSON 流式事件渲染
+│       ├── message-rendering.js     # 消息 DOM 渲染
+│       ├── branch-controller.js     # 分支操作协调
+│       ├── tree-panel.js            # 分支面板
+│       ├── branch-tree/             # 树模型、布局、渲染拆分
+│       └── dashboard.js             # 看板前端逻辑
+├── docs/                            # 设计与需求文档
+├── files/                           # 生成文件目录
+└── test_*.py / core/test_*.py       # Python 测试
 ```
 
 ## 快速开始
@@ -77,6 +76,12 @@ claw/
 pip install -r requirements.txt
 ```
 
+前端树渲染相关测试依赖在根目录 `package.json` 中，已有 `node_modules` 时可直接运行 Node 测试；缺依赖时执行：
+
+```bash
+npm install
+```
+
 ### 2. 配置环境变量
 
 ```bash
@@ -85,105 +90,137 @@ export API_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 export MODEL_NAME="qwen-plus"
 ```
 
-或创建 `.env` 文件（参考 `config/.env.example`）
+也可以创建 `.env` 或 `config/.env`，参考 `config/.env.example`。配置优先级为：
 
-配置优先级：当前进程环境变量 > 项目根 `.env` > `config/.env` > 默认值。
+```text
+当前进程环境变量 > 项目根 .env > config/.env > 默认值
+```
 
-### 3. 运行（CLI）
+常用配置项：
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DASHSCOPE_API_KEY` | 无 | 必填，OpenAI-compatible API Key |
+| `API_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 模型 API 地址 |
+| `MODEL_NAME` | `qwen-plus` | 模型名称 |
+| `AGENT_FILE` | `Agent.md` | Agent 系统指令文件 |
+| `SKILLS_DIR` | `skills` | 技能目录 |
+| `CONVERSATION_DIR` | `.data/conversations` | 会话 JSON 保存目录 |
+| `GENERATED_FILES_DIR` | `files` | 生成文件目录 |
+| `WEB_HOST` | `0.0.0.0` | Web 服务监听地址 |
+| `PORT` | `8000` | Web 服务端口 |
+| `TIMEOUT` | `30` | 命令与模型客户端超时 |
+| `TOKEN_ENCODING` | `cl100k_base` | token 估算编码 |
+
+长上下文压缩配置：
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `CONTEXT_MAX_CHARS` | `60000` | 模型请求上下文字符预算 |
+| `CONTEXT_RECENT_MESSAGES` | `12` | 始终保留的最近消息数 |
+| `SUMMARY_TARGET_CHARS` | `6000` | 历史摘要目标长度 |
+| `SUMMARY_INPUT_CHARS` | `30000` | 单次摘要输入字符上限 |
+
+### 3. 启动 CLI
 
 ```bash
 python main.py
 ```
 
-CLI 内置技能管理命令：
+CLI 内置命令：
 
-- `/skills`：列出当前技能
-- `/reload-skills`：手动重载技能目录
-- `/add-skill <name> [内容]`：添加技能；不传内容时进入多行输入，单独输入 `.` 结束；默认创建 `.md`，也可用 `<name>.skill` 创建 `.skill` 技能
+- `/skills`：列出当前技能。
+- `/reload-skills`：手动重载技能目录。
+- `/add-skill <name> [内容]`：添加技能；不传内容时进入多行输入，单独输入 `.` 结束。
+- `/config`：查看当前 API URL、模型名称和脱敏 API Key。
+- `/config set api_key`：隐藏输入并保存 API Key。
+- `/config set api_key <value>`：直接保存 API Key。
+- `/config set base_url <url>`：保存 API URL。
+- `/config set model <name>`：保存模型名称。
 
-CLI 内置模型配置命令：
-
-- `/config`：查看当前 API URL、模型名称和脱敏后的 API KEY
-- `/config set api_key`：隐藏输入并保存 API KEY
-- `/config set api_key <value>`：直接保存 API KEY
-- `/config set base_url <url>`：保存 API URL
-- `/config set model <name>`：保存模型名称
-
-### Web UI
+### 4. 启动 Web UI
 
 ```bash
 python web_app.py
 ```
 
-默认访问 `http://localhost:8000`。侧边栏的"模型设置"可修改 API URL、API KEY 和模型名称。Web 端只展示脱敏 API KEY；保存时 API KEY 留空会保留原值，不会把完整密钥返回给浏览器。对话历史会保存在 `.data/conversations` 下的 JSON 文件中，可通过 `CONVERSATION_DIR` 修改路径。
+默认端口为 `8000`：
 
-服务默认监听 `127.0.0.1:8000`，可通过 `WEB_HOST` 和 `PORT` 覆盖。
-
-后台看板地址：`http://localhost:8000/dashboard`。看板展示全局 token、会话排行、工具调用统计、词云、活跃热力图和单会话详情；旧会话会基于消息内容自动推断工具调用。
-
-FastAPI 自动文档地址：
-
+- Chat UI：`http://localhost:8000/`
+- 后台看板：`http://localhost:8000/dashboard`
 - Swagger UI：`http://localhost:8000/docs`
 - OpenAPI JSON：`http://localhost:8000/openapi.json`
 
-**前端特性：**
+Web 端的“模型设置”可修改 API URL、API Key 和模型名称。API Key 只脱敏展示；保存时留空会保留原值，不会把完整密钥返回给浏览器。
 
-- 流式输出：消息逐字渲染，过程步骤实时展示
-- LLM 调用卡片：每轮模型请求展示元信息（模型名、轮次、消息数、耗时）
-- 过程卡片重建：刷新页面后自动从历史消息重建过程可视化
-- 响应式布局：桌面端与移动端自适应，统一显示效果
-- 多会话隔离：切换会话时流式事件不会串到其他会话视图
-- 图片与附件：支持在消息中展示图片和附件
+## Web UI 功能
 
-### Token 用量估算
+- 消息逐步渲染，模型输出以流式文本增量展示。
+- 过程事件展示解析输入、技能加载、上下文构建、模型调用、命令执行和保存状态。
+- 支持多会话创建、删除、复制、切换。
+- 支持会话分支树，在任意消息处创建分支，切换活跃路径，删除非活跃分支。
+- 支持上下文路径高亮，标记本轮模型实际使用的历史节点。
+- 支持图片与附件元数据展示。
+- 桌面端与移动端响应式布局；移动端分支树以抽屉形式展示。
+- 静态 CSS/JS/HTML 默认禁用浏览器缓存，便于开发调试。
 
-系统内置基于 tiktoken（`cl100k_base`）的 token 近似估算，可通过 `GET /api/token-usage` 查看：
+## 后台看板
 
-- 系统提示词 token 数
-- 各技能文件 token 数
-- 各会话累计 token 用量（按角色、工具调用分类统计）
+后台看板基于 `.data/conversations/*.json` 实时聚合，不依赖数据库。当前指标包括：
 
-可通过 `TOKEN_ENCODING` 环境变量切换编码方式。
+- 全局 KPI：会话数、消息数、token 总量、工具调用数、失败数、成功率、平均 token。
+- Token 结构：系统提示词、技能上下文、用户消息、助手消息、工具调用、工具结果、摘要。
+- 会话排行：按 token、工具调用、消息数、健康分、更新时间排序。
+- 单会话详情：累计 token 曲线、角色分布、工具调用、最近消息、词云。
+- 工具分析：命令分类、Top 命令、失败命令、输出长度、危险命令拦截。
+- 趋势与热力图：按日期聚合 token、消息、工具调用、失败次数和活跃时段。
+- 词云：支持全部、用户、助手、工具、单会话范围。
 
-### 对话持久化
+看板接口统一使用 `/api/dashboard/*`，具体见下方 API。
 
-- 默认路径：`.data/conversations`
-- 自定义路径：设置 `CONVERSATION_DIR=/absolute/path`
-- 长对话会保留完整历史，同时在发给模型前自动压缩旧上下文
+## 会话与持久化
 
-### 上下文压缩配置
+- 默认会话目录：`.data/conversations`
+- 每个会话一个 JSON 文件。
+- `ConversationStore` 对每个 session 使用独立锁，避免同一会话并发写冲突。
+- 写入时先写临时文件，再使用 `os.replace` 原子替换，避免读到半写入文件。
+- 会话加载时会自动跳过 `.tmp` 和 macOS `._*` 元数据文件。
+- 旧格式线性会话会在加载时自动补齐 `node_id`/`parent_id` 并持久化迁移。
+- 会话保存时会重新标注每条消息的 token 用量和会话汇总。
 
-可通过环境变量调整压缩策略：
+## 会话分支
 
-- `CONTEXT_MAX_CHARS`：模型请求上下文字符预算，默认 `60000`
-- `CONTEXT_RECENT_MESSAGES`：始终保留的最近消息数，默认 `12`
-- `SUMMARY_TARGET_CHARS`：历史摘要目标长度，默认 `6000`
-- `SUMMARY_INPUT_CHARS`：单次摘要输入字符上限，默认 `30000`
+分支数据模型采用扁平消息列表 + 父子节点指针：
 
-### Web API 说明（接口示例）
+```json
+{
+  "active_node_id": "node-3",
+  "messages": [
+    {"node_id": "node-1", "parent_id": null, "role": "system", "content": "..."},
+    {"node_id": "node-2", "parent_id": "node-1", "role": "user", "content": "方案 A"},
+    {"node_id": "node-3", "parent_id": "node-2", "role": "assistant", "content": "..."}
+  ]
+}
+```
+
+核心规则：
+
+- `active_node_id` 指向当前活跃路径的叶子或占位节点。
+- 发给模型的上下文来自根节点到 `active_node_id` 的路径。
+- 创建分支时会在分支点下生成一个空占位节点并切换到该节点。
+- 新消息会追加到当前活跃节点下，并推进 `active_node_id`。
+- 删除分支会删除目标节点及其所有后代。
+- 不能删除根节点，也不能删除当前活跃路径上的节点。
+
+## API 概览
 
 基础地址：`http://localhost:8000`
 
-1. `GET /api/sessions` 获取会话列表
+### 会话 API
 
 ```bash
 curl http://localhost:8000/api/sessions
 ```
-
-响应示例：
-
-```json
-[
-  {
-    "id": "d4b4b0...",
-    "title": "新对话",
-    "created_at": "2026-03-29T08:00:00+00:00",
-    "updated_at": "2026-03-29T08:01:00+00:00"
-  }
-]
-```
-
-2. `POST /api/sessions` 新建会话（可选传 `title`）
 
 ```bash
 curl -X POST http://localhost:8000/api/sessions \
@@ -191,27 +228,73 @@ curl -X POST http://localhost:8000/api/sessions \
   -d '{"title":"我的新对话"}'
 ```
 
-响应示例：
-
-```json
-{
-  "id": "d4b4b0...",
-  "title": "我的新对话",
-  "created_at": "2026-03-29T08:00:00+00:00",
-  "updated_at": "2026-03-29T08:00:00+00:00",
-  "messages": [
-    { "role": "system", "content": "...", "ts": "2026-03-29T08:00:00+00:00" }
-  ]
-}
+```bash
+curl http://localhost:8000/api/sessions/<session_id>
 ```
 
-3. `GET /api/skills` 获取技能列表
+```bash
+curl -X DELETE http://localhost:8000/api/sessions/<session_id>
+```
+
+```bash
+curl -X POST http://localhost:8000/api/sessions/<session_id>/copy
+```
+
+复制会话会保留完整消息、分支树、`active_node_id`、摘要和已摘要节点信息。
+
+### 聊天 API
+
+同步聊天：
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"<session_id>","message":"你好"}'
+```
+
+流式聊天：
+
+```bash
+curl -N -X POST http://localhost:8000/api/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id":"<session_id>","message":"你好"}'
+```
+
+流式响应为 NDJSON，每行一个 JSON 对象，`Content-Type` 为 `application/x-ndjson`。
+
+常见事件类型：
+
+| type | 说明 |
+| --- | --- |
+| `step` | 流程状态，例如 `request`、`parse`、`skill`、`context`、`handler`、`save`、`complete` |
+| `model_start` | 模型请求开始，包含 `model`、`iteration`、`message_count` |
+| `model_delta` | 模型流式增量文本，字段为 `delta` |
+| `model_done` | 模型输出完成，包含完整 `content` |
+| `command_start` | 检测到 `[命令]` 并开始执行 |
+| `command_result` | 命令执行结果，包含 `success`、`return_code`、`output` |
+| `done` | 本次请求完成，包含新增 `messages`、`session_id`、`active_node_id`、`context_nodes` |
+| `error` | 处理失败，包含错误信息 |
+
+携带图片和附件：
+
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id":"<session_id>",
+    "message":"请看这张图",
+    "images":[{"url":"/generated/example.png","alt":"example"}],
+    "attachments":[{"name":"原图","url":"https://example.com/a.png","type":"image/png"}]
+  }'
+```
+
+`images` 支持字符串 URL 或对象；`attachments` 支持字符串 URL 或包含 `name`、`url`、`path`、`type`、`size` 等字段的对象。单次最多处理 32 个媒体项，文本字段会截断到安全长度。
+
+### 技能与配置 API
 
 ```bash
 curl http://localhost:8000/api/skills
 ```
-
-4. `POST /api/skills` 添加技能
 
 ```bash
 curl -X POST http://localhost:8000/api/skills \
@@ -219,318 +302,130 @@ curl -X POST http://localhost:8000/api/skills \
   -d '{"name":"demo","content":"# demo\n技能说明"}'
 ```
 
-5. `POST /api/skills/reload` 手动重载技能目录
-
 ```bash
 curl -X POST http://localhost:8000/api/skills/reload
 ```
 
-6. `GET /api/sessions/<session_id>` 获取单个会话
-
 ```bash
-curl http://localhost:8000/api/sessions/d4b4b0...
+curl http://localhost:8000/api/config
 ```
 
-响应示例：
-
-```json
-{
-  "id": "d4b4b0...",
-  "title": "我的新对话",
-  "created_at": "2026-03-29T08:00:00+00:00",
-  "updated_at": "2026-03-29T08:01:00+00:00",
-  "messages": [
-    { "role": "system", "content": "...", "ts": "2026-03-29T08:00:00+00:00" },
-    { "role": "user", "content": "你好", "ts": "2026-03-29T08:00:10+00:00" },
-    { "role": "assistant", "content": "[完成] 你好", "ts": "2026-03-29T08:00:12+00:00" }
-  ]
-}
-```
-
-7. `POST /api/chat` 发送消息（同步）
-
 ```bash
-curl -X POST http://localhost:8000/api/chat \
+curl -X POST http://localhost:8000/api/config \
   -H 'Content-Type: application/json' \
-  -d '{"session_id":"d4b4b0...","message":"你好"}'
+  -d '{"base_url":"https://example.com/v1","model":"qwen-max","api_key":"sk-..."}'
 ```
 
-响应示例：
+`POST /api/config` 会写入优先级最高的现有 `.env`；如果不存在，则写入 `config/.env` 并尽量设置权限为 `0600`。
 
-```json
-{
-  "session_id": "d4b4b0...",
-  "messages": [
-    { "role": "user", "content": "你好" },
-    { "role": "assistant", "content": "[完成] 你好" }
-  ]
-}
-```
-
-8. `POST /api/chat/stream` 发送消息（流式）
-
-以 NDJSON（每行一个 JSON 对象）格式返回实时事件流：
-
-```bash
-curl -X POST http://localhost:8000/api/chat/stream \
-  -H 'Content-Type: application/json' \
-  -d '{"session_id":"d4b4b0...","message":"你好"}'
-```
-
-事件类型：
-
-| type | 说明 |
-|------|------|
-| `step` | 过程步骤（stage: request/save） |
-| `llm_call` | 模型调用开始，含 model、round、message_count |
-| `content` | 流式文本片段 |
-| `tool_call` | 工具/命令调用 |
-| `tool_result` | 工具执行结果 |
-| `done` | 响应完成，含最终 messages |
-| `error` | 错误信息 |
-
-9. `GET /api/token-usage` 获取 Token 用量估算
+### Token 与看板 API
 
 ```bash
 curl http://localhost:8000/api/token-usage
 ```
 
-返回系统提示词、技能文件、各会话的 token 统计。
-
-10. `GET /api/config` / `POST /api/config` 查看/修改模型配置
-
 ```bash
-curl http://localhost:8000/api/config
-curl -X POST http://localhost:8000/api/config \
-  -H 'Content-Type: application/json' \
-  -d '{"base_url":"...","model":"qwen-max","api_key":"..."}'
+curl 'http://localhost:8000/api/dashboard/summary?range=30d'
+curl 'http://localhost:8000/api/dashboard/sessions?range=30d&sort=total_tokens&limit=50'
+curl http://localhost:8000/api/dashboard/sessions/<session_id>
+curl 'http://localhost:8000/api/dashboard/tools?range=7d'
+curl 'http://localhost:8000/api/dashboard/word-cloud?scope=user&limit=120'
+curl 'http://localhost:8000/api/dashboard/timeseries?metric=tokens&range=30d'
 ```
 
-也可以在消息中附带图片或附件元数据；本地生成文件会统一放在 `files/`（可通过 `GENERATED_FILES_DIR` 修改），通过 `/generated/<文件名>` 或 `/files/<文件名>` 访问：
-
-```bash
-curl -X POST http://localhost:8000/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "session_id":"d4b4b0...",
-    "message":"请看这张图",
-    "images":[{"url":"/generated/example.png","alt":"example"}],
-    "attachments":[{"name":"原图","url":"https://example.com/a.png","type":"image/png"}]
-  }'
-```
-
-## 会话分支
-
-会话分支功能允许用户在对话的任意消息位置创建分支，形成树状对话结构。这是对"复制会话"的升级——从全量复制进化为精确的节点级分支。
-
-**核心能力：**
-
-- 在任意消息位置创建分支，探索不同对话方向
-- 树状图可视化展示完整分支结构
-- 上下文高亮：标记大模型实际使用的历史消息路径
-- 分支切换保留所有分支数据，不丢失历史内容
-- 向后兼容：历史线性会话自动迁移为树结构
-
-**数据模型：**
-
-每条消息作为树节点，包含 `node_id`（唯一标识）和 `parent_id`（父节点标识）。会话维护 `active_node_id` 指向当前活跃叶节点。所有分支的消息以扁平列表存储在同一个 JSON 文件中。
-
-**前端交互：**
-
-- 消息右键菜单可选择"从此处创建分支"
-- 右侧面板（桌面端）或底部抽屉（移动端）展示树状图
-- 点击树状图节点切换到对应分支
-- 活跃路径和上下文路径用不同颜色区分
+支持的常用范围：`all`、`today`、`7d`、`30d`、`90d`，也支持类似 `14d` 的天数格式。
 
 ### 分支 API
 
-11. `POST /api/sessions/<id>/branch` 在指定消息处创建分支
+创建分支：
 
 ```bash
-curl -X POST http://localhost:8000/api/sessions/d4b4b0.../branch \
+curl -X POST http://localhost:8000/api/sessions/<session_id>/branch \
   -H 'Content-Type: application/json' \
-  -d '{"branch_point_node_id":"node-uuid"}'
+  -d '{"branch_point_node_id":"<node_id>"}'
 ```
 
-响应示例：
-
-```json
-{
-  "ok": true,
-  "branch_node_id": "new-leaf-uuid",
-  "ancestor_path": ["root", "n1", "n2"]
-}
-```
-
-12. `POST /api/sessions/<id>/switch` 切换到指定节点的路径
+切换活跃路径：
 
 ```bash
-curl -X POST http://localhost:8000/api/sessions/d4b4b0.../switch \
+curl -X POST http://localhost:8000/api/sessions/<session_id>/switch \
   -H 'Content-Type: application/json' \
-  -d '{"target_node_id":"node-uuid"}'
+  -d '{"target_node_id":"<node_id>"}'
 ```
 
-响应示例：
-
-```json
-{
-  "ok": true,
-  "active_node_id": "node-uuid",
-  "messages": [
-    {"node_id": "root", "role": "system", "content": "..."},
-    {"node_id": "n1", "role": "user", "content": "..."},
-    {"node_id": "n2", "role": "assistant", "content": "..."}
-  ]
-}
-```
-
-13. `GET /api/sessions/<id>/tree` 获取会话的树结构摘要
+获取树摘要：
 
 ```bash
-curl http://localhost:8000/api/sessions/d4b4b0.../tree
+curl http://localhost:8000/api/sessions/<session_id>/tree
 ```
 
-响应示例：
-
-```json
-{
-  "nodes": [
-    {
-      "node_id": "root",
-      "parent_id": null,
-      "role": "system",
-      "summary": "你是一个智能助手...",
-      "is_active": true,
-      "child_count": 1
-    },
-    {
-      "node_id": "n1",
-      "parent_id": "root",
-      "role": "user",
-      "summary": "你好，请帮我写一段代码...",
-      "is_active": true,
-      "child_count": 2
-    }
-  ],
-  "active_node_id": "n3"
-}
-```
-
-14. `DELETE /api/sessions/<id>/branch/<node_id>` 删除指定分支
+删除分支：
 
 ```bash
-curl -X DELETE http://localhost:8000/api/sessions/d4b4b0.../branch/node-uuid
+curl -X DELETE http://localhost:8000/api/sessions/<session_id>/branch/<node_id>
 ```
 
-响应示例：
+## 技能扩展
 
-```json
-{
-  "ok": true,
-  "removed_count": 5
-}
+添加技能有三种方式：
+
+1. 在 `skills/<skill_name>/` 下创建 `<skill_name>.md` 或 `<skill_name>.skill`。
+2. 使用 CLI：`/add-skill <name> [内容]`。
+3. 使用 Web 侧边栏或 `POST /api/skills`。
+
+用户输入包含 `调用 <技能名> skill ...` 时，系统会加载对应技能内容并注入模型上下文。
+
+## 命令执行协议
+
+Agent 通过 `Agent.md` 约束模型输出协议：
+
+```text
+[命令] ls -la
+[完成] 任务已完成
 ```
 
-**注意事项：**
+处理规则：
 
-- 不能删除当前活跃分支，需先切换到其他分支
-- 不能删除主干路径（根到第一个分支点的路径）
-- 删除操作会移除目标节点及其所有子节点
+- `[命令]` 优先于 `[完成]`，避免同一回复中同时出现时跳过命令执行。
+- 命令结果会以 `[执行完成]` 写回上下文，模型继续下一轮。
+- 命令失败会统计连续失败次数，达到上限后写入 `[执行中止]` 并停止自动重试。
+- 交互式命令和危险命令会被拦截。
+- 命令执行工作目录固定为 `GENERATED_FILES_DIR`，默认 `files/`。
 
-### 流式响应中的分支信息
+## 测试
 
-`POST /api/chat/stream` 的 `done` 事件中包含 `context_nodes` 字段，记录本次请求实际使用的上下文消息节点列表：
+运行 Python 测试：
 
-```json
-{"type": "done", "messages": [...], "context_nodes": ["root", "n1", "n2", "n3"]}
+```bash
+pytest -q
 ```
 
-### 会话详情中的分支信息
+运行前端模块测试：
 
-`GET /api/sessions/<id>` 响应中包含分支相关字段：
-
-```json
-{
-  "id": "d4b4b0...",
-  "active_node_id": "n3",
-  "messages": [
-    {"node_id": "root", "parent_id": null, "role": "system", "content": "..."},
-    {"node_id": "n1", "parent_id": "root", "role": "user", "content": "..."}
-  ]
-}
+```bash
+node --test web/js/*.test.mjs
 ```
 
-## 使用示例
+当前测试覆盖重点包括：
 
-### 执行系统命令
-```
-User: 查看当前目录
-AI: [命令] ls -la
-[执行结果]: ...
-AI: [完成] 当前目录共有 5 个文件
-```
+- 分支引擎创建、切换、删除、属性测试。
+- 会话持久化、复制和旧格式迁移。
+- Web API：会话、聊天并发、分支、删除、看板。
+- Orchestrator async/sync 兼容。
+- 前端分支树布局、边渲染、上下文高亮和模块导入。
 
-### 调用技能
-```
-User: 调用 calculator skill 计算 2+3*4
-AI: [计算] 2+3*4 = 14
-```
+## 安全与边界
 
-### 直接回答
-```
-User: Python 如何定义函数？
-AI: [完成] 使用 def 关键字：def 函数名(参数): 代码块
-```
+- API Key 不会在 Web API 中明文返回。
+- 生成文件只允许写入 `GENERATED_FILES_DIR`，并通过安全路径检查提供访问。
+- `/generated/{filename}` 和 `/files/{filename}` 会拒绝目录穿越。
+- 静态资源缓存默认关闭，适合开发环境；生产部署时可按需调整缓存策略。
+- Token 统计为本地估算，不等同于模型服务返回的真实计费 usage。
 
-## 扩展指南
+## 后续方向
 
-### 添加新技能
-
-1. 在 `skills/` 下创建技能目录
-2. 创建 `{skill_name}.md` 或 `{skill_name}.skill` 文件
-3. 系统会热重载并自动发现；也可以通过 CLI 的 `/add-skill` 或 Web 侧边栏的"添加技能"创建
-
-### 添加新的响应处理器
-
-1. 继承 `ResponseHandler` 基类
-2. 实现 `can_handle()` 和 `process()` 方法
-3. 在 `AgentOrchestrator` 中添加到责任链
-
-## 安全特性
-
-- 危险命令黑名单（rm -rf /、mkfs 等）
-- 交互式 REPL/编辑器拦截（vi、vim、裸 python 等），允许 python -c / python -m / 脚本等一次性命令
-- 命令执行超时保护
-- 环境变量管理 API Key
-
-## 与原版对比
-
-| 特性 | 原版 | 重构版 |
-|------|------|--------|
-| 架构 | 单文件单函数 | 分层模块化 |
-| 配置 | 硬编码 | 环境变量 + 配置类 |
-| 技能系统 | 函数式 | 插件化注册表 |
-| 响应处理 | if-elif 链 | 责任链模式 |
-| 命令执行 | 无保护 | 安全检查 + 超时 |
-| 可测试性 | 困难 | 依赖注入 |
-| 扩展性 | 需修改核心 | 插件式扩展 |
-| 输出方式 | 同步阻塞 | 流式 NDJSON |
-| Token 统计 | 无 | tiktoken 估算 |
-| 前端架构 | 单文件 | 模块化 JS |
-
-## 后续优化方向
-
-- [ ] 添加日志系统
-- [ ] 单元测试覆盖
-- [ ] 异步执行支持（asyncio）
-- [x] Web API 接口（会话/聊天）
-- [x] 技能热重载
-- [x] 对话历史持久化（JSON 文件）
-- [x] 流式输出（NDJSON SSE）
-- [x] Token 用量估算
-- [x] 前端模块化拆分
-- [x] 响应式布局（桌面/移动端）
-- [x] 多会话并发安全
-- [x] LLM 调用过程可视化
-- [x] 图片与附件支持
-- [x] 会话分支（树状对话结构）
+- 保存模型服务返回的真实 usage 与耗时，替代或补充本地估算。
+- 为后台看板补充模型调用耗时、轮次、上下文消息数等更细粒度指标。
+- 增加认证或访问控制，避免 Web API 暴露在不可信网络。
+- 扩展技能市场/技能模板和更多工具处理器。
+- 增加生产环境缓存、日志和可观测性配置。
