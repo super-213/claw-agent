@@ -2,8 +2,8 @@
   "id": "42c2c0eb75db433f9c85bddcd366a19b",
   "title": "2+3等于几",
   "created_at": "2026-05-10T07:12:13.540653+00:00",
-  "updated_at": "2026-05-25T12:38:56.479039+00:00",
-  "active_node_id": "eeeed347-eec5-45c3-88fc-408e632af2f2",
+  "updated_at": "2026-05-25T13:01:04.869960+00:00",
+  "active_node_id": "51a79887-e06c-470c-ab82-7453f925b251",
   "messages": [
     {
       "role": "system",
@@ -387,6 +387,75 @@
         "tool_result_tokens": 0,
         "cumulative_tokens": 2003
       }
+    },
+    {
+      "role": "user",
+      "content": "",
+      "ts": "2026-05-25T13:00:36.903939+00:00",
+      "node_id": "d2948e58-63a2-4761-9ab4-01cd3e60ed25",
+      "parent_id": "ffdbdaad-83d0-457f-9e89-75f5b02611d9",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 0,
+        "message_overhead_tokens": 4,
+        "total_tokens": 5,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2008
+      }
+    },
+    {
+      "role": "user",
+      "content": "再加13呢",
+      "ts": "2026-05-25T13:01:04.869960+00:00",
+      "node_id": "9833b9d6-cb2f-449a-9931-818763a0a0dc",
+      "parent_id": "ffdbdaad-83d0-457f-9e89-75f5b02611d9",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 5,
+        "message_overhead_tokens": 4,
+        "total_tokens": 10,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2018
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[完成] 2 + 3 + 5 + 11 + 13 = 34",
+      "ts": "2026-05-25T13:01:04.869960+00:00",
+      "node_id": "51a79887-e06c-470c-ab82-7453f925b251",
+      "parent_id": "9833b9d6-cb2f-449a-9931-818763a0a0dc",
+      "context_nodes": [
+        "4cb240639c9946ce9c072196a7e76abd",
+        "90867618-5104-4977-bd6d-807bb6d6082c",
+        "9bfe7e86-f1b2-470a-90cd-86a0fbd94c75",
+        "a5fe5c4d-58f4-477a-94f6-a04bace79c80",
+        "c4a3e10d-20c6-4db4-85cf-6179ed57aac3",
+        "ffdbdaad-83d0-457f-9e89-75f5b02611d9",
+        "9833b9d6-cb2f-449a-9931-818763a0a0dc"
+      ],
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "assistant",
+        "role_tokens": 1,
+        "content_tokens": 20,
+        "message_overhead_tokens": 4,
+        "total_tokens": 25,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2043
+      }
     }
   ],
   "summary": "",
@@ -394,15 +463,15 @@
   "token_usage": {
     "estimated": true,
     "encoding": "cl100k_base",
-    "message_count": 17,
-    "total_tokens": 2003,
+    "message_count": 20,
+    "total_tokens": 2043,
     "session_primer_tokens": 3,
     "system_prompt_tokens": 1800,
     "skill_tokens": 0,
     "summary_tokens": 0,
-    "conversation_tokens": 200,
-    "user_tokens": 87,
-    "assistant_tokens": 113,
+    "conversation_tokens": 240,
+    "user_tokens": 102,
+    "assistant_tokens": 138,
     "tool_tokens": 0,
     "tool_call_tokens": 0,
     "tool_result_tokens": 0
