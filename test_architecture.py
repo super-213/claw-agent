@@ -288,6 +288,39 @@ def test_token_usage_estimator():
         return False
 
 
+def test_frontend_branch_tree_boundaries():
+    """测试树图模块不直接依赖会话控制器职责"""
+    print("\n测试前端树图模块边界...")
+    try:
+        branch_tree = Path("web/js/branch-tree.js").read_text(encoding="utf-8")
+        branch_controller = Path("web/js/branch-controller.js").read_text(encoding="utf-8")
+        sessions = Path("web/js/sessions.js").read_text(encoding="utf-8")
+
+        forbidden_in_tree = [
+            "from './api.js'",
+            "from './state.js'",
+            "branchApi.",
+            "applyHighlightsFromMessages",
+            "clearHighlights",
+        ]
+        for forbidden in forbidden_in_tree:
+            assert forbidden not in branch_tree, f"branch-tree.js 不应包含 {forbidden}"
+
+        assert "export const onNodeSelect" in branch_tree
+        assert "export const onBranchDelete" in branch_tree
+        assert "from './branch-tree.js'" not in sessions
+        assert "branchApi." not in sessions
+        assert "branchApi.switch" in branch_controller
+        assert "branchApi.delete" in branch_controller
+        assert "updateActivePath" in branch_controller
+
+        print("✅ 前端树图模块边界正常")
+        return True
+    except Exception as e:
+        print(f"❌ 前端树图模块边界测试失败: {e}")
+        return False
+
+
 def test_skill_registry():
     """测试技能注册表"""
     print("\n测试技能注册表...")
@@ -555,6 +588,7 @@ def main():
         test_context_compressor,
         test_conversation_store_summary,
         test_token_usage_estimator,
+        test_frontend_branch_tree_boundaries,
         test_skill_registry,
         test_executor,
         test_parser,

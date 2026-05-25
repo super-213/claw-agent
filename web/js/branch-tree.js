@@ -1,13 +1,10 @@
 /**
- * branch-tree.js — 会话分支树状图控制器和兼容导出入口。
+ * branch-tree.js — 会话分支树状图渲染和兼容导出入口。
  *
  * 数据构建、布局算法、SVG 节点/连线渲染已经拆到 web/js/branch-tree/*
- * 下。本文件保留外部调用 API，并负责 SVG 生命周期、缩放/平移和分支操作。
+ * 下。本文件保留外部调用 API，并负责 SVG 生命周期、缩放/平移和节点交互事件。
  */
 
-import { branchApi } from './api.js';
-import { clearHighlights, applyHighlightsFromMessages } from './context-highlight.js';
-import { state } from './state.js';
 import {
   SVG_NS,
   TREE_CONSTANTS,
@@ -79,10 +76,12 @@ const _state = {
   contentWidth: TREE_CONSTANTS.minWidth,
   /** @type {number} 当前树布局所需高度 */
   contentHeight: TREE_CONSTANTS.minHeight,
-  /** @type {boolean} 是否正在切换分支（防止重复点击） */
+  /** @type {boolean} 是否正在处理节点操作（防止重复点击） */
   switching: false,
-  /** @type {Function|null} 外部注册的节点点击回调 */
-  onSwitchCallback: null,
+  /** @type {Function|null} 外部注册的节点选择回调 */
+  onNodeSelectCallback: null,
+  /** @type {Function|null} 外部注册的删除分支回调 */
+  onBranchDeleteCallback: null,
   scale: ZOOM_CONSTANTS.defaultScale,
   panX: 0,
   panY: 0,
@@ -415,48 +414,40 @@ export const updateActivePath = (newActiveNodeId) => {
 };
 
 /**
- * 注册分支切换完成后的回调函数。
- * @param {Function} callback
+ * 注册节点选择回调。树图只上报用户选择，由外层控制器决定是否调 API。
+ * @param {(nodeId: string) => (void|Promise<void>)} callback
  */
-export const onSwitch = (callback) => {
-  _state.onSwitchCallback = callback;
-};
-
-const handleNodeClick = (nodeId) => {
-  if (_state.switching || nodeId === _state.activeNodeId) return;
-
-  const sessionId = state.currentSessionId;
-  if (!sessionId) {
-    console.warn('[branch-tree] handleNodeClick: no current session');
-    return;
-  }
-
-  switchBranch(sessionId, nodeId);
+export const onNodeSelect = (callback) => {
+  _state.onNodeSelectCallback = typeof callback === 'function' ? callback : null;
 };
 
 /**
- * 调用 switch API 切换分支，并更新树状图高亮和消息列表。
- * @param {string} sessionId
- * @param {string} targetNodeId
- * @returns {Promise<void>}
+ * 兼容旧导出名。新代码应使用 onNodeSelect。
+ * @param {(nodeId: string) => (void|Promise<void>)} callback
  */
-export const switchBranch = async (sessionId, targetNodeId) => {
-  if (_state.switching) return;
+export const onSwitch = onNodeSelect;
+
+/**
+ * 注册删除分支回调。树图只上报要删除的节点，由外层控制器决定后续行为。
+ * @param {(nodeId: string) => (void|Promise<void>)} callback
+ */
+export const onBranchDelete = (callback) => {
+  _state.onBranchDeleteCallback = typeof callback === 'function' ? callback : null;
+};
+
+const handleNodeClick = async (nodeId) => {
+  if (_state.switching || nodeId === _state.activeNodeId) return;
+
+  if (!_state.onNodeSelectCallback) {
+    console.warn('[branch-tree] handleNodeClick: no node select callback registered');
+    return;
+  }
+
   _state.switching = true;
-  clearHighlights();
-
   try {
-    const result = await branchApi.switch(sessionId, targetNodeId);
-
-    if (result.ok) {
-      updateActivePath(result.active_node_id);
-      if (_state.onSwitchCallback) {
-        _state.onSwitchCallback(result.messages, result.active_node_id);
-      }
-      applyHighlightsFromMessages(result.messages);
-    }
+    await _state.onNodeSelectCallback(nodeId);
   } catch (error) {
-    console.error('[branch-tree] switchBranch failed:', error);
+    console.warn('[branch-tree] node select callback failed:', error);
   } finally {
     _state.switching = false;
   }
@@ -470,21 +461,16 @@ const dismissTreeContextMenu = () => {
 };
 
 const deleteBranchFromNode = async (nodeId) => {
-  const sessionId = state.currentSessionId;
-  if (!sessionId || !nodeId) return;
+  if (!nodeId) return;
+  if (!_state.onBranchDeleteCallback) {
+    console.warn('[branch-tree] deleteBranchFromNode: no delete callback registered');
+    return;
+  }
 
   try {
-    const result = await branchApi.delete(sessionId, nodeId);
-    if (result && result.ok) {
-      const treeData = await branchApi.tree(sessionId);
-      if (treeData && treeData.nodes) {
-        setTreeData(treeData.nodes, treeData.active_node_id);
-      }
-    }
+    await _state.onBranchDeleteCallback(nodeId);
   } catch (error) {
-    console.warn('[branch-tree] 删除分支失败:', error);
-    const msg = error.data?.message || error.message || '未知错误';
-    alert('删除分支失败: ' + msg);
+    console.warn('[branch-tree] delete callback failed:', error);
   }
 };
 

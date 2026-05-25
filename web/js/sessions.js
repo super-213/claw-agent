@@ -1,6 +1,8 @@
-import { branchApi, chatApi, sessionsApi } from './api.js';
-import { initSvg, onSwitch, setTreeData } from './branch-tree.js';
-import { applyHighlightsFromMessages } from './context-highlight.js';
+import { chatApi, sessionsApi } from './api.js';
+import {
+  applyContextHighlight,
+  loadAndRenderTree,
+} from './branch-controller.js';
 import { els, fitMessageInput, isMobileLayout, setMobileSidebar } from './dom.js';
 import {
   appendIterationDivider,
@@ -22,16 +24,7 @@ import {
   isSessionBusy,
   state,
 } from './state.js';
-import { getTreePanelBody } from './tree-panel.js';
 import { escapeHtml, formatTime, formatTokens } from './utils.js';
-
-// ─── 分支切换回调 ─────────────────────────────────────────────────────────────
-// 注册分支切换完成后的回调：用新路径的消息重新渲染消息列表。
-// 上下文高亮的清除和重新应用已由 branch-tree.js 内部处理。
-onSwitch((messages, activeNodeId) => {
-  if (!messages) return;
-  renderMessages(messages);
-});
 
 // 刷新顶部状态栏：按当前选中的会话单独判定 busy。
 const refreshStatusForCurrentSession = () => {
@@ -44,18 +37,6 @@ const refreshStatusForCurrentSession = () => {
   } else {
     setStatus(hasAnyStream() ? '后台生成中…' : '就绪', false);
   }
-};
-
-/**
- * 从消息列表中找到最后一条带 context_nodes 的 assistant 消息，
- * 并调用上下文高亮。如果会话存在 summarized_nodes 数据，则区分
- * "完整发送"和"已压缩为摘要"两种状态。
- *
- * @param {Array} messages - 当前会话的消息列表
- * @param {string[]} [summarizedNodes] - 已被压缩为摘要的节点 ID 列表
- */
-const applyContextHighlight = (messages, summarizedNodes) => {
-  applyHighlightsFromMessages(messages, summarizedNodes);
 };
 
 export const renderSessions = () => {
@@ -146,34 +127,6 @@ export const openSession = async (sessionId) => {
     }
   } catch (error) {
     console.warn('openSession:', error);
-  }
-};
-
-/**
- * 从后端加载会话的树结构并渲染到树状图面板。
- * 此操作为非阻塞（不 await），不影响主会话加载流程。
- *
- * @param {string} sessionId - 会话 ID
- */
-export const loadAndRenderTree = async (sessionId) => {
-  try {
-    const treeData = await branchApi.tree(sessionId);
-
-    // 确保在树数据返回时用户仍在查看同一会话
-    if (state.currentSessionId !== sessionId) return;
-
-    const panelBody = getTreePanelBody();
-    if (!panelBody) return;
-
-    // 初始化 SVG 容器（如果面板内容为空或需要重建）
-    initSvg(panelBody);
-
-    // 设置树数据并触发布局和渲染
-    const nodes = treeData.nodes || [];
-    const activeNodeId = treeData.active_node_id || null;
-    setTreeData(nodes, activeNodeId);
-  } catch (error) {
-    console.warn('[sessions] loadAndRenderTree:', error);
   }
 };
 
