@@ -11,7 +11,7 @@ from web_app import app
 
 @pytest.fixture
 def client():
-    """Create a Flask test client."""
+    """Create an API test client."""
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client

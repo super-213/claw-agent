@@ -9,7 +9,7 @@
 - **插件化技能系统**：易于扩展的技能注册表
 - **依赖注入**：便于测试和维护
 - **安全增强**：命令执行黑名单、超时保护
-- **Web UI + API**：内置 Web 界面与会话 API
+- **FastAPI Web UI + API**：内置 Web 界面、会话 API 与 OpenAPI 文档
 - **流式输出**：基于 NDJSON 的实时流式响应，前端逐步渲染
 - **Token 用量估算**：基于 tiktoken 的 token 统计与分类
 - **LLM 调用可视化**：前端展示每轮模型调用的元信息（模型名、轮次、消息数、耗时）
@@ -64,7 +64,7 @@ claw/
 │       └── utils.js     # 通用工具
 ├── files/               # 生成文件目录
 ├── docs/                # 项目文档
-├── web_app.py           # Web UI 服务入口
+├── web_app.py           # FastAPI Web UI 服务入口
 └── main.py              # CLI 入口
 ```
 
@@ -115,6 +115,13 @@ python web_app.py
 ```
 
 默认访问 `http://localhost:8000`。侧边栏的"模型设置"可修改 API URL、API KEY 和模型名称。Web 端只展示脱敏 API KEY；保存时 API KEY 留空会保留原值，不会把完整密钥返回给浏览器。对话历史会保存在 `.data/conversations` 下的 JSON 文件中，可通过 `CONVERSATION_DIR` 修改路径。
+
+服务默认监听 `127.0.0.1:8000`，可通过 `WEB_HOST` 和 `PORT` 覆盖。
+
+FastAPI 自动文档地址：
+
+- Swagger UI：`http://localhost:8000/docs`
+- OpenAPI JSON：`http://localhost:8000/openapi.json`
 
 **前端特性：**
 

@@ -10,7 +10,7 @@
 
 ### 1. 服务端 no-cache 响应头（开发阶段）
 
-`web_app.py` 中的 `@app.after_request` 钩子对所有 CSS、JS、HTML 响应设置：
+`web_app.py` 中的 FastAPI middleware 对所有 CSS、JS、HTML 响应设置：
 
 ```
 Cache-Control: no-cache, no-store, must-revalidate
@@ -45,7 +45,7 @@ Expires: 0
 
 | 场景 | 是否需要递增 |
 |------|-------------|
-| 本地开发、直连 Flask | 不需要（no-cache 头已生效） |
+| 本地开发、直连 FastAPI | 不需要（no-cache 头已生效） |
 | 部署到有缓存层的环境（Nginx、CDN） | 需要 |
 | 用户反馈看到旧样式 | 递增后让用户硬刷新 |
 
