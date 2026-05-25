@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claw Agent 后台看板</title>
+  <link rel="stylesheet" href="/dashboard.css?v=1">
+</head>
+<body>
+  <div class="dashboard-shell">
+    <aside class="dashboard-sidebar" aria-label="后台导航">
+      <div class="dash-brand">
+        <div class="dash-brand-mark">C</div>
+        <div>
+          <div class="dash-brand-name">Claw Agent</div>
+          <div class="dash-brand-sub">后台看板</div>
+        </div>
+      </div>
+      <nav class="dash-nav">
+        <a href="#overview" class="dash-nav-link active">总览</a>
+        <a href="#tokens" class="dash-nav-link">Token</a>
+        <a href="#sessions" class="dash-nav-link">会话</a>
+        <a href="#tools" class="dash-nav-link">工具</a>
+        <a href="#words" class="dash-nav-link">词云</a>
+      </nav>
+      <div class="dash-sidebar-footer">
+        <a class="chat-link" href="/">返回对话</a>
+        <div class="freshness">
+          <span class="status-dot"></span>
+          <span id="dashboardFreshness">等待同步</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="dashboard-main">
+      <header class="dashboard-topbar">
+        <div>
+          <h1>后台看板</h1>
+          <p id="dashboardSubtitle">全局使用、Token、工具调用与主题分析</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="range-control" aria-label="时间范围">
+            <button type="button" data-range="all" class="active">全部</button>
+            <button type="button" data-range="30d">30 天</button>
+            <button type="button" data-range="7d">7 天</button>
+            <button type="button" data-range="today">今天</button>
+          </div>
+          <button class="icon-button" id="refreshDashboardBtn" type="button" aria-label="刷新">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 1-15.3 6.4"></path>
+              <path d="M3 12A9 9 0 0 1 18.3 5.6"></path>
+              <path d="M18 2v4h-4"></path>
+              <path d="M6 22v-4h4"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="kpi-grid" id="overview" aria-label="核心指标">
+        <article class="kpi-tile">
+          <span class="kpi-label">总 Token</span>
+          <strong id="kpiTotalTokens">0</strong>
+          <small id="kpiAvgTokens">平均 0 / 会话</small>
+        </article>
+        <article class="kpi-tile">
+          <span class="kpi-label">会话</span>
+          <strong id="kpiSessions">0</strong>
+          <small id="kpiMessages">0 条消息</small>
+        </article>
+        <article class="kpi-tile">
+          <span class="kpi-label">工具调用</span>
+          <strong id="kpiToolCalls">0</strong>
+          <small id="kpiToolFailures">0 次失败</small>
+        </article>
+        <article class="kpi-tile">
+          <span class="kpi-label">工具成功率</span>
+          <strong id="kpiToolRate">0%</strong>
+          <small id="kpiAvgOutput">平均输出 0 字符</small>
+        </article>
+      </section>
+
+      <section class="dashboard-grid" id="tokens">
+        <article class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h2>Token 趋势</h2>
+              <p>按消息时间聚合</p>
+            </div>
+            <span class="panel-stat" id="trendTotal">0</span>
+          </div>
+          <svg class="line-chart" id="tokenTrendChart" viewBox="0 0 720 260" role="img" aria-label="Token 趋势图"></svg>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Token 构成</h2>
+              <p>按来源拆分</p>
+            </div>
+          </div>
+          <div class="donut-wrap">
+            <svg class="donut-chart" id="tokenDonutChart" viewBox="0 0 220 220" role="img" aria-label="Token 构成图"></svg>
+            <div class="legend-list" id="tokenLegend"></div>
+          </div>
+        </article>
+
+        <article class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h2>会话 Token 排行</h2>
+              <p>Top 会话</p>
+            </div>
+          </div>
+          <div class="bar-list" id="sessionTokenBars"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>角色占比</h2>
+              <p>系统、用户、助手、工具</p>
+            </div>
+          </div>
+          <div class="bar-list compact" id="roleTokenBars"></div>
+        </article>
+      </section>
+
+      <section class="dashboard-grid" id="tools">
+        <article class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h2>工具调用分布</h2>
+              <p>按命令类型聚合</p>
+            </div>
+          </div>
+          <div class="stacked-area" id="toolCategoryBars"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Top 命令</h2>
+              <p>按调用次数排序</p>
+            </div>
+          </div>
+          <div class="bar-list compact" id="topCommandBars"></div>
+        </article>
+
+        <article class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h2>最近工具调用</h2>
+              <p>命令、会话与状态</p>
+            </div>
+          </div>
+          <div class="tool-feed" id="recentToolCalls"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>异常</h2>
+              <p>需要关注的会话与命令</p>
+            </div>
+          </div>
+          <div class="alert-list" id="dashboardAlerts"></div>
+        </article>
+      </section>
+
+      <section class="dashboard-grid" id="words">
+        <article class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h2>词云</h2>
+              <p>用户与助手消息主题</p>
+            </div>
+            <div class="scope-control" aria-label="词云范围">
+              <button type="button" data-scope="all" class="active">全部</button>
+              <button type="button" data-scope="user">用户</button>
+              <button type="button" data-scope="assistant">助手</button>
+              <button type="button" data-scope="tool">工具</button>
+            </div>
+          </div>
+          <div class="word-cloud" id="wordCloud"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>活跃热力</h2>
+              <p>星期与小时</p>
+            </div>
+          </div>
+          <div class="heatmap" id="activityHeatmap"></div>
+        </article>
+      </section>
+
+      <section class="panel" id="sessions">
+        <div class="panel-head">
+          <div>
+            <h2>会话明细</h2>
+            <p>Token、工具调用、分支与健康度</p>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-3.5-3.5"></path>
+            </svg>
+            <input id="sessionSearchInput" type="search" placeholder="搜索会话" autocomplete="off">
+          </label>
+        </div>
+        <div class="session-table-wrap">
+          <table class="session-table">
+            <thead>
+              <tr>
+                <th>会话</th>
+                <th>Token</th>
+                <th>消息</th>
+                <th>工具</th>
+                <th>分支</th>
+                <th>健康度</th>
+                <th>更新</th>
+              </tr>
+            </thead>
+            <tbody id="sessionTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside class="detail-drawer" id="sessionDetailDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <span class="drawer-kicker">会话详情</span>
+        <h2 id="drawerTitle">-</h2>
+      </div>
+      <button class="icon-button" id="closeDrawerBtn" type="button" aria-label="关闭详情">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18"></path>
+          <path d="m6 6 12 12"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+  <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+
+  <script type="module" src="/js/dashboard.js?v=1"></script>
+</body>
+</html>

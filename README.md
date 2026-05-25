@@ -118,6 +118,8 @@ python web_app.py
 
 服务默认监听 `127.0.0.1:8000`，可通过 `WEB_HOST` 和 `PORT` 覆盖。
 
+后台看板地址：`http://localhost:8000/dashboard`。看板展示全局 token、会话排行、工具调用统计、词云、活跃热力图和单会话详情；旧会话会基于消息内容自动推断工具调用。
+
 FastAPI 自动文档地址：
 
 - Swagger UI：`http://localhost:8000/docs`

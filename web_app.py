@@ -18,6 +18,7 @@ import uvicorn
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
 from services import LLMClient, CommandExecutor, ConversationStore, TokenUsageEstimator
+from services.dashboard_metrics import DashboardMetrics
 from skills import SkillRegistry
 
 
@@ -68,7 +69,7 @@ app.config = {"TESTING": False}
 @app.middleware("http")
 async def _set_static_cache_headers(_request: Request, call_next):
     """Disable browser caching for static assets during development."""
-    response = await call_next(request)
+    response = await call_next(_request)
     content_type = response.headers.get("content-type", "")
     if content_type and (
         "text/css" in content_type
@@ -326,6 +327,16 @@ def index():
     return FileResponse(WEB_DIR / "index.html")
 
 
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    return FileResponse(WEB_DIR / "dashboard.html")
+
+
+@app.get("/dashboard/", include_in_schema=False)
+def dashboard_slash():
+    return FileResponse(WEB_DIR / "dashboard.html")
+
+
 @app.get("/generated/{filename:path}", include_in_schema=False)
 def generated_file(filename: str):
     return _safe_file_response(GENERATED_DIR, filename)
@@ -373,6 +384,63 @@ def get_token_usage():
             for session in sessions
         ],
     }
+
+
+def _dashboard_metrics() -> DashboardMetrics:
+    return DashboardMetrics(
+        store,
+        token_estimator,
+        agent_path=agent_path,
+        agent_prompt=agent_prompt,
+        skills_dir=skills_dir,
+    )
+
+
+@app.get("/api/dashboard/summary", tags=["dashboard"])
+def dashboard_summary(range: str = "all"):
+    return _dashboard_metrics().summary(range)
+
+
+@app.get("/api/dashboard/sessions", tags=["dashboard"])
+def dashboard_sessions(
+    range: str = "all",
+    sort: str = "total_tokens",
+    limit: int = 50,
+):
+    return _dashboard_metrics().sessions(range, sort, limit)
+
+
+@app.get("/api/dashboard/sessions/{session_id}", tags=["dashboard"])
+def dashboard_session_detail(session_id: str):
+    try:
+        return _dashboard_metrics().session_detail(session_id)
+    except KeyError:
+        return _json({"error": "session_not_found"}, 404)
+
+
+@app.get("/api/dashboard/tools", tags=["dashboard"])
+def dashboard_tools(range: str = "all"):
+    return _dashboard_metrics().tools(range)
+
+
+@app.get("/api/dashboard/word-cloud", tags=["dashboard"])
+def dashboard_word_cloud(
+    scope: str = "all",
+    session_id: str | None = None,
+    limit: int = 120,
+):
+    try:
+        return _dashboard_metrics().word_cloud(scope, session_id, limit)
+    except KeyError:
+        return _json({"error": "session_not_found"}, 404)
+
+
+@app.get("/api/dashboard/timeseries", tags=["dashboard"])
+def dashboard_timeseries(
+    metric: str = "tokens",
+    range: str = "30d",
+):
+    return _dashboard_metrics().timeseries(metric, range)
 
 
 @app.get("/api/skills", tags=["skills"])
