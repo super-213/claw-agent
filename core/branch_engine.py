@@ -195,6 +195,10 @@ class BranchEngine:
 
         return summaries
 
+    def get_all_messages(self) -> List[Dict]:
+        """返回当前树中的全部消息节点。"""
+        return list(self._nodes.values())
+
     def build_context(self, leaf_node_id: str) -> List[Dict]:
         """构建从根到叶节点的上下文消息序列。
 

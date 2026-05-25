@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime
-import json
 import os
 from pathlib import Path
-from threading import Lock
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Request
@@ -21,14 +18,20 @@ import uvicorn
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
 from services import LLMClient, CommandExecutor, ConversationStore, TokenUsageEstimator
+from services.branch_service import (
+    create_session_branch,
+    delete_session_branch,
+    get_session_tree as get_session_tree_payload,
+    switch_session_branch,
+)
+from services.chat_runner import SessionRunLocks, run_chat, stream_chat_events
 from services.dashboard_metrics import DashboardMetrics
+from services.message_media import normalize_attachments, normalize_images
 from skills import SkillRegistry
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WEB_DIR = PROJECT_ROOT / "web"
-MAX_MEDIA_ITEMS = 32
-MAX_MEDIA_FIELD_LENGTH = 2048
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -59,34 +62,6 @@ class ChatRequest(BaseModel):
     message: str | None = None
     images: Any = None
     attachments: Any = None
-
-
-class SessionRunLocks:
-    """Per-session async run locks for chat requests.
-
-    Different sessions acquire different locks and can stream concurrently.
-    Requests targeting the same session are serialized to avoid active_node_id
-    and message-tree write races.
-    """
-
-    def __init__(self):
-        self._guard = Lock()
-        self._locks: dict[str, Lock] = {}
-
-    @asynccontextmanager
-    async def locked(self, session_id: str):
-        with self._guard:
-            lock = self._locks.get(session_id)
-            if lock is None:
-                lock = Lock()
-                self._locks[session_id] = lock
-
-        while not lock.acquire(blocking=False):
-            await asyncio.sleep(0.05)
-        try:
-            yield
-        finally:
-            lock.release()
 
 
 app = FastAPI(
@@ -238,79 +213,6 @@ executor = CommandExecutor(
     cwd=GENERATED_DIR,
     generated_files_dir=GENERATED_DIR,
 )
-
-
-def _clean_text(value: Any, max_length: int = MAX_MEDIA_FIELD_LENGTH) -> str:
-    return str(value or "").strip()[:max_length]
-
-
-def _normalize_images(value: Any) -> list[dict[str, Any]]:
-    if value in (None, ""):
-        return []
-    if not isinstance(value, list):
-        raise ValueError("images 必须是数组")
-
-    images: list[dict[str, Any]] = []
-    for item in value[:MAX_MEDIA_ITEMS]:
-        if isinstance(item, str):
-            source = _clean_text(item)
-            image = {"url": source}
-        elif isinstance(item, dict):
-            source = _clean_text(
-                item.get("url") or item.get("src") or item.get("path")
-            )
-            image = {
-                "url": source,
-                "alt": _clean_text(item.get("alt") or item.get("name"), 200),
-                "title": _clean_text(item.get("title"), 200),
-            }
-            image = {key: val for key, val in image.items() if val}
-        else:
-            raise ValueError("images 只支持字符串或对象")
-
-        if not image.get("url"):
-            raise ValueError("images 中存在空图片地址")
-        images.append(image)
-    return images
-
-
-def _normalize_attachments(value: Any) -> list[dict[str, Any]]:
-    if value in (None, ""):
-        return []
-    if not isinstance(value, list):
-        raise ValueError("attachments 必须是数组")
-
-    allowed_keys = {
-        "name", "url", "src", "path", "type", "mime_type", "mimeType",
-        "alt", "title", "size",
-    }
-    attachments: list[dict[str, Any]] = []
-    for item in value[:MAX_MEDIA_ITEMS]:
-        if isinstance(item, str):
-            attachment = {"url": _clean_text(item)}
-        elif isinstance(item, dict):
-            attachment = {}
-            for key in allowed_keys:
-                if key not in item:
-                    continue
-                raw_value = item[key]
-                if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
-                    attachment[key] = (
-                        raw_value if isinstance(raw_value, (int, float, bool))
-                        else _clean_text(raw_value)
-                    )
-            if "url" not in attachment and attachment.get("src"):
-                attachment["url"] = attachment["src"]
-            if "url" not in attachment and attachment.get("path"):
-                attachment["url"] = attachment["path"]
-            attachment = {key: val for key, val in attachment.items() if val not in ("", None)}
-        else:
-            raise ValueError("attachments 只支持字符串或对象")
-
-        if not attachment:
-            raise ValueError("attachments 中存在空附件")
-        attachments.append(attachment)
-    return attachments
 
 
 def _skill_payload(skill_name: str) -> dict:
@@ -575,34 +477,16 @@ def create_branch(
         return _json({"error": "missing_field", "message": "branch_point_node_id is required"}, 400)
 
     try:
-        session = store.load_session(session_id)
+        return create_session_branch(
+            store,
+            agent_prompt,
+            session_id,
+            branch_point_node_id,
+        )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
-
-    # Build ConversationManager and load messages to initialize BranchEngine
-    conversation = ConversationManager(agent_prompt)
-    stored_messages = session.get("messages", [])
-    if stored_messages:
-        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-
-    try:
-        result = conversation.create_branch(branch_point_node_id)
     except ValueError as e:
         return _json({"error": "invalid_node_id", "message": str(e)}, 404)
-
-    # Persist all messages (full flat list from branch engine) and updated active_node_id
-    all_messages = list(conversation.branch_engine._nodes.values())
-    store.save_messages(
-        session_id,
-        all_messages,
-        active_node_id=conversation.active_node_id,
-    )
-
-    return {
-        "ok": True,
-        "branch_node_id": result["branch_node_id"],
-        "ancestor_path": result["ancestor_path"],
-    }
 
 
 @app.post("/api/sessions/{session_id}/switch", tags=["branches"])
@@ -617,100 +501,38 @@ def switch_branch(
         return _json({"error": "missing_field", "message": "target_node_id is required"}, 400)
 
     try:
-        session = store.load_session(session_id)
+        return switch_session_branch(
+            store,
+            agent_prompt,
+            session_id,
+            target_node_id,
+        )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
-
-    # Build ConversationManager and load messages to initialize BranchEngine
-    conversation = ConversationManager(agent_prompt)
-    stored_messages = session.get("messages", [])
-    if stored_messages:
-        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-
-    try:
-        path_messages = conversation.switch_branch(target_node_id)
     except ValueError as e:
         return _json({"error": "invalid_node_id", "message": str(e)}, 404)
-
-    # Persist the updated active_node_id
-    all_messages = list(conversation.branch_engine._nodes.values())
-    store.save_messages(
-        session_id,
-        all_messages,
-        active_node_id=conversation.active_node_id,
-    )
-
-    return {
-        "ok": True,
-        "active_node_id": target_node_id,
-        "messages": path_messages,
-    }
 
 
 @app.get("/api/sessions/{session_id}/tree", tags=["branches"])
 def get_session_tree(session_id: str):
     try:
-        session = store.load_session(session_id)
+        return get_session_tree_payload(store, agent_prompt, session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
-
-    # Build ConversationManager and load messages to initialize BranchEngine
-    conversation = ConversationManager(agent_prompt)
-    stored_messages = session.get("messages", [])
-    if stored_messages:
-        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-
-    if conversation.branch_engine is None:
-        return {"nodes": [], "active_node_id": None}
-
-    active_node_id = conversation.active_node_id or ""
-    nodes = conversation.branch_engine.get_tree_summary(active_node_id)
-
-    return {
-        "nodes": nodes,
-        "active_node_id": active_node_id,
-    }
 
 
 @app.delete("/api/sessions/{session_id}/branch/{node_id}", tags=["branches"])
 def delete_branch(session_id: str, node_id: str):
     try:
-        session = store.load_session(session_id)
+        return delete_session_branch(store, agent_prompt, session_id, node_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
-
-    # Build ConversationManager and load messages to initialize BranchEngine
-    conversation = ConversationManager(agent_prompt)
-    stored_messages = session.get("messages", [])
-    if stored_messages:
-        conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-
-    if conversation.branch_engine is None:
-        return _json({"error": "invalid_node_id", "message": f"节点不存在: {node_id}"}, 404)
-
-    active_node_id = conversation.active_node_id or ""
-
-    try:
-        removed_count = conversation.branch_engine.delete_branch(node_id, active_node_id)
     except ValueError as e:
         error_msg = str(e)
         if "不存在" in error_msg:
             return _json({"error": "invalid_node_id", "message": error_msg}, 404)
         # Active path or root node deletion attempts → 400 Bad Request
         return _json({"error": "delete_rejected", "message": error_msg}, 400)
-
-    # Persist updated messages (without the deleted nodes)
-    all_messages = list(conversation.branch_engine._nodes.values())
-    store.save_messages(
-        session_id,
-        all_messages,
-        active_node_id=active_node_id,
-    )
-
-    return {
-        "ok": True,
-        "removed_count": removed_count,
-    }
 
 
 @app.post("/api/chat", tags=["chat"])
@@ -719,8 +541,8 @@ async def chat(payload: ChatRequest | None = Body(default=None)):
     session_id = payload_data.get("session_id")
     user_message = (payload_data.get("message") or "").strip()
     try:
-        images = _normalize_images(payload_data.get("images"))
-        attachments = _normalize_attachments(payload_data.get("attachments"))
+        images = normalize_images(payload_data.get("images"))
+        attachments = normalize_attachments(payload_data.get("attachments"))
     except ValueError as e:
         return _json({"error": "invalid_media", "message": str(e)}, 400)
 
@@ -730,61 +552,17 @@ async def chat(payload: ChatRequest | None = Body(default=None)):
         return _json({"error": "empty_message"}, 400)
 
     try:
-        await asyncio.to_thread(store.load_session, session_id)
+        return await run_chat(
+            store=store,
+            build_orchestrator=_build_orchestrator,
+            session_run_locks=session_run_locks,
+            session_id=session_id,
+            user_message=user_message,
+            attachments=attachments,
+            images=images,
+        )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
-
-    async with session_run_locks.locked(session_id):
-        try:
-            session = await asyncio.to_thread(store.load_session, session_id)
-        except KeyError:
-            return _json({"error": "session_not_found"}, 404)
-
-        orchestrator = _build_orchestrator()
-        conversation = orchestrator.conversation
-        stored_messages = session.get("messages", [])
-        if stored_messages:
-            conversation.load_messages(stored_messages, active_node_id=session.get("active_node_id"))
-        conversation.load_summary(
-            session.get("summary", ""),
-            session.get("summarized_until", 1),
-        )
-
-        before_len = len(conversation.get_messages())
-
-        async with orchestrator.llm_client:
-            await orchestrator.process_user_input_async(
-                user_message,
-                attachments=attachments,
-                images=images,
-            )
-
-        messages = conversation.get_messages()
-        # Save all nodes (including other branches) to preserve the full tree
-        all_messages = (
-            list(conversation.branch_engine._nodes.values())
-            if conversation.branch_engine is not None
-            else messages
-        )
-        await asyncio.to_thread(
-            store.save_messages,
-            session_id,
-            all_messages,
-            summary=conversation.get_summary(),
-            summarized_until=conversation.get_summarized_until(),
-            active_node_id=conversation.active_node_id,
-        )
-
-        new_messages = messages[before_len:]
-
-    return {
-        "messages": new_messages,
-        "session_id": session_id,
-    }
-
-
-def _stream_event(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
 
 
 @app.post("/api/chat/stream", tags=["chat"])
@@ -793,8 +571,8 @@ async def chat_stream(payload: ChatRequest | None = Body(default=None)):
     session_id = payload_data.get("session_id")
     user_message = (payload_data.get("message") or "").strip()
     try:
-        images = _normalize_images(payload_data.get("images"))
-        attachments = _normalize_attachments(payload_data.get("attachments"))
+        images = normalize_images(payload_data.get("images"))
+        attachments = normalize_attachments(payload_data.get("attachments"))
     except ValueError as e:
         return _json({"error": "invalid_media", "message": str(e)}, 400)
 
@@ -808,90 +586,16 @@ async def chat_stream(payload: ChatRequest | None = Body(default=None)):
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
 
-    async def generate():
-        try:
-            yield _stream_event({
-                "type": "step",
-                "stage": "request",
-                "message": "开始处理请求",
-            })
-
-            async with session_run_locks.locked(session_id):
-                session = await asyncio.to_thread(store.load_session, session_id)
-                orchestrator = _build_orchestrator()
-                conversation = orchestrator.conversation
-                stored_messages = session.get("messages", [])
-                if stored_messages:
-                    conversation.load_messages(
-                        stored_messages,
-                        active_node_id=session.get("active_node_id"),
-                    )
-                conversation.load_summary(
-                    session.get("summary", ""),
-                    session.get("summarized_until", 1),
-                )
-
-                before_len = len(conversation.get_messages())
-
-                async with orchestrator.llm_client:
-                    async for event in orchestrator.process_user_input_stream_async(
-                        user_message,
-                        attachments=attachments,
-                        images=images,
-                    ):
-                        if event.get("type") != "done":
-                            yield _stream_event(event)
-
-                messages = conversation.get_messages()
-                yield _stream_event({
-                    "type": "step",
-                    "stage": "save",
-                    "message": "保存会话记录",
-                })
-                # Save all nodes (including other branches) to preserve the full tree
-                all_messages = (
-                    list(conversation.branch_engine._nodes.values())
-                    if conversation.branch_engine is not None
-                    else messages
-                )
-                await asyncio.to_thread(
-                    store.save_messages,
-                    session_id,
-                    all_messages,
-                    summary=conversation.get_summary(),
-                    summarized_until=conversation.get_summarized_until(),
-                    active_node_id=conversation.active_node_id,
-                )
-
-                # Extract context_nodes from the last assistant message for the frontend
-                new_messages = messages[before_len:]
-                context_nodes = None
-                for msg in reversed(new_messages):
-                    if msg.get("role") == "assistant" and "context_nodes" in msg:
-                        context_nodes = msg["context_nodes"]
-                        break
-
-                done_event = {
-                    "type": "done",
-                    "stage": "done",
-                    "message": "响应完成",
-                    "messages": new_messages,
-                    "session_id": session_id,
-                }
-                if context_nodes is not None:
-                    done_event["context_nodes"] = context_nodes
-                if conversation.active_node_id is not None:
-                    done_event["active_node_id"] = conversation.active_node_id
-                yield _stream_event(done_event)
-        except Exception as e:
-            yield _stream_event({
-                "type": "error",
-                "stage": "error",
-                "message": str(e),
-            })
-
     return StreamingResponse(
-        generate(),
+        stream_chat_events(
+            store=store,
+            build_orchestrator=_build_orchestrator,
+            session_run_locks=session_run_locks,
+            session_id=session_id,
+            user_message=user_message,
+            attachments=attachments,
+            images=images,
+        ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

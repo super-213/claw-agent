@@ -131,6 +131,12 @@ class ConversationManager:
                 pass
         return self._messages.copy()
 
+    def get_all_messages(self) -> List[Dict[str, Any]]:
+        """获取完整消息集合，包括非活跃分支上的节点。"""
+        if self.branch_engine is not None:
+            return self.branch_engine.get_all_messages()
+        return self._messages.copy()
+
     def get_summary(self) -> str:
         """获取已压缩的历史摘要"""
         return self._summary
