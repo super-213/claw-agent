@@ -2338,12 +2338,52 @@ textarea::placeholder {
 /* ─── BRANCH BUTTON (specific style for the branch action button) ─── */
 .message-action-btn.branch-btn {
   font-size: 16px;
+  position: relative;
 }
 
 .message-action-btn.branch-btn:hover {
   color: var(--amber);
   border-color: rgba(245, 166, 35, 0.4);
   background: rgba(245, 166, 35, 0.1);
+}
+
+.message-action-btn.branch-btn:disabled {
+  opacity: 1;
+}
+
+.message-action-btn.branch-btn.is-pending {
+  color: var(--amber);
+  border-color: rgba(245, 166, 35, 0.55);
+  background: rgba(245, 166, 35, 0.14);
+  cursor: wait;
+}
+
+.message-action-btn.branch-btn.is-pending .action-icon {
+  animation: branch-action-pulse 0.9s ease-in-out infinite;
+}
+
+.message-action-btn.branch-btn.is-success {
+  color: var(--neon);
+  border-color: rgba(0, 229, 200, 0.6);
+  background: rgba(0, 229, 200, 0.14);
+  box-shadow: 0 0 14px rgba(0, 229, 200, 0.18);
+}
+
+.message-action-btn.branch-btn.is-error {
+  color: var(--red);
+  border-color: rgba(255, 77, 106, 0.55);
+  background: rgba(255, 77, 106, 0.12);
+}
+
+@keyframes branch-action-pulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
 }
 
 /* ─── ACTIVE PATH HIGHLIGHT (message list) ─── */

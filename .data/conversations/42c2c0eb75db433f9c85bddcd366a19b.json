@@ -2,8 +2,8 @@
   "id": "42c2c0eb75db433f9c85bddcd366a19b",
   "title": "2+3等于几",
   "created_at": "2026-05-10T07:12:13.540653+00:00",
-  "updated_at": "2026-05-24T14:06:01.777089+00:00",
-  "active_node_id": "e2e0da41-f2a4-47d0-b5b1-1411b722634d",
+  "updated_at": "2026-05-25T08:51:26.576034+00:00",
+  "active_node_id": "eeeed347-eec5-45c3-88fc-408e632af2f2",
   "messages": [
     {
       "role": "system",
@@ -90,32 +90,6 @@
       }
     },
     {
-      "role": "assistant",
-      "content": "[完成] 2+3+5等于10",
-      "ts": "2026-05-10T07:12:42.282277+00:00",
-      "node_id": "7d3ccb45-d91e-438c-aba0-5a9fd899e4de",
-      "parent_id": "a5fe5c4d-58f4-477a-94f6-a04bace79c80",
-      "context_nodes": [
-        "4cb240639c9946ce9c072196a7e76abd",
-        "90867618-5104-4977-bd6d-807bb6d6082c",
-        "9bfe7e86-f1b2-470a-90cd-86a0fbd94c75",
-        "a5fe5c4d-58f4-477a-94f6-a04bace79c80"
-      ],
-      "usage": {
-        "estimated": true,
-        "encoding": "cl100k_base",
-        "category": "assistant",
-        "role_tokens": 1,
-        "content_tokens": 12,
-        "message_overhead_tokens": 4,
-        "total_tokens": 17,
-        "tool_tokens": 0,
-        "tool_call_tokens": 0,
-        "tool_result_tokens": 0,
-        "cumulative_tokens": 1857
-      }
-    },
-    {
       "role": "user",
       "content": "",
       "ts": "2026-05-10T07:13:30.791998+00:00",
@@ -132,7 +106,7 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1862
+        "cumulative_tokens": 1845
       }
     },
     {
@@ -152,7 +126,7 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1872
+        "cumulative_tokens": 1855
       }
     },
     {
@@ -178,7 +152,7 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1889
+        "cumulative_tokens": 1872
       }
     },
     {
@@ -198,7 +172,7 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1899
+        "cumulative_tokens": 1882
       }
     },
     {
@@ -226,7 +200,7 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1918
+        "cumulative_tokens": 1901
       }
     },
     {
@@ -246,7 +220,7 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1928
+        "cumulative_tokens": 1911
       }
     },
     {
@@ -274,7 +248,144 @@
         "tool_tokens": 0,
         "tool_call_tokens": 0,
         "tool_result_tokens": 0,
-        "cumulative_tokens": 1947
+        "cumulative_tokens": 1930
+      }
+    },
+    {
+      "role": "user",
+      "content": "",
+      "ts": "2026-05-25T08:41:34.686304+00:00",
+      "node_id": "c80e90df-b892-4b5c-92ac-ed7d45d6f792",
+      "parent_id": "a5fe5c4d-58f4-477a-94f6-a04bace79c80",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 0,
+        "message_overhead_tokens": 4,
+        "total_tokens": 5,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1935
+      }
+    },
+    {
+      "role": "user",
+      "content": "再加11呢",
+      "ts": "2026-05-25T08:42:03.240451+00:00",
+      "node_id": "c4a3e10d-20c6-4db4-85cf-6179ed57aac3",
+      "parent_id": "c80e90df-b892-4b5c-92ac-ed7d45d6f792",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 5,
+        "message_overhead_tokens": 4,
+        "total_tokens": 10,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1945
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[完成] 2 + 3 + 5 + 11 = 21",
+      "ts": "2026-05-25T08:42:03.240451+00:00",
+      "node_id": "ffdbdaad-83d0-457f-9e89-75f5b02611d9",
+      "parent_id": "c4a3e10d-20c6-4db4-85cf-6179ed57aac3",
+      "context_nodes": [
+        "4cb240639c9946ce9c072196a7e76abd",
+        "90867618-5104-4977-bd6d-807bb6d6082c",
+        "9bfe7e86-f1b2-470a-90cd-86a0fbd94c75",
+        "a5fe5c4d-58f4-477a-94f6-a04bace79c80",
+        "c4a3e10d-20c6-4db4-85cf-6179ed57aac3"
+      ],
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "assistant",
+        "role_tokens": 1,
+        "content_tokens": 17,
+        "message_overhead_tokens": 4,
+        "total_tokens": 22,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1967
+      }
+    },
+    {
+      "role": "user",
+      "content": "",
+      "ts": "2026-05-25T08:50:29.312169+00:00",
+      "node_id": "eed16153-5f75-4d19-8789-c02adf697483",
+      "parent_id": "e2e0da41-f2a4-47d0-b5b1-1411b722634d",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 0,
+        "message_overhead_tokens": 4,
+        "total_tokens": 5,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1972
+      }
+    },
+    {
+      "role": "user",
+      "content": "再加11呢",
+      "ts": "2026-05-25T08:50:46.955367+00:00",
+      "node_id": "4ce6b852-8302-4dde-ab08-7bb5f3150eb2",
+      "parent_id": "eed16153-5f75-4d19-8789-c02adf697483",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 5,
+        "message_overhead_tokens": 4,
+        "total_tokens": 10,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 1982
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[完成] 2+3+7+9+11等于32",
+      "ts": "2026-05-25T08:50:46.955367+00:00",
+      "node_id": "eeeed347-eec5-45c3-88fc-408e632af2f2",
+      "parent_id": "4ce6b852-8302-4dde-ab08-7bb5f3150eb2",
+      "context_nodes": [
+        "4cb240639c9946ce9c072196a7e76abd",
+        "90867618-5104-4977-bd6d-807bb6d6082c",
+        "9bfe7e86-f1b2-470a-90cd-86a0fbd94c75",
+        "a9b22ad2-30ba-47c2-af87-536cf548cfc2",
+        "fe9d1b0a-6ada-4471-8974-abad2151ee07",
+        "cfe318cb-44fb-4cd6-98dd-c6bb6a7be4d0",
+        "e2e0da41-f2a4-47d0-b5b1-1411b722634d",
+        "4ce6b852-8302-4dde-ab08-7bb5f3150eb2"
+      ],
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "assistant",
+        "role_tokens": 1,
+        "content_tokens": 16,
+        "message_overhead_tokens": 4,
+        "total_tokens": 21,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2003
       }
     }
   ],
@@ -283,15 +394,15 @@
   "token_usage": {
     "estimated": true,
     "encoding": "cl100k_base",
-    "message_count": 12,
-    "total_tokens": 1947,
+    "message_count": 17,
+    "total_tokens": 2003,
     "session_primer_tokens": 3,
     "system_prompt_tokens": 1800,
     "skill_tokens": 0,
     "summary_tokens": 0,
-    "conversation_tokens": 144,
-    "user_tokens": 57,
-    "assistant_tokens": 87,
+    "conversation_tokens": 200,
+    "user_tokens": 87,
+    "assistant_tokens": 113,
     "tool_tokens": 0,
     "tool_call_tokens": 0,
     "tool_result_tokens": 0

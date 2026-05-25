@@ -1,7 +1,7 @@
 import { branchApi } from './api.js';
 import { els } from './dom.js';
 import { markdownToHtml } from './markdown.js';
-import { state } from './state.js';
+import { hasAnyStream, isSessionBusy, state } from './state.js';
 import { clearHighlights } from './context-highlight.js';
 import {
   escapeHtml,
@@ -299,7 +299,6 @@ export const renderMessages = (messages) => {
       row.className = 'message-row assistant-row';
       if (msg.node_id) {
         row.dataset.nodeId = msg.node_id;
-        addBranchActionButton(row, msg.node_id);
       }
       row.appendChild(createLlmHeader({
         iteration,
@@ -334,6 +333,12 @@ export const renderMessages = (messages) => {
         const nextView = getMessageView(displayMsg);
         const nextRow = document.createElement('div');
         nextRow.className = `message-row ${nextView.role}-row`;
+        if (msg.node_id) {
+          nextRow.dataset.nodeId = msg.node_id;
+          if (nextView.role === 'final') {
+            addBranchActionButton(nextRow, msg.node_id);
+          }
+        }
 
         const label = document.createElement('div');
         label.className = 'msg-label';
@@ -364,7 +369,9 @@ export const renderMessages = (messages) => {
         row.className = `message-row ${view.role}-row`;
         if (msg.node_id) {
           row.dataset.nodeId = msg.node_id;
-          addBranchActionButton(row, msg.node_id);
+          if (view.role === 'final') {
+            addBranchActionButton(row, msg.node_id);
+          }
         }
         if (index === 0) {
           row.appendChild(createLlmHeader({
@@ -407,7 +414,6 @@ export const renderMessages = (messages) => {
       row.className = `message-row ${view.role}-row`;
       if (msg.node_id) {
         row.dataset.nodeId = msg.node_id;
-        addBranchActionButton(row, msg.node_id);
       }
 
       const label = document.createElement('div');
@@ -698,6 +704,85 @@ export const hideThinking = () => {
 
 /** 当前显示的上下文菜单元素 */
 let _contextMenu = null;
+/** 正在创建分支的节点，防止重复点击 */
+const _branchCreatePendingNodes = new Set();
+let _branchStatusTimer = null;
+
+const restoreCurrentStatus = () => {
+  if (state.currentSessionId && isSessionBusy(state.currentSessionId)) {
+    setStatus('处理中…', true);
+    return;
+  }
+  setStatus(hasAnyStream() ? '后台生成中…' : '就绪', false);
+};
+
+const setBranchStatus = (text, resetDelay = 1200) => {
+  const busy = state.currentSessionId ? isSessionBusy(state.currentSessionId) : false;
+  setStatus(text, busy);
+
+  if (_branchStatusTimer) {
+    clearTimeout(_branchStatusTimer);
+  }
+  if (resetDelay === null) {
+    _branchStatusTimer = null;
+    return;
+  }
+  _branchStatusTimer = setTimeout(() => {
+    _branchStatusTimer = null;
+    restoreCurrentStatus();
+  }, resetDelay);
+};
+
+const resetBranchButtonFeedback = (button) => {
+  if (!button) return;
+
+  button.classList.remove('is-pending', 'is-success', 'is-error');
+  button.disabled = false;
+  button.removeAttribute('aria-busy');
+  button.title = '从此处创建分支';
+  button.setAttribute('aria-label', '从此处创建分支');
+
+  const icon = button.querySelector('.action-icon');
+  if (icon) icon.textContent = '⑂';
+};
+
+const setBranchButtonFeedback = (button, feedbackState) => {
+  if (!button) return;
+
+  button.classList.remove('is-pending', 'is-success', 'is-error');
+  const icon = button.querySelector('.action-icon');
+
+  if (feedbackState === 'pending') {
+    button.classList.add('is-pending');
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.title = '正在创建分支';
+    button.setAttribute('aria-label', '正在创建分支');
+    if (icon) icon.textContent = '…';
+    return;
+  }
+
+  if (feedbackState === 'success') {
+    button.classList.add('is-success');
+    button.disabled = true;
+    button.removeAttribute('aria-busy');
+    button.title = '分支已创建';
+    button.setAttribute('aria-label', '分支已创建');
+    if (icon) icon.textContent = '✓';
+    setTimeout(() => resetBranchButtonFeedback(button), 1200);
+    return;
+  }
+
+  if (feedbackState === 'error') {
+    button.classList.add('is-error');
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.title = '创建分支失败，点击重试';
+    button.setAttribute('aria-label', '创建分支失败，点击重试');
+    if (icon) icon.textContent = '!';
+    setTimeout(() => resetBranchButtonFeedback(button), 1600);
+  }
+};
 
 /**
  * 关闭并移除当前上下文菜单
@@ -712,10 +797,16 @@ const dismissContextMenu = () => {
 /**
  * 创建分支操作：调用 API 并更新树状图
  * @param {string} nodeId - 分支点的 node_id
+ * @param {HTMLElement|null} triggerEl - 触发创建的按钮元素，用于显示点击反馈
  */
-const createBranchFromNode = async (nodeId) => {
+const createBranchFromNode = async (nodeId, triggerEl = null) => {
   const sessionId = state.currentSessionId;
   if (!sessionId || !nodeId) return;
+  if (_branchCreatePendingNodes.has(nodeId)) return;
+
+  _branchCreatePendingNodes.add(nodeId);
+  setBranchButtonFeedback(triggerEl, 'pending');
+  setBranchStatus('正在创建分支…', null);
 
   try {
     const result = await branchApi.create(sessionId, nodeId);
@@ -738,10 +829,19 @@ const createBranchFromNode = async (nodeId) => {
       } catch (treeError) {
         console.warn('[messages] 更新树状图失败:', treeError);
       }
+
+      setBranchButtonFeedback(triggerEl, 'success');
+      setBranchStatus('分支已创建');
+    } else {
+      throw new Error(result?.message || '创建分支失败');
     }
   } catch (error) {
     console.warn('[messages] 创建分支失败:', error);
+    setBranchButtonFeedback(triggerEl, 'error');
+    setBranchStatus('创建分支失败', 1800);
     alert('创建分支失败: ' + (error.message || '未知错误'));
+  } finally {
+    _branchCreatePendingNodes.delete(nodeId);
   }
 };
 
@@ -769,9 +869,9 @@ const showMessageContextMenu = (event, nodeId) => {
   menu.style.zIndex = '9999';
 
   // 绑定菜单项点击
-  menu.querySelector('[data-action="create-branch"]').addEventListener('click', () => {
+  menu.querySelector('[data-action="create-branch"]').addEventListener('click', (event) => {
     dismissContextMenu();
-    createBranchFromNode(nodeId);
+    createBranchFromNode(nodeId, event.currentTarget);
   });
 
   document.body.appendChild(menu);
@@ -797,15 +897,15 @@ export const initMessageContextMenu = () => {
   // 点击任意位置关闭菜单
   document.addEventListener('click', dismissContextMenu);
   document.addEventListener('contextmenu', (event) => {
-    // 如果右键点击的不是消息区域，关闭已有菜单
-    if (!event.target.closest('.message-row[data-node-id]')) {
+    // 如果右键点击的不是可创建分支的最终输出行，关闭已有菜单
+    if (!event.target.closest('.message-row[data-node-id][data-branchable="true"]')) {
       dismissContextMenu();
     }
   });
 
-  // 在消息列表上监听右键事件（事件委托）
+  // 在消息列表上监听最终输出行的右键事件（事件委托）
   els.messageList.addEventListener('contextmenu', (event) => {
-    const row = event.target.closest('.message-row[data-node-id]');
+    const row = event.target.closest('.message-row[data-node-id][data-branchable="true"]');
     if (!row) return;
 
     const nodeId = row.dataset.nodeId;
@@ -825,6 +925,8 @@ export const initMessageContextMenu = () => {
 export const addBranchActionButton = (row, nodeId) => {
   if (!row || !nodeId) return;
 
+  row.dataset.branchable = 'true';
+
   const actionsWrap = document.createElement('div');
   actionsWrap.className = 'message-actions';
 
@@ -837,7 +939,7 @@ export const addBranchActionButton = (row, nodeId) => {
 
   branchBtn.addEventListener('click', (event) => {
     event.stopPropagation();
-    createBranchFromNode(nodeId);
+    createBranchFromNode(nodeId, branchBtn);
   });
 
   actionsWrap.appendChild(branchBtn);
