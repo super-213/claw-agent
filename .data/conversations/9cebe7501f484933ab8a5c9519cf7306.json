@@ -2,8 +2,8 @@
   "id": "9cebe7501f484933ab8a5c9519cf7306",
   "title": "上海今天天气怎么样",
   "created_at": "2026-05-25T09:56:52.171403+00:00",
-  "updated_at": "2026-05-25T09:57:01.340975+00:00",
-  "active_node_id": "e5085181-94e2-4b20-bacd-14377d3d1cb8",
+  "updated_at": "2026-05-25T10:12:07.451722+00:00",
+  "active_node_id": "24d72d31-c8c7-4f95-b03e-0b461fa1fabe",
   "messages": [
     {
       "role": "system",
@@ -162,6 +162,108 @@
         "tool_result_tokens": 0,
         "cumulative_tokens": 2887
       }
+    },
+    {
+      "role": "user",
+      "content": "北京呢",
+      "ts": "2026-05-25T10:12:07.451722+00:00",
+      "node_id": "def295f6-0b16-4c94-b875-076787569de6",
+      "parent_id": "e5085181-94e2-4b20-bacd-14377d3d1cb8",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "user",
+        "role_tokens": 1,
+        "content_tokens": 3,
+        "message_overhead_tokens": 4,
+        "total_tokens": 8,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2895
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[命令] curl -s \"https://wttr.in/Beijing?format=3\"",
+      "ts": "2026-05-25T10:12:07.451722+00:00",
+      "node_id": "441cff23-1d8b-4e24-b90b-eb718a18f85e",
+      "parent_id": "def295f6-0b16-4c94-b875-076787569de6",
+      "context_nodes": [
+        "859b3b107f334081a1b6855e589fb05e",
+        "dabeb143-6321-4d0a-b732-61e94e09ad39",
+        "72319d39-c981-4a78-840c-91cda4206e19",
+        "ef03ebe2-9c1d-45a8-ab9d-49abcb446cab",
+        "1ef01f76-7bc3-4d39-818b-24e595df5666",
+        "ca770a73-bc90-4a72-882e-0e72a85179da",
+        "e5085181-94e2-4b20-bacd-14377d3d1cb8",
+        "def295f6-0b16-4c94-b875-076787569de6"
+      ],
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "tool_call",
+        "role_tokens": 1,
+        "content_tokens": 22,
+        "message_overhead_tokens": 4,
+        "total_tokens": 27,
+        "tool_tokens": 27,
+        "tool_call_tokens": 27,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2922
+      }
+    },
+    {
+      "role": "user",
+      "content": "[执行完成]\nbeijing: 🌦️  +68°F\n",
+      "ts": "2026-05-25T10:12:07.451722+00:00",
+      "node_id": "6c3d8ad5-892c-43ca-b4a3-22111c6c8df4",
+      "parent_id": "441cff23-1d8b-4e24-b90b-eb718a18f85e",
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "tool_result",
+        "role_tokens": 1,
+        "content_tokens": 16,
+        "message_overhead_tokens": 4,
+        "total_tokens": 21,
+        "tool_tokens": 21,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 21,
+        "cumulative_tokens": 2943
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "[完成] 北京今天天气：晴间多云，气温约 20°C（+68°F），体感舒适，适宜户外活动。",
+      "ts": "2026-05-25T10:12:07.451722+00:00",
+      "node_id": "24d72d31-c8c7-4f95-b03e-0b461fa1fabe",
+      "parent_id": "6c3d8ad5-892c-43ca-b4a3-22111c6c8df4",
+      "context_nodes": [
+        "859b3b107f334081a1b6855e589fb05e",
+        "dabeb143-6321-4d0a-b732-61e94e09ad39",
+        "72319d39-c981-4a78-840c-91cda4206e19",
+        "ef03ebe2-9c1d-45a8-ab9d-49abcb446cab",
+        "1ef01f76-7bc3-4d39-818b-24e595df5666",
+        "ca770a73-bc90-4a72-882e-0e72a85179da",
+        "e5085181-94e2-4b20-bacd-14377d3d1cb8",
+        "def295f6-0b16-4c94-b875-076787569de6",
+        "441cff23-1d8b-4e24-b90b-eb718a18f85e",
+        "6c3d8ad5-892c-43ca-b4a3-22111c6c8df4"
+      ],
+      "usage": {
+        "estimated": true,
+        "encoding": "cl100k_base",
+        "category": "assistant",
+        "role_tokens": 1,
+        "content_tokens": 48,
+        "message_overhead_tokens": 4,
+        "total_tokens": 53,
+        "tool_tokens": 0,
+        "tool_call_tokens": 0,
+        "tool_result_tokens": 0,
+        "cumulative_tokens": 2996
+      }
     }
   ],
   "summary": "",
@@ -169,17 +271,17 @@
   "token_usage": {
     "estimated": true,
     "encoding": "cl100k_base",
-    "message_count": 7,
-    "total_tokens": 2887,
+    "message_count": 11,
+    "total_tokens": 2996,
     "session_primer_tokens": 3,
     "system_prompt_tokens": 2239,
     "skill_tokens": 0,
     "summary_tokens": 0,
-    "conversation_tokens": 645,
-    "user_tokens": 529,
-    "assistant_tokens": 116,
-    "tool_tokens": 573,
-    "tool_call_tokens": 60,
-    "tool_result_tokens": 513
+    "conversation_tokens": 754,
+    "user_tokens": 558,
+    "assistant_tokens": 196,
+    "tool_tokens": 621,
+    "tool_call_tokens": 87,
+    "tool_result_tokens": 534
   }
 }

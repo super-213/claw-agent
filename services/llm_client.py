@@ -1,4 +1,5 @@
 """LLM 客户端封装"""
+import asyncio
 from openai import AsyncOpenAI, OpenAI
 from typing import Any, AsyncIterator, Dict, Iterator, List
 
@@ -88,6 +89,15 @@ class LLMClient:
     def close(self):
         """关闭客户端"""
         self.client.close()
+        if self._async_client is not None:
+            async_client = self._async_client
+            self._async_client = None
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(async_client.close())
+            else:
+                loop.create_task(async_client.close())
 
     async def aclose(self):
         """关闭同步和异步客户端。"""
