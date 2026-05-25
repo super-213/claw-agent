@@ -41,6 +41,8 @@ Expires: 0
 
 这确保即使 no-cache 头被 CDN/代理忽略，浏览器也会因为 URL 变化而重新下载。
 
+CSS 已拆分为 `web/css/*.css` 模块，`web/styles.css` 作为聚合入口通过 `@import` 引入模块。生产环境递增 CSS 版本时，需要同时更新 `index.html` 中的 `/styles.css?v=...`，以及 `web/styles.css` 内各模块 `@import` 的 `?v=...`。
+
 ## 何时需要手动递增版本号
 
 | 场景 | 是否需要递增 |
@@ -51,6 +53,6 @@ Expires: 0
 
 ## 注意事项
 
-- 版本号只需要在 `index.html` 中维护，JS 模块之间的 `import` 不需要加版本号（浏览器会跟随入口文件的缓存策略）。
+- JS 版本号只需要在 `index.html` 中维护，JS 模块之间的 `import` 不需要加版本号（浏览器会跟随入口文件的缓存策略）。
 - 如果未来引入构建工具（Vite/Webpack），可改用内容哈希文件名（如 `styles.a3f2b1.css`）替代手动版本号。
 - 生产环境部署时，可以移除 no-cache 头并改用长期缓存 + 哈希文件名策略以提升性能。

@@ -48,7 +48,8 @@ claw/
 │   └── parser.py        # 输入解析
 ├── web/                 # Web UI 静态资源（模块化）
 │   ├── index.html       # 页面入口
-│   ├── styles.css       # 样式（响应式布局）
+│   ├── styles.css       # 样式聚合入口
+│   ├── css/             # CSS 模块（布局、会话、消息、工具调用、分支树等）
 │   └── js/              # 前端 JS 模块
 │       ├── app.js       # 应用初始化
 │       ├── api.js       # API 请求封装

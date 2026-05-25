@@ -1,0 +1,315 @@
+/* Branch tree panel and SVG tree */
+
+/* ─── TREE PANEL ─── */
+
+/* Main content area: flex container for chat + tree panel */
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Tree toggle button in topbar */
+.tree-toggle-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+
+.tree-toggle-btn:hover {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.tree-toggle-btn[aria-expanded="true"] {
+  color: var(--neon);
+  border-color: rgba(0, 229, 200, 0.4);
+  background: var(--neon-dim);
+}
+
+.tree-toggle-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Tree panel (desktop: right side panel) */
+.tree-panel {
+  display: none;
+  flex-direction: column;
+  width: 420px;
+  min-width: 320px;
+  max-width: 60vw;
+  border-left: 1px solid var(--stroke);
+  background: rgba(8, 11, 16, 0.95);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.tree-panel.open {
+  display: flex;
+}
+
+/* Resize handle (desktop only) */
+.tree-panel-resize {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  transition: background 0.18s;
+}
+
+.tree-panel-resize:hover,
+.tree-panel-resize.dragging {
+  background: rgba(0, 229, 200, 0.3);
+}
+
+/* Tree panel header */
+.tree-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--stroke-soft);
+  background: rgba(13, 17, 23, 0.8);
+  flex-shrink: 0;
+}
+
+.tree-panel-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.tree-panel-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+
+.tree-panel-close:hover {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.tree-panel-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Tree panel body (hosts the SVG tree) */
+.tree-panel-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.tree-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-ghost);
+  opacity: 0.5;
+}
+
+/* ─── BRANCH TREE SVG STYLES ─── */
+
+/* SVG container */
+.branch-tree-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.012);
+  background-image:
+    linear-gradient(rgba(122, 143, 168, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 143, 168, 0.07) 1px, transparent 1px),
+    linear-gradient(rgba(122, 143, 168, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(122, 143, 168, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px, 12px 12px, 12px 12px;
+}
+
+/* Node group: branch block inspired by the provided sketch */
+.branch-tree-node {
+  cursor: pointer;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.branch-tree-node.inactive {
+  opacity: 0.36;
+}
+
+.branch-tree-node.inactive:hover {
+  opacity: 0.68;
+}
+
+.branch-tree-node.active {
+  filter: drop-shadow(0 0 10px rgba(0, 229, 200, 0.16));
+}
+
+.branch-tree-node:hover {
+  filter: drop-shadow(0 0 12px rgba(0, 229, 200, 0.22));
+}
+
+.branch-block {
+  stroke-dasharray: 7 7;
+  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
+}
+
+.branch-block.active {
+  stroke-dasharray: none;
+  fill: rgba(0, 229, 200, 0.035);
+}
+
+.branch-message-rect {
+  fill: rgba(8, 11, 16, 0.9);
+  stroke: rgba(232, 237, 245, 0.72);
+  stroke-width: 1.8;
+  transition: stroke 0.2s, fill 0.2s;
+}
+
+.branch-message-card.active .branch-message-rect {
+  fill: rgba(0, 229, 200, 0.08);
+  stroke: rgba(0, 229, 200, 0.92);
+  stroke-width: 2.4;
+}
+
+.branch-message-slot.role-user .branch-message-role {
+  fill: #75a7ff;
+}
+
+.branch-message-slot.role-assistant .branch-message-role {
+  fill: #52d987;
+}
+
+.branch-message-slot.role-tool .branch-message-role {
+  fill: var(--amber);
+}
+
+.branch-message-slot.role-system .branch-message-role {
+  fill: #a5b0bf;
+}
+
+.branch-message-slot.muted {
+  opacity: 0.48;
+}
+
+.branch-message-role,
+.branch-message-summary {
+  font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+  dominant-baseline: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
+.branch-message-summary {
+  fill: var(--ink);
+}
+
+.branch-tree-node.inactive .branch-message-summary {
+  fill: var(--ink-dim);
+}
+
+/* Edge (connection line) styles */
+.branch-tree-edge {
+  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
+  opacity: 0.42;
+  stroke-dasharray: 7 7;
+}
+
+/* Active path edges: brighter and more opaque */
+.branch-tree-edge.active {
+  opacity: 1;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 4px rgba(0, 229, 200, 0.36));
+}
+
+/* ─── BRANCH BUTTON (specific style for the branch action button) ─── */
+.message-action-btn.branch-btn {
+  font-size: 16px;
+  position: relative;
+}
+
+.message-action-btn.branch-btn:hover {
+  color: var(--amber);
+  border-color: rgba(245, 166, 35, 0.4);
+  background: rgba(245, 166, 35, 0.1);
+}
+
+.message-action-btn.branch-btn:disabled {
+  opacity: 1;
+}
+
+.message-action-btn.branch-btn.is-pending {
+  color: var(--amber);
+  border-color: rgba(245, 166, 35, 0.55);
+  background: rgba(245, 166, 35, 0.14);
+  cursor: wait;
+}
+
+.message-action-btn.branch-btn.is-pending .action-icon {
+  animation: branch-action-pulse 0.9s ease-in-out infinite;
+}
+
+.message-action-btn.branch-btn.is-success {
+  color: var(--neon);
+  border-color: rgba(0, 229, 200, 0.6);
+  background: rgba(0, 229, 200, 0.14);
+  box-shadow: 0 0 14px rgba(0, 229, 200, 0.18);
+}
+
+.message-action-btn.branch-btn.is-error {
+  color: var(--red);
+  border-color: rgba(255, 77, 106, 0.55);
+  background: rgba(255, 77, 106, 0.12);
+}
+
+@keyframes branch-action-pulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}

@@ -1,0 +1,263 @@
+/* LLM request headers, tool call cards, and iteration dividers */
+
+/* ─── LLM REQUEST HEADER (enriched msg-label for streaming) ─── */
+.llm-req-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 4px 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.llm-req-header .req-tag {
+  padding: 2px 7px;
+  border: 1px solid rgba(0, 229, 200, 0.3);
+  border-radius: 4px;
+  background: rgba(0, 229, 200, 0.06);
+  color: var(--neon);
+  letter-spacing: 0.14em;
+}
+
+.llm-req-header .req-iter {
+  color: var(--neon);
+}
+
+.llm-req-header .req-model {
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.llm-req-header .req-msgs {
+  color: var(--ink-ghost);
+}
+
+.llm-req-header .req-state {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--amber);
+}
+
+.llm-req-header .req-state .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 4px var(--amber);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.llm-req-header.done .req-state {
+  color: var(--neon);
+}
+
+.llm-req-header.done .req-state .dot {
+  background: var(--neon);
+  box-shadow: 0 0 4px var(--neon);
+  animation: none;
+}
+
+.llm-req-header.failed .req-state {
+  color: var(--red);
+}
+
+.llm-req-header.failed .req-state .dot {
+  background: var(--red);
+  box-shadow: 0 0 4px var(--red);
+  animation: none;
+}
+
+/* ─── TOOL CALL CARD (terminal-style) ─── */
+.message-row.tool-call-row {
+  align-items: flex-start;
+}
+
+.tool-call-card {
+  width: min(85%, 720px);
+  max-width: min(85%, 720px);
+  border: 1px solid rgba(0, 229, 200, 0.22);
+  border-radius: var(--radius-md);
+  background: rgba(6, 10, 16, 0.88);
+  overflow: hidden;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
+}
+
+.tool-call-card.success { border-color: rgba(0, 229, 200, 0.36); }
+.tool-call-card.failure { border-color: rgba(255, 77, 106, 0.42); }
+
+.tool-call-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--stroke-soft);
+  background: rgba(13, 17, 23, 0.84);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.tool-call-head .tool-badge {
+  padding: 2px 7px;
+  border: 1px solid rgba(0, 229, 200, 0.3);
+  border-radius: 4px;
+  background: rgba(0, 229, 200, 0.06);
+  color: var(--neon);
+  letter-spacing: 0.14em;
+}
+
+.tool-call-head .tool-iter {
+  color: var(--neon);
+}
+
+.tool-call-head .tool-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--amber);
+}
+
+.tool-call-head .tool-status .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 4px var(--amber);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.tool-call-card.success .tool-status { color: var(--neon); }
+.tool-call-card.success .tool-status .dot {
+  background: var(--neon);
+  box-shadow: 0 0 4px var(--neon);
+  animation: none;
+}
+
+.tool-call-card.failure .tool-status { color: var(--red); }
+.tool-call-card.failure .tool-status .dot {
+  background: var(--red);
+  box-shadow: 0 0 4px var(--red);
+  animation: none;
+}
+
+.tool-call-command {
+  padding: 10px 12px;
+  color: var(--neon);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.tool-call-command::before {
+  content: '$ ';
+  color: var(--ink-ghost);
+}
+
+.tool-call-output-wrap {
+  border-top: 1px solid var(--stroke-soft);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.tool-call-output-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tool-call-output-toggle:hover { color: var(--neon); }
+
+.tool-call-output-toggle .caret {
+  transition: transform 0.18s;
+  display: inline-block;
+}
+
+.tool-call-output-wrap.open .tool-call-output-toggle .caret {
+  transform: rotate(90deg);
+}
+
+.tool-call-output {
+  display: none;
+  max-height: 320px;
+  overflow: auto;
+  padding: 0 12px 12px;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11.5px;
+  line-height: 1.55;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-ghost) transparent;
+}
+
+.tool-call-output-wrap.open .tool-call-output { display: block; }
+
+.tool-call-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  border-top: 1px solid var(--stroke-soft);
+  background: rgba(13, 17, 23, 0.64);
+  color: var(--ink-ghost);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.tool-call-meta .meta-key {
+  color: var(--ink-dim);
+  margin-right: 5px;
+}
+
+.tool-call-meta .meta-val {
+  color: var(--ink);
+}
+
+.tool-call-card.failure .tool-call-meta .meta-val.rc {
+  color: var(--red);
+}
+
+/* ─── ITERATION DIVIDER ─── */
+.iteration-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 -4px;
+  padding: 0 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+  animation: msgIn 0.25s ease forwards;
+}
+
+.iteration-divider::before,
+.iteration-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(122, 143, 168, 0.28), transparent);
+}

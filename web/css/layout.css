@@ -1,0 +1,218 @@
+/* Application shell and composer layout */
+
+.app {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  height: 100vh;
+  height: 100svh;
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── MAIN ─── */
+.main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  background: var(--bg-1);
+  min-width: 0;
+}
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--stroke-soft);
+  background: rgba(13, 17, 23, 0.8);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-menu-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+
+.mobile-menu-btn:hover,
+.mobile-menu-btn[aria-expanded="true"] {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.mobile-menu-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.topbar-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.meta-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-dim);
+  padding: 5px 10px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: 999px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--neon);
+  padding: 5px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--neon-dim);
+  transition: all 0.3s;
+}
+
+.status-badge.busy {
+  color: var(--amber);
+  border-color: rgba(245, 166, 35, 0.25);
+  background: var(--amber-dim);
+}
+
+.status-badge .dot {
+  width: 5px;
+  height: 5px;
+}
+
+.status-badge.busy .dot {
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+}
+
+/* Composer */
+.composer-area {
+  padding: 16px 28px 22px;
+  background: rgba(8, 11, 16, 0.9);
+  border-top: 1px solid var(--stroke-soft);
+  flex-shrink: 0;
+}
+
+.composer {
+  max-width: 820px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  background: var(--bg-3);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.composer:focus-within {
+  border-color: rgba(0, 229, 200, 0.4);
+  box-shadow: 0 0 0 3px rgba(0, 229, 200, 0.06), var(--neon-glow);
+}
+
+textarea {
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  min-height: 44px;
+  max-height: 160px;
+  line-height: 1.6;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+textarea::placeholder {
+  color: var(--ink-ghost);
+  font-size: 14px;
+}
+
+.send-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: var(--neon);
+  color: var(--bg-0);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  font-size: 18px;
+}
+
+.send-btn:hover {
+  background: #00f5d8;
+  box-shadow: var(--neon-glow);
+  transform: scale(1.04);
+}
+
+.send-btn:active {
+  transform: scale(0.97);
+}
+
+.send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.send-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.composer-hint {
+  max-width: 820px;
+  margin: 8px auto 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-ghost);
+  letter-spacing: 0.05em;
+}

@@ -1,0 +1,95 @@
+/* Base tokens and global primitives */
+
+:root {
+  --bg-0: #080b10;
+  --bg-1: #0d1117;
+  --bg-2: #121820;
+  --bg-3: #1a2130;
+  --surface: rgba(20, 28, 42, 0.85);
+  --ink: #e8edf5;
+  --ink-dim: #7a8fa8;
+  --ink-ghost: #3a4d63;
+  --neon: #00e5c8;
+  --neon-dim: rgba(0, 229, 200, 0.12);
+  --neon-glow: 0 0 20px rgba(0, 229, 200, 0.4);
+  --amber: #f5a623;
+  --amber-dim: rgba(245, 166, 35, 0.12);
+  --red: #ff4d6a;
+  --stroke: rgba(0, 229, 200, 0.1);
+  --stroke-soft: rgba(255,255,255,0.05);
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100svh;
+  font-family: 'Outfit', sans-serif;
+  color: var(--ink);
+  background: var(--bg-0);
+  overflow: hidden;
+}
+
+/* Subtle scanline overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 229, 200, 0.015) 2px,
+    rgba(0, 229, 200, 0.015) 4px
+  );
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Grid background */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 229, 200, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 200, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sys-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-dim);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--neon);
+  box-shadow: 0 0 6px var(--neon);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ink-ghost); border-radius: 4px; }

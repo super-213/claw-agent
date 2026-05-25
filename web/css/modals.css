@@ -1,0 +1,150 @@
+/* Modal surfaces and forms */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.skill-modal {
+  width: min(620px, 100%);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-md);
+  background: rgba(13, 17, 23, 0.98);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--stroke-soft);
+}
+
+.modal-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.modal-close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--neon);
+  border-color: var(--stroke);
+  background: rgba(0, 229, 200, 0.08);
+}
+
+.skill-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-ghost);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.skill-input,
+.skill-textarea {
+  width: 100%;
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  background: rgba(20, 30, 46, 0.9);
+  color: var(--ink);
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.skill-input {
+  height: 42px;
+  padding: 0 12px;
+}
+
+.skill-textarea {
+  min-height: 220px;
+  padding: 12px;
+  line-height: 1.55;
+  resize: vertical;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.skill-input:focus,
+.skill-textarea:focus {
+  border-color: rgba(0, 229, 200, 0.42);
+  box-shadow: 0 0 0 3px rgba(0, 229, 200, 0.06);
+}
+
+.skill-form-error {
+  min-height: 18px;
+  color: var(--red);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-secondary,
+.modal-primary {
+  min-width: 86px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.modal-secondary {
+  border: 1px solid var(--stroke-soft);
+  background: transparent;
+  color: var(--ink-dim);
+}
+
+.modal-primary {
+  border: 1px solid var(--neon);
+  background: var(--neon);
+  color: var(--bg-0);
+}
+
+.modal-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
