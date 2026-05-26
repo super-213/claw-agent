@@ -1,6 +1,8 @@
 export const state = {
   sessions: [],
   skills: [],
+  users: [],
+  currentUser: null,
   config: null,
   currentSessionId: null,
   messages: [],

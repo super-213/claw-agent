@@ -21,6 +21,8 @@ class SessionMeta:
     created_at: str
     updated_at: str
     token_usage: Dict[str, Any] | None = None
+    owner_user_id: str | None = None
+    sharing: Dict[str, Any] | None = None
 
 
 class ConversationStore:
@@ -72,12 +74,19 @@ class ConversationStore:
                     created_at=data.get("created_at", ""),
                     updated_at=data.get("updated_at", ""),
                     token_usage=data.get("token_usage"),
+                    owner_user_id=data.get("owner_user_id"),
+                    sharing=self._normalized_sharing(data.get("sharing")),
                 )
             )
         sessions.sort(key=lambda s: s.updated_at or s.created_at, reverse=True)
         return sessions
 
-    def create_session(self, system_prompt: str, title: str | None = None) -> Dict[str, Any]:
+    def create_session(
+        self,
+        system_prompt: str,
+        title: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> Dict[str, Any]:
         session_id = uuid.uuid4().hex
         now = self._now_iso()
         system_node_id = uuid.uuid4().hex
@@ -86,6 +95,10 @@ class ConversationStore:
             "title": title or "新对话",
             "created_at": now,
             "updated_at": now,
+            "owner_user_id": owner_user_id,
+            "created_by": owner_user_id,
+            "updated_by": owner_user_id,
+            "sharing": self._default_sharing(),
             "active_node_id": system_node_id,
             "messages": [
                 {
@@ -134,7 +147,11 @@ class ConversationStore:
             path.unlink()
         self._drop_session_lock(session_id)
 
-    def clone_session(self, session_id: str) -> Dict[str, Any]:
+    def clone_session(
+        self,
+        session_id: str,
+        owner_user_id: str | None = None,
+    ) -> Dict[str, Any]:
         """复制会话，保留完整的分支树结构。
 
         克隆会话时保留所有 node_id/parent_id 关系、active_node_id
@@ -158,6 +175,10 @@ class ConversationStore:
             "title": f"{source.get('title') or '新对话'} 副本",
             "created_at": now,
             "updated_at": now,
+            "owner_user_id": owner_user_id if owner_user_id is not None else source.get("owner_user_id"),
+            "created_by": owner_user_id if owner_user_id is not None else source.get("created_by"),
+            "updated_by": owner_user_id if owner_user_id is not None else source.get("updated_by"),
+            "sharing": self._default_sharing(),
             # 保留分支树的活跃节点指针
             "active_node_id": source.get("active_node_id"),
             # 保留完整的消息列表（含 node_id/parent_id 树结构）
@@ -272,6 +293,43 @@ class ConversationStore:
             self._write_session(session_id, data)
             return data
 
+    def update_sharing(self, session_id: str, sharing: Dict[str, Any]) -> Dict[str, Any]:
+        with self._session_lock(session_id):
+            data = self.load_session(session_id)
+            data["sharing"] = self._normalized_sharing(sharing)
+            data["updated_at"] = self._now_iso()
+            self._write_session(session_id, data)
+            return data
+
+    def ensure_owner_for_legacy_sessions(self, owner_user_id: str) -> List[str]:
+        """Backfill owner/share metadata for existing session JSON files."""
+        updated: List[str] = []
+        session_ids = [path.stem for path in self.root_dir.glob("*.json")]
+        for session_id in session_ids:
+            path = self._path(session_id)
+            with self._session_lock(session_id):
+                if not path.exists():
+                    continue
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                changed = False
+                if not data.get("owner_user_id"):
+                    data["owner_user_id"] = owner_user_id
+                    data.setdefault("created_by", owner_user_id)
+                    data["updated_by"] = data.get("updated_by") or owner_user_id
+                    changed = True
+                normalized = self._normalized_sharing(data.get("sharing"))
+                if data.get("sharing") != normalized:
+                    data["sharing"] = normalized
+                    changed = True
+                if changed:
+                    data["updated_at"] = self._now_iso()
+                    self._write_session(data.get("id") or session_id, data)
+                    updated.append(data.get("id") or session_id)
+        return updated
+
     def refresh_usage(self) -> List[str]:
         """为已有会话文件补齐 token 用量，返回更新过的 session id"""
         updated: List[str] = []
@@ -336,3 +394,29 @@ class ConversationStore:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    @staticmethod
+    def _default_sharing() -> Dict[str, Any]:
+        return {"scope": "private", "user_ids": [], "permission": "write"}
+
+    @classmethod
+    def _normalized_sharing(cls, sharing: Dict[str, Any] | None) -> Dict[str, Any]:
+        if not isinstance(sharing, dict):
+            return cls._default_sharing()
+        scope = sharing.get("scope") or "private"
+        if scope not in {"private", "all", "selected"}:
+            scope = "private"
+        permission = sharing.get("permission") or "write"
+        if permission not in {"read", "write"}:
+            permission = "write"
+        user_ids = sharing.get("user_ids") or []
+        if not isinstance(user_ids, list):
+            user_ids = []
+        cleaned = []
+        for user_id in user_ids:
+            value = str(user_id or "").strip()
+            if value and value not in cleaned:
+                cleaned.append(value)
+        if scope != "selected":
+            cleaned = []
+        return {"scope": scope, "user_ids": cleaned, "permission": permission}

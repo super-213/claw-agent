@@ -22,6 +22,7 @@ class ConfigManager:
         "agent_file": "Agent.md",
         "skills_dir": "skills",
         "conversation_dir": ".data/conversations",
+        "user_file": ".data/users.json",
         "generated_files_dir": "files",
         "timeout": 30,
         "max_retries": 3,
@@ -76,6 +77,9 @@ class ConfigManager:
 
         if conversation_dir := os.getenv("CONVERSATION_DIR"):
             config["conversation_dir"] = conversation_dir
+
+        if user_file := os.getenv("USER_FILE"):
+            config["user_file"] = user_file
 
         if generated_files_dir := os.getenv("GENERATED_FILES_DIR"):
             config["generated_files_dir"] = generated_files_dir

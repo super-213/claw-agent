@@ -81,6 +81,7 @@ async def _collect_stream(client, session_id: str, message: str):
 
 def test_stream_chat_runs_different_sessions_concurrently(tmp_path):
     async def run():
+        app.config["TESTING"] = True
         store = ConversationStore(tmp_path)
         ConcurrentFakeLLM.active = 0
         ConcurrentFakeLLM.max_active = 0

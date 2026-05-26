@@ -57,6 +57,10 @@ const fetchJson = async (url) => {
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401) {
+      window.location.href = '/login';
+      return {};
+    }
     throw new Error(data.message || data.error || '请求失败');
   }
   return data;

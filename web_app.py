@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,7 +17,15 @@ import uvicorn
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
-from services import LLMClient, CommandExecutor, ConversationStore, TokenUsageEstimator
+from services import LLMClient, CommandExecutor, ConversationStore, TokenUsageEstimator, UserStore
+from services.access_control import (
+    can_delete_session,
+    can_manage_users,
+    can_read_session,
+    can_write_session,
+    normalize_sharing,
+)
+from services.auth_service import AuthSessionStore
 from services.branch_service import (
     create_session_branch,
     delete_session_branch,
@@ -64,12 +72,59 @@ class ChatRequest(BaseModel):
     attachments: Any = None
 
 
+class BootstrapAdminRequest(BaseModel):
+    username: str | None = None
+    password: str | None = None
+    display_name: str | None = None
+
+
+class LoginRequest(BaseModel):
+    username: str | None = None
+    password: str | None = None
+
+
+class UserCreateRequest(BaseModel):
+    username: str | None = None
+    password: str | None = None
+    display_name: str | None = None
+    role: str | None = "user"
+    status: str | None = "active"
+
+
+class UserUpdateRequest(BaseModel):
+    username: str | None = None
+    display_name: str | None = None
+    role: str | None = None
+    status: str | None = None
+
+
+class PasswordResetRequest(BaseModel):
+    password: str | None = None
+
+
+class ShareUpdateRequest(BaseModel):
+    scope: str | None = None
+    user_ids: list[str] | None = None
+    permission: str | None = None
+
+
 app = FastAPI(
     title="Claw Agent API",
     description="Web UI 和会话 API 服务",
     version="1.0.0",
 )
 app.config = {"TESTING": False}
+AUTH_COOKIE_NAME = "claw_session"
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException):
+    detail = str(exc.detail or "")
+    if exc.status_code == 401:
+        return _error("unauthorized", 401)
+    if exc.status_code == 403:
+        return _error("forbidden", 403)
+    return _error(detail or "http_error", exc.status_code)
 
 
 @app.middleware("http")
@@ -164,6 +219,23 @@ def _payload(model: BaseModel | None) -> dict[str, Any]:
     return model.model_dump() if model is not None else {}
 
 
+def _test_user() -> dict[str, Any]:
+    return {
+        "id": "test-admin",
+        "username": "test-admin",
+        "display_name": "Test Admin",
+        "role": "admin",
+        "status": "active",
+    }
+
+
+def _error(error: str, status_code: int, message: str | None = None) -> JSONResponse:
+    payload: dict[str, Any] = {"error": error}
+    if message:
+        payload["message"] = message
+    return _json(payload, status_code)
+
+
 def _safe_file_response(directory: Path, filename: str) -> FileResponse:
     requested_path = (directory / filename).resolve()
     try:
@@ -203,6 +275,11 @@ if not conversation_root.is_absolute():
     conversation_root = PROJECT_ROOT / conversation_root
 token_estimator = TokenUsageEstimator(config["token_encoding"])
 store = ConversationStore(conversation_root, token_estimator=token_estimator)
+user_file = Path(config["user_file"])
+if not user_file.is_absolute():
+    user_file = PROJECT_ROOT / user_file
+user_store = UserStore(user_file)
+auth_sessions = AuthSessionStore()
 session_run_locks = SessionRunLocks()
 skills_dir = Path(config["skills_dir"])
 if not skills_dir.is_absolute():
@@ -213,6 +290,137 @@ executor = CommandExecutor(
     cwd=GENERATED_DIR,
     generated_files_dir=GENERATED_DIR,
 )
+
+
+def _ensure_env_admin() -> None:
+    """Optionally create the first admin from environment variables."""
+    if user_store.has_admin():
+        return
+    username = os.environ.get("ADMIN_USERNAME")
+    password = os.environ.get("ADMIN_PASSWORD")
+    if not username or not password:
+        return
+    admin = user_store.create_user(
+        username=username,
+        password=password,
+        display_name=os.environ.get("ADMIN_DISPLAY_NAME") or username,
+        role="admin",
+    )
+    store.ensure_owner_for_legacy_sessions(admin["id"])
+
+
+def _bootstrap_completed() -> bool:
+    _ensure_env_admin()
+    return user_store.has_admin()
+
+
+async def current_user(request: Request) -> dict[str, Any] | None:
+    if app.config.get("TESTING"):
+        return _test_user()
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    user_id = auth_sessions.get_user_id(token)
+    if not user_id:
+        return None
+    user = user_store.get_user(user_id)
+    if not user or user.get("status") != "active":
+        return None
+    return user
+
+
+async def require_user(request: Request) -> dict[str, Any]:
+    user = await current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    return user
+
+
+async def require_admin(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    if not can_manage_users(user):
+        raise HTTPException(status_code=403, detail="forbidden")
+    return user
+
+
+def _response_with_login_cookie(user: dict[str, Any]) -> JSONResponse:
+    token = auth_sessions.create(user["id"])
+    response = _json({"ok": True, "user": user})
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        token,
+        httponly=True,
+        samesite="lax",
+        max_age=72 * 60 * 60,
+    )
+    return response
+
+
+def _clear_login_cookie(response: Response) -> None:
+    auth_sessions.delete(response.headers.get(AUTH_COOKIE_NAME))
+    response.delete_cookie(AUTH_COOKIE_NAME)
+
+
+def _load_authorized_session(
+    session_id: str,
+    user: dict[str, Any],
+    *,
+    write: bool = False,
+    delete: bool = False,
+) -> dict[str, Any]:
+    session = store.load_session(session_id)
+    allowed = (
+        can_delete_session(user, session)
+        if delete
+        else can_write_session(user, session)
+        if write
+        else can_read_session(user, session)
+    )
+    if not allowed:
+        raise PermissionError(session_id)
+    return session
+
+
+def _visible_session_metas(user: dict[str, Any]) -> list[dict[str, Any]]:
+    visible = []
+    for meta in store.list_sessions():
+        payload = asdict(meta)
+        if user.get("role") == "admin":
+            visible.append(payload)
+            continue
+        try:
+            session = store.load_session(meta.id)
+        except KeyError:
+            continue
+        if can_read_session(user, session):
+            visible.append(payload)
+    return visible
+
+
+def _dashboard_metrics_for_user(user: dict[str, Any]) -> DashboardMetrics:
+    if user.get("role") == "admin":
+        return _dashboard_metrics()
+    visible_ids = {item["id"] for item in _visible_session_metas(user)}
+
+    class _ScopedStore:
+        def list_sessions(self):
+            return [
+                meta for meta in store.list_sessions()
+                if meta.id in visible_ids
+            ]
+
+        def load_session(self, session_id: str):
+            if session_id not in visible_ids:
+                raise KeyError(session_id)
+            return store.load_session(session_id)
+
+    return DashboardMetrics(
+        _ScopedStore(),
+        token_estimator,
+        agent_path=agent_path,
+        agent_prompt=agent_prompt,
+        skills_dir=skills_dir,
+    )
+
+
+_ensure_env_admin()
 
 
 def _skill_payload(skill_name: str) -> dict:
@@ -261,6 +469,11 @@ def index():
     return FileResponse(WEB_DIR / "index.html")
 
 
+@app.get("/login", include_in_schema=False)
+def login_page():
+    return FileResponse(WEB_DIR / "login.html")
+
+
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
     return FileResponse(WEB_DIR / "dashboard.html")
@@ -281,23 +494,198 @@ def files_file(filename: str):
     return _safe_file_response(GENERATED_DIR, filename)
 
 
+@app.get("/api/auth/bootstrap-status", tags=["auth"])
+def auth_bootstrap_status():
+    return {"admin_exists": _bootstrap_completed()}
+
+
+@app.post("/api/auth/bootstrap-admin", tags=["auth"])
+def auth_bootstrap_admin(payload: BootstrapAdminRequest | None = Body(default=None)):
+    if _bootstrap_completed():
+        return _error("admin_already_exists", 409)
+    payload_data = _payload(payload)
+    try:
+        user = user_store.create_user(
+            username=payload_data.get("username") or "",
+            password=payload_data.get("password") or "",
+            display_name=payload_data.get("display_name"),
+            role="admin",
+        )
+    except ValueError as e:
+        return _error(str(e), 400)
+    store.ensure_owner_for_legacy_sessions(user["id"])
+    user_store.mark_login(user["id"])
+    return _response_with_login_cookie(user)
+
+
+@app.get("/api/auth/usernames", tags=["auth"])
+def auth_usernames():
+    if not _bootstrap_completed():
+        return {"usernames": []}
+    return {"usernames": user_store.list_usernames()}
+
+
+@app.post("/api/auth/login", tags=["auth"])
+def auth_login(payload: LoginRequest | None = Body(default=None)):
+    if not _bootstrap_completed():
+        return _error("admin_required", 409)
+    payload_data = _payload(payload)
+    user = user_store.verify_password(
+        payload_data.get("username") or "",
+        payload_data.get("password") or "",
+    )
+    if not user:
+        return _error("invalid_credentials", 401)
+    user_store.mark_login(user["id"])
+    return _response_with_login_cookie(user)
+
+
+@app.post("/api/auth/logout", tags=["auth"])
+def auth_logout(request: Request, response: Response):
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    auth_sessions.delete(token)
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me", tags=["auth"])
+async def auth_me(user: dict[str, Any] | None = Depends(current_user)):
+    if not user:
+        return _error("unauthorized", 401)
+    return {"user": user}
+
+
+@app.get("/api/admin/users", tags=["admin"])
+def admin_list_users(_admin: dict[str, Any] = Depends(require_admin)):
+    return {"users": user_store.list_users()}
+
+
+@app.get("/api/users", tags=["users"])
+def list_shareable_users(_user: dict[str, Any] = Depends(require_user)):
+    return {
+        "users": [
+            user for user in user_store.list_users()
+            if user.get("status") == "active"
+        ]
+    }
+
+
+@app.post("/api/admin/users", tags=["admin"], status_code=201)
+def admin_create_user(
+    payload: UserCreateRequest | None = Body(default=None),
+    _admin: dict[str, Any] = Depends(require_admin),
+):
+    payload_data = _payload(payload)
+    try:
+        user = user_store.create_user(
+            username=payload_data.get("username") or "",
+            password=payload_data.get("password") or "",
+            display_name=payload_data.get("display_name"),
+            role=payload_data.get("role") or "user",
+            status=payload_data.get("status") or "active",
+        )
+    except ValueError as e:
+        return _error(str(e), 400)
+    return _json({"ok": True, "user": user}, 201)
+
+
+@app.get("/api/admin/users/{user_id}", tags=["admin"])
+def admin_get_user(user_id: str, _admin: dict[str, Any] = Depends(require_admin)):
+    user = user_store.get_user(user_id)
+    if not user or user.get("status") == "deleted":
+        return _error("user_not_found", 404)
+    return {"user": user}
+
+
+@app.patch("/api/admin/users/{user_id}", tags=["admin"])
+def admin_update_user(
+    user_id: str,
+    payload: UserUpdateRequest | None = Body(default=None),
+    _admin: dict[str, Any] = Depends(require_admin),
+):
+    try:
+        user = user_store.update_user(user_id, **_payload(payload))
+    except KeyError:
+        return _error("user_not_found", 404)
+    except ValueError as e:
+        return _error(str(e), 400)
+    return {"ok": True, "user": user}
+
+
+@app.delete("/api/admin/users/{user_id}", tags=["admin"])
+def admin_delete_user(user_id: str, _admin: dict[str, Any] = Depends(require_admin)):
+    try:
+        user_store.delete_user(user_id)
+    except KeyError:
+        return _error("user_not_found", 404)
+    except ValueError as e:
+        return _error(str(e), 400)
+    return {"ok": True}
+
+
+@app.post("/api/admin/users/{user_id}/reset-password", tags=["admin"])
+def admin_reset_password(
+    user_id: str,
+    payload: PasswordResetRequest | None = Body(default=None),
+    _admin: dict[str, Any] = Depends(require_admin),
+):
+    payload_data = _payload(payload)
+    try:
+        user = user_store.reset_password(user_id, payload_data.get("password") or "")
+    except KeyError:
+        return _error("user_not_found", 404)
+    except ValueError as e:
+        return _error(str(e), 400)
+    return {"ok": True, "user": user}
+
+
+@app.get("/api/admin/users/{user_id}/usage", tags=["admin"])
+def admin_user_usage(user_id: str, _admin: dict[str, Any] = Depends(require_admin)):
+    user = user_store.get_user(user_id)
+    if not user or user.get("status") == "deleted":
+        return _error("user_not_found", 404)
+    sessions = []
+    for meta in store.list_sessions():
+        try:
+            session = store.load_session(meta.id)
+        except KeyError:
+            continue
+        if session.get("owner_user_id") == user_id:
+            sessions.append(session)
+    token_total = sum((session.get("token_usage") or {}).get("total_tokens", 0) for session in sessions)
+    message_count = sum(len(session.get("messages", [])) for session in sessions)
+    return {
+        "user": user,
+        "usage": {
+            "session_count": len(sessions),
+            "message_count": message_count,
+            "total_tokens": token_total,
+            "last_active_at": max(
+                (session.get("updated_at") or session.get("created_at") or "" for session in sessions),
+                default=user.get("last_login_at") or user.get("created_at") or "",
+            ),
+        },
+    }
+
+
 @app.get("/api/sessions", tags=["sessions"])
-def list_sessions():
-    sessions = store.list_sessions()
-    return [asdict(s) for s in sessions]
+def list_sessions(user: dict[str, Any] = Depends(require_user)):
+    return _visible_session_metas(user)
 
 
 @app.get("/api/token-usage", tags=["diagnostics"])
-def get_token_usage():
+def get_token_usage(user: dict[str, Any] = Depends(require_user)):
     skill_paths = sorted(
         path
         for suffix in SkillRegistry.SUPPORTED_SUFFIXES
         for path in skills_dir.glob(f"*/*{suffix}")
         if not path.name.startswith("._")
     )
+    visible_ids = {item["id"] for item in _visible_session_metas(user)}
     sessions = [
         store.load_session(session.id)
         for session in store.list_sessions()
+        if session.id in visible_ids
     ]
     return {
         "estimated": True,
@@ -331,8 +719,11 @@ def _dashboard_metrics() -> DashboardMetrics:
 
 
 @app.get("/api/dashboard/summary", tags=["dashboard"])
-def dashboard_summary(range: str = "all"):
-    return _dashboard_metrics().summary(range)
+def dashboard_summary(
+    range: str = "all",
+    user: dict[str, Any] = Depends(require_user),
+):
+    return _dashboard_metrics_for_user(user).summary(range)
 
 
 @app.get("/api/dashboard/sessions", tags=["dashboard"])
@@ -340,21 +731,28 @@ def dashboard_sessions(
     range: str = "all",
     sort: str = "total_tokens",
     limit: int = 50,
+    user: dict[str, Any] = Depends(require_user),
 ):
-    return _dashboard_metrics().sessions(range, sort, limit)
+    return _dashboard_metrics_for_user(user).sessions(range, sort, limit)
 
 
 @app.get("/api/dashboard/sessions/{session_id}", tags=["dashboard"])
-def dashboard_session_detail(session_id: str):
+def dashboard_session_detail(
+    session_id: str,
+    user: dict[str, Any] = Depends(require_user),
+):
     try:
-        return _dashboard_metrics().session_detail(session_id)
+        return _dashboard_metrics_for_user(user).session_detail(session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
 
 
 @app.get("/api/dashboard/tools", tags=["dashboard"])
-def dashboard_tools(range: str = "all"):
-    return _dashboard_metrics().tools(range)
+def dashboard_tools(
+    range: str = "all",
+    user: dict[str, Any] = Depends(require_user),
+):
+    return _dashboard_metrics_for_user(user).tools(range)
 
 
 @app.get("/api/dashboard/word-cloud", tags=["dashboard"])
@@ -362,9 +760,10 @@ def dashboard_word_cloud(
     scope: str = "all",
     session_id: str | None = None,
     limit: int = 120,
+    user: dict[str, Any] = Depends(require_user),
 ):
     try:
-        return _dashboard_metrics().word_cloud(scope, session_id, limit)
+        return _dashboard_metrics_for_user(user).word_cloud(scope, session_id, limit)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
 
@@ -373,23 +772,65 @@ def dashboard_word_cloud(
 def dashboard_timeseries(
     metric: str = "tokens",
     range: str = "30d",
+    user: dict[str, Any] = Depends(require_user),
 ):
-    return _dashboard_metrics().timeseries(metric, range)
+    return _dashboard_metrics_for_user(user).timeseries(metric, range)
+
+
+@app.get("/api/dashboard/users", tags=["dashboard"])
+def dashboard_users(_admin: dict[str, Any] = Depends(require_admin)):
+    rows = []
+    users = {
+        user["id"]: user
+        for user in user_store.list_users()
+        if user.get("status") != "deleted"
+    }
+    by_user: dict[str, list[dict[str, Any]]] = {user_id: [] for user_id in users}
+    for meta in store.list_sessions():
+        try:
+            session = store.load_session(meta.id)
+        except KeyError:
+            continue
+        owner_id = session.get("owner_user_id")
+        if owner_id in by_user:
+            by_user[owner_id].append(session)
+    for user_id, user_info in users.items():
+        sessions = by_user.get(user_id, [])
+        token_total = sum(
+            (session.get("token_usage") or {}).get("total_tokens", 0)
+            for session in sessions
+        )
+        message_count = sum(len(session.get("messages", [])) for session in sessions)
+        rows.append({
+            "user": user_info,
+            "session_count": len(sessions),
+            "message_count": message_count,
+            "total_tokens": token_total,
+            "last_active_at": max(
+                (session.get("updated_at") or session.get("created_at") or "" for session in sessions),
+                default=user_info.get("last_login_at") or user_info.get("created_at") or "",
+            ),
+        })
+    rows.sort(key=lambda row: row["total_tokens"], reverse=True)
+    return {"users": rows}
 
 
 @app.get("/api/skills", tags=["skills"])
-def list_skills():
+def list_skills(_user: dict[str, Any] = Depends(require_user)):
     skills = [_skill_payload(name) for name in skill_registry.list_skills()]
     return {"skills": skills}
 
 
 @app.get("/api/config", tags=["config"])
-def get_config():
+def get_config(_user: dict[str, Any] = Depends(require_user)):
     return config.get_public_llm_config()
 
 
 @app.post("/api/config", tags=["config"])
-def update_config(payload: ConfigUpdateRequest | None = Body(default=None)):
+def update_config(
+    payload: ConfigUpdateRequest | None = Body(default=None),
+    _admin: dict[str, Any] = Depends(require_admin),
+):
     payload_data = _payload(payload)
     try:
         public_config = config.update_llm_config(
@@ -404,7 +845,7 @@ def update_config(payload: ConfigUpdateRequest | None = Body(default=None)):
 
 
 @app.post("/api/skills/reload", tags=["skills"])
-def reload_skills():
+def reload_skills(_user: dict[str, Any] = Depends(require_user)):
     skills = skill_registry.reload()
     return {
         "ok": True,
@@ -413,7 +854,10 @@ def reload_skills():
 
 
 @app.post("/api/skills", tags=["skills"], status_code=201)
-def create_skill(payload: SkillCreateRequest | None = Body(default=None)):
+def create_skill(
+    payload: SkillCreateRequest | None = Body(default=None),
+    _admin: dict[str, Any] = Depends(require_admin),
+):
     payload_data = _payload(payload)
     name = (payload_data.get("name") or "").strip()
     content = (payload_data.get("content") or "").strip()
@@ -432,43 +876,91 @@ def create_skill(payload: SkillCreateRequest | None = Body(default=None)):
 
 
 @app.post("/api/sessions", tags=["sessions"])
-def create_session(payload: SessionCreateRequest | None = Body(default=None)):
+def create_session(
+    payload: SessionCreateRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
     payload_data = _payload(payload)
-    session = store.create_session(agent_prompt, title=payload_data.get("title"))
+    session = store.create_session(
+        agent_prompt,
+        title=payload_data.get("title"),
+        owner_user_id=user.get("id"),
+    )
     return session
 
 
 @app.get("/api/sessions/{session_id}", tags=["sessions"])
-def get_session(session_id: str):
+def get_session(session_id: str, user: dict[str, Any] = Depends(require_user)):
     try:
-        session = store.load_session(session_id)
+        session = _load_authorized_session(session_id, user)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
     return session
 
 
 @app.delete("/api/sessions/{session_id}", tags=["sessions"])
-def delete_session(session_id: str):
+def delete_session(session_id: str, user: dict[str, Any] = Depends(require_user)):
     try:
+        _load_authorized_session(session_id, user, delete=True)
         store.delete_session(session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
     return {"ok": True}
 
 
 @app.post("/api/sessions/{session_id}/copy", tags=["sessions"])
-def copy_session(session_id: str):
+def copy_session(session_id: str, user: dict[str, Any] = Depends(require_user)):
     try:
-        session = store.clone_session(session_id)
+        _load_authorized_session(session_id, user)
+        session = store.clone_session(session_id, owner_user_id=user.get("id"))
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
     return session
+
+
+@app.get("/api/sessions/{session_id}/share", tags=["sessions"])
+def get_session_share(session_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        session = _load_authorized_session(session_id, user)
+    except KeyError:
+        return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    return {"sharing": session.get("sharing") or {"scope": "private", "user_ids": [], "permission": "write"}}
+
+
+@app.patch("/api/sessions/{session_id}/share", tags=["sessions"])
+def update_session_share(
+    session_id: str,
+    payload: ShareUpdateRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        session = _load_authorized_session(session_id, user)
+        if user.get("role") != "admin" and session.get("owner_user_id") != user.get("id"):
+            return _json({"error": "forbidden"}, 403)
+        sharing = normalize_sharing(_payload(payload))
+        updated = store.update_sharing(session_id, sharing)
+    except KeyError:
+        return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+    return {"ok": True, "sharing": updated.get("sharing")}
 
 
 @app.post("/api/sessions/{session_id}/branch", tags=["branches"])
 def create_branch(
     session_id: str,
     payload: BranchCreateRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
 ):
     payload_data = _payload(payload)
     branch_point_node_id = payload_data.get("branch_point_node_id")
@@ -477,6 +969,7 @@ def create_branch(
         return _json({"error": "missing_field", "message": "branch_point_node_id is required"}, 400)
 
     try:
+        _load_authorized_session(session_id, user, write=True)
         return create_session_branch(
             store,
             agent_prompt,
@@ -485,6 +978,8 @@ def create_branch(
         )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
     except ValueError as e:
         return _json({"error": "invalid_node_id", "message": str(e)}, 404)
 
@@ -493,6 +988,7 @@ def create_branch(
 def switch_branch(
     session_id: str,
     payload: BranchSwitchRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
 ):
     payload_data = _payload(payload)
     target_node_id = payload_data.get("target_node_id")
@@ -501,6 +997,7 @@ def switch_branch(
         return _json({"error": "missing_field", "message": "target_node_id is required"}, 400)
 
     try:
+        _load_authorized_session(session_id, user, write=True)
         return switch_session_branch(
             store,
             agent_prompt,
@@ -509,24 +1006,36 @@ def switch_branch(
         )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
     except ValueError as e:
         return _json({"error": "invalid_node_id", "message": str(e)}, 404)
 
 
 @app.get("/api/sessions/{session_id}/tree", tags=["branches"])
-def get_session_tree(session_id: str):
+def get_session_tree(session_id: str, user: dict[str, Any] = Depends(require_user)):
     try:
+        _load_authorized_session(session_id, user)
         return get_session_tree_payload(store, agent_prompt, session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
 
 
 @app.delete("/api/sessions/{session_id}/branch/{node_id}", tags=["branches"])
-def delete_branch(session_id: str, node_id: str):
+def delete_branch(
+    session_id: str,
+    node_id: str,
+    user: dict[str, Any] = Depends(require_user),
+):
     try:
+        _load_authorized_session(session_id, user, write=True)
         return delete_session_branch(store, agent_prompt, session_id, node_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
     except ValueError as e:
         error_msg = str(e)
         if "不存在" in error_msg:
@@ -536,7 +1045,10 @@ def delete_branch(session_id: str, node_id: str):
 
 
 @app.post("/api/chat", tags=["chat"])
-async def chat(payload: ChatRequest | None = Body(default=None)):
+async def chat(
+    payload: ChatRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
     payload_data = _payload(payload)
     session_id = payload_data.get("session_id")
     user_message = (payload_data.get("message") or "").strip()
@@ -552,6 +1064,7 @@ async def chat(payload: ChatRequest | None = Body(default=None)):
         return _json({"error": "empty_message"}, 400)
 
     try:
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
         return await run_chat(
             store=store,
             build_orchestrator=_build_orchestrator,
@@ -563,10 +1076,15 @@ async def chat(payload: ChatRequest | None = Body(default=None)):
         )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
 
 
 @app.post("/api/chat/stream", tags=["chat"])
-async def chat_stream(payload: ChatRequest | None = Body(default=None)):
+async def chat_stream(
+    payload: ChatRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
     payload_data = _payload(payload)
     session_id = payload_data.get("session_id")
     user_message = (payload_data.get("message") or "").strip()
@@ -582,9 +1100,11 @@ async def chat_stream(payload: ChatRequest | None = Body(default=None)):
         return _json({"error": "empty_message"}, 400)
 
     try:
-        await asyncio.to_thread(store.load_session, session_id)
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
 
     return StreamingResponse(
         stream_chat_events(

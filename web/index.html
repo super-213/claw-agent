@@ -39,8 +39,16 @@
       <div class="skill-list" id="skillList"></div>
     </div>
     <div class="sidebar-footer">
-      <a class="dashboard-btn" href="/dashboard">后台看板</a>
-      <button class="config-btn" id="configBtn" type="button">模型设置</button>
+      <div class="user-summary" id="userSummary">
+        <span>当前用户</span>
+        <strong>-</strong>
+      </div>
+      <div class="sidebar-action-grid" aria-label="账号操作">
+        <button class="user-admin-btn" id="userAdminBtn" type="button" title="用户管理" hidden>用户</button>
+        <a class="dashboard-btn" href="/dashboard" title="后台看板">看板</a>
+        <button class="config-btn" id="configBtn" type="button" title="模型设置">模型</button>
+        <button class="logout-btn" id="logoutBtn" type="button" title="退出登录">退出</button>
+      </div>
       <div class="sys-status">
         <div class="dot"></div>
         <span>System Online</span>
@@ -131,6 +139,91 @@
       </aside>
     </div>
   </main>
+</div>
+
+<div class="modal-backdrop" id="userAdminModal" aria-hidden="true">
+  <div class="skill-modal user-admin-modal" role="dialog" aria-modal="true" aria-labelledby="userAdminModalTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="userAdminModalTitle">用户管理</div>
+      <button class="modal-close" id="userAdminModalClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="admin-user-layout">
+      <div class="user-list" id="userList"></div>
+      <form class="skill-form user-form" id="userForm">
+        <input id="userIdInput" type="hidden" />
+        <label class="field-label">
+          用户名
+          <input class="skill-input" id="userUsernameInput" autocomplete="off" />
+        </label>
+        <label class="field-label">
+          显示名称
+          <input class="skill-input" id="userDisplayNameInput" autocomplete="off" />
+        </label>
+        <label class="field-label">
+          密码
+          <input class="skill-input" id="userPasswordInput" type="password" autocomplete="new-password" placeholder="编辑用户时留空则不修改" />
+        </label>
+        <div class="form-grid">
+          <label class="field-label">
+            角色
+            <select class="skill-input" id="userRoleInput">
+              <option value="user">普通用户</option>
+              <option value="admin">管理员</option>
+            </select>
+          </label>
+          <label class="field-label">
+            状态
+            <select class="skill-input" id="userStatusInput">
+              <option value="active">启用</option>
+              <option value="disabled">禁用</option>
+            </select>
+          </label>
+        </div>
+        <div class="skill-form-error" id="userFormError"></div>
+        <div class="modal-actions">
+          <button class="modal-secondary" id="userFormResetBtn" type="button">新建</button>
+          <button class="modal-secondary danger-action" id="userDeleteBtn" type="button">删除</button>
+          <button class="modal-secondary" id="userAdminCancelBtn" type="button">关闭</button>
+          <button class="modal-primary" id="userSaveBtn" type="submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="shareModal" aria-hidden="true">
+  <div class="skill-modal" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="shareModalTitle">共享设置</div>
+      <button class="modal-close" id="shareModalClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <form class="skill-form" id="shareForm">
+      <label class="field-label">
+        范围
+        <select class="skill-input" id="shareScopeInput">
+          <option value="private">私有</option>
+          <option value="all">共享给所有人</option>
+          <option value="selected">共享给指定用户</option>
+        </select>
+      </label>
+      <label class="field-label">
+        权限
+        <select class="skill-input" id="sharePermissionInput">
+          <option value="write">可协作编辑</option>
+          <option value="read">仅查看</option>
+        </select>
+      </label>
+      <div class="field-label">
+        指定用户
+        <div class="share-user-list" id="shareUserList"></div>
+      </div>
+      <div class="skill-form-error" id="shareFormError"></div>
+      <div class="modal-actions">
+        <button class="modal-secondary" id="shareCancelBtn" type="button">取消</button>
+        <button class="modal-primary" id="shareSaveBtn" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div class="modal-backdrop" id="configModal" aria-hidden="true">

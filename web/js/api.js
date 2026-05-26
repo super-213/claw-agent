@@ -85,6 +85,44 @@ export const sessionsApi = {
   get: (sessionId) => jsonRequest(`/api/sessions/${sessionId}`),
   delete: (sessionId) => jsonRequest(`/api/sessions/${sessionId}`, { method: 'DELETE' }),
   copy: (sessionId) => jsonRequest(`/api/sessions/${sessionId}/copy`, { method: 'POST' }),
+  share: (sessionId) => jsonRequest(`/api/sessions/${sessionId}/share`),
+  updateShare: (sessionId, payload) => jsonRequest(`/api/sessions/${sessionId}/share`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+};
+
+export const authApi = {
+  bootstrapStatus: () => jsonRequest('/api/auth/bootstrap-status'),
+  usernames: () => jsonRequest('/api/auth/usernames'),
+  bootstrapAdmin: (payload) => jsonRequest('/api/auth/bootstrap-admin', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  login: (payload) => jsonRequest('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  logout: () => jsonRequest('/api/auth/logout', { method: 'POST' }),
+  me: () => jsonRequest('/api/auth/me'),
+};
+
+export const adminApi = {
+  shareableUsers: () => jsonRequest('/api/users'),
+  users: () => jsonRequest('/api/admin/users'),
+  createUser: (payload) => jsonRequest('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateUser: (userId, payload) => jsonRequest(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+  deleteUser: (userId) => jsonRequest(`/api/admin/users/${userId}`, { method: 'DELETE' }),
+  resetPassword: (userId, password) => jsonRequest(`/api/admin/users/${userId}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  }),
 };
 
 export const skillsApi = {

@@ -4,13 +4,24 @@ import {
   openConfigModal,
   submitConfig,
 } from './config.js';
+import {
+  closeUserAdminModal,
+  deleteSelectedUser,
+  logout,
+  openUserAdminModal,
+  requireLogin,
+  resetUserForm,
+  submitUserForm,
+} from './auth.js';
 import { els, fitMessageInput, isMobileLayout, setMobileSidebar } from './dom.js';
 import { initMessageContextMenu } from './messages.js';
 import {
+  closeShareModal,
   createSession,
   loadSessions,
   renderSessions,
   sendMessage,
+  submitShareForm,
 } from './sessions.js';
 import {
   closeSkillModal,
@@ -41,6 +52,24 @@ els.configModal.addEventListener('click', (event) => {
   if (event.target === els.configModal) closeConfigModal();
 });
 
+els.logoutBtn.addEventListener('click', logout);
+els.userAdminBtn.addEventListener('click', openUserAdminModal);
+els.userAdminModalClose.addEventListener('click', closeUserAdminModal);
+els.userAdminCancelBtn.addEventListener('click', closeUserAdminModal);
+els.userForm.addEventListener('submit', submitUserForm);
+els.userFormResetBtn.addEventListener('click', resetUserForm);
+els.userDeleteBtn.addEventListener('click', deleteSelectedUser);
+els.userAdminModal.addEventListener('click', (event) => {
+  if (event.target === els.userAdminModal) closeUserAdminModal();
+});
+
+els.shareModalClose.addEventListener('click', closeShareModal);
+els.shareCancelBtn.addEventListener('click', closeShareModal);
+els.shareForm.addEventListener('submit', submitShareForm);
+els.shareModal.addEventListener('click', (event) => {
+  if (event.target === els.shareModal) closeShareModal();
+});
+
 els.addSkillBtn.addEventListener('click', openSkillModal);
 els.reloadSkillsBtn.addEventListener('click', reloadSkills);
 els.skillForm.addEventListener('submit', submitSkill);
@@ -65,6 +94,8 @@ document.addEventListener('click', () => {
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (els.configModal.classList.contains('open')) closeConfigModal();
+  if (els.userAdminModal.classList.contains('open')) closeUserAdminModal();
+  if (els.shareModal.classList.contains('open')) closeShareModal();
   if (els.skillModal.classList.contains('open')) closeSkillModal();
   if (els.sidebar.classList.contains('open')) setMobileSidebar(false);
   if (state.openMenuSessionId) {
@@ -78,9 +109,12 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('load', async () => {
+  if (!await requireLogin()) return;
   initTreePanel();
   initMessageContextMenu();
-  await loadConfig();
+  if (state.currentUser?.role === 'admin') {
+    await loadConfig();
+  }
   await loadSkills();
   await loadSessions();
   if (!state.currentSessionId) await createSession();

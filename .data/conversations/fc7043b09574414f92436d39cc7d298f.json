@@ -2,7 +2,7 @@
   "id": "fc7043b09574414f92436d39cc7d298f",
   "title": "帮我写一个简单的html网页并保存",
   "created_at": "2026-05-01T07:34:51.926375+00:00",
-  "updated_at": "2026-05-22T23:02:45.734795+00:00",
+  "updated_at": "2026-05-26T07:12:20.624361+00:00",
   "messages": [
     {
       "role": "system",
@@ -1163,5 +1163,13 @@
     "tool_call_tokens": 2959,
     "tool_result_tokens": 687
   },
-  "active_node_id": "27df8ae3-fbaf-4a2a-9516-8582238e2d24"
+  "active_node_id": "27df8ae3-fbaf-4a2a-9516-8582238e2d24",
+  "owner_user_id": "u_29bfccbb3cca4bab8836461f4474605a",
+  "created_by": "u_29bfccbb3cca4bab8836461f4474605a",
+  "updated_by": "u_29bfccbb3cca4bab8836461f4474605a",
+  "sharing": {
+    "scope": "private",
+    "user_ids": [],
+    "permission": "write"
+  }
 }

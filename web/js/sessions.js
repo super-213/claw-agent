@@ -1,4 +1,4 @@
-import { chatApi, sessionsApi } from './api.js';
+import { adminApi, chatApi, sessionsApi } from './api.js';
 import {
   applyContextHighlight,
   loadAndRenderTree,
@@ -39,10 +39,85 @@ const refreshStatusForCurrentSession = () => {
   }
 };
 
+const canManageShare = (session) => (
+  state.currentUser?.role === 'admin' || session.owner_user_id === state.currentUser?.id
+);
+
+const canDeleteSession = (session) => (
+  state.currentUser?.role === 'admin' || session.owner_user_id === state.currentUser?.id
+);
+
+let shareSessionId = null;
+
+const renderShareUsers = (users, selectedIds = []) => {
+  const selected = new Set(selectedIds);
+  els.shareUserList.innerHTML = '';
+  users
+    .filter((user) => user.id !== state.currentUser?.id)
+    .forEach((user) => {
+      const label = document.createElement('label');
+      label.className = 'share-user-item';
+      label.innerHTML = `
+        <input type="checkbox" value="${escapeHtml(user.id)}" ${selected.has(user.id) ? 'checked' : ''} />
+        <span>${escapeHtml(user.display_name || user.username)} · ${escapeHtml(user.username)}</span>
+      `;
+      els.shareUserList.appendChild(label);
+    });
+};
+
+export const openShareModal = async (sessionId) => {
+  const session = state.sessions.find((item) => item.id === sessionId);
+  if (!session || !canManageShare(session)) return;
+  shareSessionId = sessionId;
+  els.shareFormError.textContent = '';
+  els.shareModal.classList.add('open');
+  els.shareModal.setAttribute('aria-hidden', 'false');
+  try {
+    const [shareData, userData] = await Promise.all([
+      sessionsApi.share(sessionId),
+      adminApi.shareableUsers(),
+    ]);
+    const sharing = shareData.sharing || {};
+    els.shareScopeInput.value = sharing.scope || 'private';
+    els.sharePermissionInput.value = sharing.permission || 'write';
+    renderShareUsers(userData.users || [], sharing.user_ids || []);
+  } catch (error) {
+    els.shareFormError.textContent = error.message || '读取共享设置失败';
+  }
+};
+
+export const closeShareModal = () => {
+  shareSessionId = null;
+  els.shareModal.classList.remove('open');
+  els.shareModal.setAttribute('aria-hidden', 'true');
+};
+
+export const submitShareForm = async (event) => {
+  event.preventDefault();
+  if (!shareSessionId) return;
+  els.shareFormError.textContent = '';
+  const userIds = Array.from(els.shareUserList.querySelectorAll('input:checked'))
+    .map((input) => input.value);
+  try {
+    await sessionsApi.updateShare(shareSessionId, {
+      scope: els.shareScopeInput.value,
+      permission: els.sharePermissionInput.value,
+      user_ids: userIds,
+    });
+    closeShareModal();
+    await loadSessions();
+  } catch (error) {
+    els.shareFormError.textContent = error.data?.error || error.message || '保存失败';
+  }
+};
+
 export const renderSessions = () => {
   els.sessionList.innerHTML = '';
   state.sessions.forEach((session) => {
     const busy = isSessionBusy(session.id);
+    const sharing = session.sharing || {};
+    const scopeLabel = sharing.scope === 'all' ? 'ALL' : sharing.scope === 'selected' ? 'SHARED' : '';
+    const owned = session.owner_user_id === state.currentUser?.id || state.currentUser?.role === 'admin';
     const item = document.createElement('div');
     item.className = 'session-item'
       + (session.id === state.currentSessionId ? ' active' : '')
@@ -50,14 +125,15 @@ export const renderSessions = () => {
       + (busy ? ' busy' : '');
     item.innerHTML = `
       <div class="session-content">
-        <div class="session-title">${escapeHtml(session.title || '新对话')}${busy ? ' <span class="session-busy-dot" title="生成中"></span>' : ''}</div>
+        <div class="session-title">${escapeHtml(session.title || '新对话')}${scopeLabel ? ` <span class="session-scope">${scopeLabel}</span>` : ''}${busy ? ' <span class="session-busy-dot" title="生成中"></span>' : ''}</div>
         <div class="session-time">${escapeHtml(formatTime(session.updated_at || session.created_at))} · ${escapeHtml(formatTokens(session.token_usage?.total_tokens))} tok</div>
       </div>
       <button class="session-more" type="button" title="更多操作" aria-label="更多操作">⋯</button>
       ${session.id === state.openMenuSessionId ? `
         <div class="session-menu">
           <button type="button" data-action="copy">复制会话</button>
-          <button type="button" data-action="delete" class="danger">删除</button>
+          ${canManageShare(session) ? '<button type="button" data-action="share">共享设置</button>' : ''}
+          ${canDeleteSession(session) && owned ? '<button type="button" data-action="delete" class="danger">删除</button>' : ''}
         </div>
       ` : ''}
     `;
@@ -80,6 +156,7 @@ export const renderSessions = () => {
         event.stopPropagation();
         const action = button.dataset.action;
         if (action === 'copy') copySession(session.id);
+        if (action === 'share') openShareModal(session.id);
         if (action === 'delete') deleteSession(session.id);
       });
     });
