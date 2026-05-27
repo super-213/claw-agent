@@ -1,6 +1,6 @@
 /**
  * 测试 context-highlight.js — 上下文高亮模块（含压缩状态标记）
- * 运行: node web/js/context-highlight.test.mjs
+ * 运行: node test/web/js/context-highlight.test.mjs
  */
 
 import { JSDOM } from 'jsdom';
@@ -19,7 +19,7 @@ const {
   getHighlightState,
   getNodeHighlightType,
   applyHighlightsFromMessages,
-} = await import('./context-highlight.js');
+} = await import('../../../web/js/context-highlight.js');
 
 let passed = 0;
 let failed = 0;

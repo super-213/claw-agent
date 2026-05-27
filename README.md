@@ -64,7 +64,7 @@
 │       └── utils/                   # Markdown、格式化、消息视图工具
 ├── docs/                            # 设计与需求文档
 ├── files/                           # 生成文件目录
-└── test_*.py / core/test_*.py       # Python 测试
+└── test/                            # Python、前端模块与 React 单元测试
 ```
 
 ## 快速开始
@@ -221,8 +221,8 @@ React 前端位于 `web-react/`：
 
 关键前端测试覆盖：
 
-- `src/api/stream.test.ts`：NDJSON 分块解析。
-- `src/features/branch-tree/model/build.test.ts`：分支树展示模型构建。
+- `test/web-react/api/stream.test.ts`：NDJSON 分块解析。
+- `test/web-react/branch-tree/model/build.test.ts`：分支树展示模型构建。
 
 ## 后台看板
 
@@ -457,13 +457,19 @@ Agent 通过 `Agent.md` 约束模型输出协议：
 运行 Python 测试：
 
 ```bash
-pytest -q
+pytest -q test
 ```
 
 运行前端模块测试：
 
 ```bash
-node --test web/js/*.test.mjs
+node --test test/web/js/*.test.mjs
+```
+
+运行 React 单元测试：
+
+```bash
+npm --prefix web-react run test
 ```
 
 当前测试覆盖重点包括：

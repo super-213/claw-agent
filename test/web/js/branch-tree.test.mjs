@@ -1,9 +1,9 @@
 /**
  * 测试 Reingold-Tilford 树布局算法 + 活跃路径高亮
- * 运行: node web/js/branch-tree.test.mjs
+ * 运行: node test/web/js/branch-tree.test.mjs
  */
 
-import { calculateLayout, buildTree, buildDisplayTree, computeActivePath, markActivePath, TREE_CONSTANTS } from './branch-tree.js';
+import { calculateLayout, buildTree, buildDisplayTree, computeActivePath, markActivePath, TREE_CONSTANTS } from '../../../web/js/branch-tree.js';
 
 let passed = 0;
 let failed = 0;

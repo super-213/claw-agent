@@ -1,6 +1,6 @@
 /**
  * 测试连线渲染（贝塞尔曲线）
- * 运行: node web/js/branch-tree-edges.test.mjs
+ * 运行: node test/web/js/branch-tree-edges.test.mjs
  */
 
 import {
@@ -12,7 +12,7 @@ import {
   TREE_CONSTANTS,
   EDGE_STYLES,
   calculateLayout,
-} from './branch-tree.js';
+} from '../../../web/js/branch-tree.js';
 
 // ─── Minimal DOM shim for SVG element creation ───
 class MockElement {

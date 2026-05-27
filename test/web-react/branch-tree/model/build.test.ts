@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBranchTree } from './build';
+import { buildBranchTree } from '../../../../web-react/src/features/branch-tree/model/build';
 
 describe('buildBranchTree', () => {
   it('folds a user/tool/model turn into a display node', () => {

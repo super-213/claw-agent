@@ -3,8 +3,10 @@
 import sys
 from pathlib import Path
 
-# 添加当前目录到 Python 路径
-sys.path.insert(0, str(Path(__file__).parent))
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+# 添加项目根目录到 Python 路径
+sys.path.insert(0, str(ROOT_DIR))
 
 
 def test_imports():
@@ -292,9 +294,9 @@ def test_frontend_branch_tree_boundaries():
     """测试树图模块不直接依赖会话控制器职责"""
     print("\n测试前端树图模块边界...")
     try:
-        branch_tree = Path("web/js/branch-tree.js").read_text(encoding="utf-8")
-        branch_controller = Path("web/js/branch-controller.js").read_text(encoding="utf-8")
-        sessions = Path("web/js/sessions.js").read_text(encoding="utf-8")
+        branch_tree = (ROOT_DIR / "web/js/branch-tree.js").read_text(encoding="utf-8")
+        branch_controller = (ROOT_DIR / "web/js/branch-controller.js").read_text(encoding="utf-8")
+        sessions = (ROOT_DIR / "web/js/sessions.js").read_text(encoding="utf-8")
 
         forbidden_in_tree = [
             "from './api.js'",

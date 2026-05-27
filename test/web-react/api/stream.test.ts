@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNdjsonParseState, flushNdjson, parseNdjsonChunk } from './stream';
+import { createNdjsonParseState, flushNdjson, parseNdjsonChunk } from '../../../web-react/src/api/stream';
 
 describe('NDJSON stream parser', () => {
   it('parses full and split lines without losing buffered content', () => {

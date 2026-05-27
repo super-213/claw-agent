@@ -1,6 +1,6 @@
 /**
  * Smoke tests for messages.js facade and split-out renderers.
- * Run: node web/js/messages-import.test.mjs
+ * Run: node test/web/js/messages-import.test.mjs
  */
 
 import { JSDOM } from 'jsdom';
@@ -30,7 +30,7 @@ const {
   renderMessages,
   setStatus,
   startStreamingAssistantMessage,
-} = await import('./messages.js');
+} = await import('../../../web/js/messages.js');
 
 let passed = 0;
 let failed = 0;
