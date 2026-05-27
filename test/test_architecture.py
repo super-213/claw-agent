@@ -294,27 +294,39 @@ def test_frontend_branch_tree_boundaries():
     """测试树图模块不直接依赖会话控制器职责"""
     print("\n测试前端树图模块边界...")
     try:
-        branch_tree = (ROOT_DIR / "web/js/branch-tree.js").read_text(encoding="utf-8")
-        branch_controller = (ROOT_DIR / "web/js/branch-controller.js").read_text(encoding="utf-8")
-        sessions = (ROOT_DIR / "web/js/sessions.js").read_text(encoding="utf-8")
+        branch_tree = (ROOT_DIR / "web-react/src/features/branch-tree/BranchTree.tsx").read_text(encoding="utf-8")
+        branch_panel = (ROOT_DIR / "web-react/src/features/branch-tree/BranchTreePanel.tsx").read_text(encoding="utf-8")
+        chat_workspace = (ROOT_DIR / "web-react/src/features/chat/ChatWorkspace.tsx").read_text(encoding="utf-8")
+        session_sidebar = (ROOT_DIR / "web-react/src/features/sessions/SessionSidebar.tsx").read_text(encoding="utf-8")
+        branch_build = (ROOT_DIR / "web-react/src/features/branch-tree/model/build.ts").read_text(encoding="utf-8")
 
         forbidden_in_tree = [
-            "from './api.js'",
-            "from './state.js'",
-            "branchApi.",
-            "applyHighlightsFromMessages",
-            "clearHighlights",
+            "from '../../api/chat",
+            "from '../../api/sessions",
+            "from '../../api/client",
+            "sessionsApi.",
+            "chatApi.",
+            "useAppStore",
+            "useNavigate",
+            "setMessages",
         ]
         for forbidden in forbidden_in_tree:
-            assert forbidden not in branch_tree, f"branch-tree.js 不应包含 {forbidden}"
+            assert forbidden not in branch_tree, f"BranchTree.tsx 不应包含 {forbidden}"
 
-        assert "export const onNodeSelect" in branch_tree
-        assert "export const onBranchDelete" in branch_tree
-        assert "from './branch-tree.js'" not in sessions
-        assert "branchApi." not in sessions
-        assert "branchApi.switch" in branch_controller
-        assert "branchApi.delete" in branch_controller
-        assert "updateActivePath" in branch_controller
+        assert "onSelectNode" in branch_tree
+        assert "onDeleteBranch" in branch_tree
+        assert "buildBranchTree(tree)" in branch_tree
+        assert "onSelectNode" in branch_panel
+        assert "onDeleteBranch" in branch_panel
+        assert "from './BranchTree'" in branch_panel
+        assert "from '../branch-tree/BranchTreePanel'" in chat_workspace
+        assert "onSelectNode={switchBranch}" in chat_workspace
+        assert "onDeleteBranch={deleteBranch}" in chat_workspace
+        assert "sessionsApi.switchBranch" in chat_workspace
+        assert "sessionsApi.deleteBranch" in chat_workspace
+        assert "BranchTreePanel" not in session_sidebar
+        assert "calculateLayout" in branch_build
+        assert "buildDisplayTree" in branch_build
 
         print("✅ 前端树图模块边界正常")
         return True

@@ -41,7 +41,7 @@
 - API 前缀：`/api/dashboard/*`;
 - 现有聊天页面保留不变，在侧边栏或顶部增加“后台看板”入口。
 
-首版可不引入前端构建工具，继续沿用当前 `web/index.html` + `web/js/*.js` 的原生模块模式；图表可使用轻量可视化库，或先用 SVG/Canvas 实现核心动态图表。
+前端已迁移到 Vite + React + TypeScript，后台看板实现位于 `web-react/src/features/dashboard/`；图表首版可继续使用 SVG/Canvas 实现核心动态图表。
 
 ## 4. 数据来源现状
 

@@ -1,58 +1,32 @@
 # 前端静态资源缓存策略
 
-## 问题
+## 当前策略
 
-浏览器会缓存 CSS/JS 文件。修改前端代码后，用户刷新页面可能仍然加载旧版本。
+前端已迁移到 Vite + React + TypeScript，生产构建由 Vite 生成带内容哈希的静态资源，例如：
 
-## 解决方案
-
-项目采用两层防缓存机制：
-
-### 1. 服务端 no-cache 响应头（开发阶段）
-
-`web_app.py` 中的 FastAPI middleware 对所有 CSS、JS、HTML 响应设置：
-
-```
-Cache-Control: no-cache, no-store, must-revalidate
-Pragma: no-cache
-Expires: 0
+```text
+dist/assets/index-B8y913Xo.css
+dist/assets/index-BBbHnm30.js
 ```
 
-开发阶段这一层就够了，浏览器每次都会向服务器请求最新文件。
+文件内容变化时，哈希文件名会变化，浏览器会自动请求新资源，不再需要手动维护 `?v=` 版本号。
 
-### 2. 版本号 query string（生产 / 兜底）
+## 开发阶段
 
-`index.html` 中引用静态资源时带版本参数：
+开发时使用 Vite dev server：
 
-```html
-<link rel="stylesheet" href="/styles.css?v=2">
-<script type="module" src="/js/app.js?v=2"></script>
+```bash
+npm run web:dev
 ```
 
-**规则：每次修改 CSS 或 JS 文件后，递增版本号。**
+Vite 会通过模块热更新提供最新源码。后端 `web_app.py` 仍会给 API 以外的 HTML/CSS/JS 响应设置 no-cache 头，但 FastAPI 当前只提供后端 API，不托管 React 页面。
 
-```html
-<!-- 修改前 -->
-<link rel="stylesheet" href="/styles.css?v=2">
+## 生产阶段
 
-<!-- 修改后 -->
-<link rel="stylesheet" href="/styles.css?v=3">
+生产构建：
+
+```bash
+npm run web:build
 ```
 
-这确保即使 no-cache 头被 CDN/代理忽略，浏览器也会因为 URL 变化而重新下载。
-
-CSS 已拆分为 `web/css/*.css` 模块，`web/styles.css` 作为聚合入口通过 `@import` 引入模块。生产环境递增 CSS 版本时，需要同时更新 `index.html` 中的 `/styles.css?v=...`，以及 `web/styles.css` 内各模块 `@import` 的 `?v=...`。
-
-## 何时需要手动递增版本号
-
-| 场景 | 是否需要递增 |
-|------|-------------|
-| 本地开发、直连 FastAPI | 不需要（no-cache 头已生效） |
-| 部署到有缓存层的环境（Nginx、CDN） | 需要 |
-| 用户反馈看到旧样式 | 递增后让用户硬刷新 |
-
-## 注意事项
-
-- JS 版本号只需要在 `index.html` 中维护，JS 模块之间的 `import` 不需要加版本号（浏览器会跟随入口文件的缓存策略）。
-- 如果未来引入构建工具（Vite/Webpack），可改用内容哈希文件名（如 `styles.a3f2b1.css`）替代手动版本号。
-- 生产环境部署时，可以移除 no-cache 头并改用长期缓存 + 哈希文件名策略以提升性能。
+构建产物位于 `web-react/dist/`。生产静态服务可以对 `dist/assets/*` 使用长期缓存，因为文件名已经包含内容哈希；`dist/index.html` 应保持 no-cache 或短缓存，确保能加载最新资源清单。

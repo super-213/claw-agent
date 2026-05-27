@@ -259,8 +259,8 @@ GET /api/dashboard/users
 
 新增：
 
-- `web/login.html`
-- `web/js/auth.js`
+- `web-react/src/features/auth/LoginPage.tsx`
+- `web-react/src/api/auth.ts`
 - 登录/注册表单样式。
 - 管理员用户管理页面或用户管理弹窗。
 

@@ -460,12 +460,6 @@ Agent 通过 `Agent.md` 约束模型输出协议：
 pytest -q test
 ```
 
-运行前端模块测试：
-
-```bash
-node --test test/web/js/*.test.mjs
-```
-
 运行 React 单元测试：
 
 ```bash
