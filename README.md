@@ -1,13 +1,13 @@
 # Claw Agent
 
-基于 FastAPI、分层架构和插件化技能系统的本地智能 Agent。项目当前同时提供 CLI、Web Chat UI、后台数据看板、会话分支树、流式响应、文件级持久化、token 估算和命令执行安全控制。
+基于 FastAPI、分层架构和插件化技能系统的本地智能 Agent。项目当前同时提供 CLI、Vite + React + TypeScript Web UI、后台数据看板、会话分支树、流式响应、文件级持久化、token 估算和命令执行安全控制。
 
 ## 核心能力
 
-- **分层架构**：`core`、`services`、`handlers`、`skills`、`web` 边界清晰，便于扩展和测试。
+- **分层架构**：`core`、`services`、`handlers`、`skills`、`web-react` 边界清晰，便于扩展和测试。
 - **异步 Agent 编排**：同步入口保留兼容，Web 聊天走 async 主流程，支持模型流式输出和命令执行循环。
 - **插件化技能系统**：支持 `.md` 和 `.skill` 技能文件，CLI/Web 均可添加和热重载技能。
-- **FastAPI Web UI + API**：内置聊天页、后台看板、OpenAPI 文档和静态资源服务。
+- **FastAPI API + Vite Web UI**：FastAPI 提供 API、文件访问和 OpenAPI 文档；React 前端由 Vite 开发服务器或独立静态服务承载。
 - **NDJSON 流式响应**：前端逐步渲染解析、模型输出、命令执行、保存和完成事件。
 - **会话分支树**：每条消息有 `node_id`/`parent_id`，支持任意节点创建分支、切换路径、删除非活跃分支和上下文高亮。
 - **会话复制与迁移**：旧线性会话自动迁移为树结构，复制会话时保留完整分支树。
@@ -50,19 +50,18 @@
 │   ├── registry.py                  # 技能注册表
 │   └── */*.md|*.skill               # 技能定义
 ├── web/
-│   ├── index.html                   # Chat UI
-│   ├── dashboard.html               # 后台看板
-│   ├── css/                         # 基础、布局、消息、分支树、移动端等样式模块
-│   └── js/
-│       ├── app.js                   # Chat UI 初始化
-│       ├── api.js                   # API 封装
-│       ├── messages.js              # 消息生命周期协调
-│       ├── stream-renderer.js       # NDJSON 流式事件渲染
-│       ├── message-rendering.js     # 消息 DOM 渲染
-│       ├── branch-controller.js     # 分支操作协调
-│       ├── tree-panel.js            # 分支面板
-│       ├── branch-tree/             # 树模型、布局、渲染拆分
-│       └── dashboard.js             # 看板前端逻辑
+│   └── ...                          # 旧版原生 HTML/CSS/JS 前端，短期保留用于回滚参考
+├── web-react/
+│   ├── index.html                   # Vite HTML shell
+│   ├── package.json                 # React/Vite/TypeScript 前端工程
+│   ├── vite.config.ts               # Vite dev proxy 与生产构建配置
+│   └── src/
+│       ├── api/                     # 类型化 API client、NDJSON stream 解析
+│       ├── app/                     # Provider、Router、App 根组件
+│       ├── features/                # auth/chat/sessions/branch-tree/dashboard 等业务模块
+│       ├── stores/                  # Zustand 客户端状态
+│       ├── styles/                  # 复用现有 CSS 并承载 React 增量样式
+│       └── utils/                   # Markdown、格式化、消息视图工具
 ├── docs/                            # 设计与需求文档
 ├── files/                           # 生成文件目录
 └── test_*.py / core/test_*.py       # Python 测试
@@ -76,10 +75,11 @@
 pip install -r requirements.txt
 ```
 
-前端树渲染相关测试依赖在根目录 `package.json` 中，已有 `node_modules` 时可直接运行 Node 测试；缺依赖时执行：
+前端依赖分为根目录 Node 辅助依赖和 `web-react/` React 工程依赖；缺依赖时执行：
 
 ```bash
 npm install
+npm --prefix web-react install
 ```
 
 ### 2. 配置环境变量
@@ -138,31 +138,91 @@ CLI 内置命令：
 - `/config set base_url <url>`：保存 API URL。
 - `/config set model <name>`：保存模型名称。
 
-### 4. 启动 Web UI
+### 4. 启动后端 API 与 Web UI
 
 ```bash
 python web_app.py
 ```
 
-默认端口为 `8000`：
+后端默认端口为 `8000`：
 
-- Chat UI：`http://localhost:8000/`
-- 后台看板：`http://localhost:8000/dashboard`
+- API 状态：`http://localhost:8000/`
 - Swagger UI：`http://localhost:8000/docs`
 - OpenAPI JSON：`http://localhost:8000/openapi.json`
+
+React 前端开发模式：
+
+```bash
+python web_app.py
+npm run web:dev
+```
+
+Vite 默认运行在 `http://localhost:5173`，并通过 proxy 转发 `/api`、`/files`、`/generated` 到 `http://127.0.0.1:8000`。如后端端口不同，可设置：
+
+```bash
+VITE_API_TARGET=http://127.0.0.1:8001 npm run web:dev
+```
+
+生产构建：
+
+```bash
+npm run web:typecheck
+npm run web:lint
+npm run web:test
+npm run web:build
+npm --prefix web-react run preview
+```
+
+`npm run web:build` 会输出到 `web-react/dist`。FastAPI 的 `8000` 端口只提供后端 API，不托管前端页面；生产前端请用 Vite preview、Nginx 或其他静态服务承载，并把 API 目标指向后端地址。
+
+前端常用命令：
+
+| 命令 | 说明 |
+| --- | --- |
+| `npm run web:dev` | 启动 Vite dev server，默认 `5173`，代理到 FastAPI |
+| `npm run web:typecheck` | 执行 TypeScript strict 类型检查 |
+| `npm run web:lint` | 执行 ESLint |
+| `npm run web:test` | 执行 Vitest 单元测试 |
+| `npm run web:build` | 生成 `web-react/dist` 生产静态资源 |
+| `npm --prefix web-react run preview` | 本地预览 Vite 构建产物 |
 
 Web 端的“模型设置”可修改 API URL、API Key 和模型名称。API Key 只脱敏展示；保存时留空会保留原值，不会把完整密钥返回给浏览器。
 
 ## Web UI 功能
 
+当前默认生产前端已迁移到 Vite + React + TypeScript，并保留旧版原生前端代码作为短期回滚参考。React 前端按 `api/`、`app/`、`features/`、`stores/`、`utils/` 分层，API 请求、权限状态、流式解析和树布局逻辑集中管理。
+
 - 消息逐步渲染，模型输出以流式文本增量展示。
 - 过程事件展示解析输入、技能加载、上下文构建、模型调用、命令执行和保存状态。
 - 支持多会话创建、删除、复制、切换。
+- 支持登录、退出、首次管理员初始化、管理员用户管理和普通用户/管理员入口隔离。
+- 支持会话共享设置和共享用户选择。
 - 支持会话分支树，在任意消息处创建分支，切换活跃路径，删除非活跃分支。
 - 支持上下文路径高亮，标记本轮模型实际使用的历史节点。
+- 支持技能列表、技能新增、技能重载和技能快速插入输入框。
+- 支持模型 API URL、API Key、模型名称配置。
 - 支持图片与附件元数据展示。
 - 桌面端与移动端响应式布局；移动端分支树以抽屉形式展示。
-- 静态 CSS/JS/HTML 默认禁用浏览器缓存，便于开发调试。
+- React 构建产物使用 Vite 内容哈希；`/assets/*` 使用长期缓存，其余 HTML/CSS/JS 开发回退资源仍禁用缓存。
+
+## 前端架构
+
+React 前端位于 `web-react/`：
+
+- `src/api/`：统一 JSON request、NDJSON stream request、API 类型定义和各业务 API 封装。
+- `src/app/`：React Query Provider、路由表和受保护路由入口。
+- `src/features/auth/`：登录、首次管理员初始化和登录态守卫。
+- `src/features/chat/`：会话工作台、消息渲染、输入框和流式事件状态转换。
+- `src/features/sessions/`：会话侧栏、复制、删除、共享设置。
+- `src/features/branch-tree/`：分支树 React 渲染，以及纯函数树模型/布局算法。
+- `src/features/dashboard/`：后台看板页面、KPI、图表、词云、会话详情抽屉。
+- `src/features/plugins/`、`settings/`、`users/`：技能、模型配置和用户管理弹窗。
+- `src/stores/`：Zustand 客户端状态，包括当前用户、会话、技能、模型配置、消息和运行中流式状态。
+
+关键前端测试覆盖：
+
+- `src/api/stream.test.ts`：NDJSON 分块解析。
+- `src/features/branch-tree/model/build.test.ts`：分支树展示模型构建。
 
 ## 后台看板
 

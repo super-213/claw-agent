@@ -7,7 +7,12 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "web:dev": "npm --prefix web-react run dev",
+    "web:build": "npm --prefix web-react run build",
+    "web:typecheck": "npm --prefix web-react run typecheck",
+    "web:lint": "npm --prefix web-react run lint",
+    "web:test": "npm --prefix web-react run test"
   },
   "repository": {
     "type": "git",

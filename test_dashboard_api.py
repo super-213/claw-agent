@@ -38,11 +38,10 @@ def _sample_session():
     }
 
 
-def test_dashboard_page_served(client):
+def test_dashboard_page_not_served_by_backend(client):
     response = client.get("/dashboard")
 
-    assert response.status_code == 200
-    assert "后台看板" in response.get_data(as_text=True)
+    assert response.status_code == 404
 
 
 def test_dashboard_summary_infers_tool_calls(client):

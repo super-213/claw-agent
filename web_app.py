@@ -11,7 +11,6 @@ from typing import Any
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
@@ -39,7 +38,6 @@ from skills import SkillRegistry
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-WEB_DIR = PROJECT_ROOT / "web"
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -132,6 +130,9 @@ async def _set_static_cache_headers(_request: Request, call_next):
     """Disable browser caching for static assets during development."""
     response = await call_next(_request)
     content_type = response.headers.get("content-type", "")
+    if _request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
     if content_type and (
         "text/css" in content_type
         or "javascript" in content_type
@@ -466,22 +467,7 @@ def _build_orchestrator() -> AgentOrchestrator:
 
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(WEB_DIR / "index.html")
-
-
-@app.get("/login", include_in_schema=False)
-def login_page():
-    return FileResponse(WEB_DIR / "login.html")
-
-
-@app.get("/dashboard", include_in_schema=False)
-def dashboard():
-    return FileResponse(WEB_DIR / "dashboard.html")
-
-
-@app.get("/dashboard/", include_in_schema=False)
-def dashboard_slash():
-    return FileResponse(WEB_DIR / "dashboard.html")
+    return {"service": "Claw Agent API"}
 
 
 @app.get("/generated/{filename:path}", include_in_schema=False)
@@ -1119,9 +1105,6 @@ async def chat_stream(
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-app.mount("/", StaticFiles(directory=str(WEB_DIR), html=False), name="web_static")
 
 
 if __name__ == "__main__":

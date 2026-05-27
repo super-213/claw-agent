@@ -1,0 +1,71 @@
+@import '../../../web/css/base.css';
+@import '../../../web/css/layout.css';
+@import '../../../web/css/sessions.css';
+@import '../../../web/css/modals.css';
+@import '../../../web/css/messages.css';
+@import '../../../web/css/tool-calls.css';
+@import '../../../web/css/tree.css';
+@import '../../../web/css/highlights.css';
+@import '../../../web/css/mobile.css';
+@import '../../../web/css/auth.css';
+@import '../../../web/dashboard.css';
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.react-route-shell {
+  min-height: 100vh;
+}
+
+body.dashboard-route {
+  background: var(--page);
+  overflow: auto;
+}
+
+body.dashboard-route::before,
+body.dashboard-route::after {
+  display: none;
+}
+
+body.dashboard-route .dashboard-shell {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), transparent 280px),
+    var(--page);
+  background-repeat: no-repeat;
+  background-size: 100% 100vh;
+}
+
+.empty-note {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 18px;
+}
+
+.skill-form-error:empty {
+  display: none;
+}
+
+.branch-tree-svg {
+  touch-action: none;
+}
+
+.session-detail-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: table-row;
+  font: inherit;
+  padding: 0;
+  text-align: inherit;
+}
