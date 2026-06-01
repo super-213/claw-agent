@@ -193,3 +193,62 @@ export interface DashboardSessionDetail {
   recent_messages?: Array<Record<string, unknown>>;
   [key: string]: unknown;
 }
+
+export interface HomeInventoryItem {
+  id: string;
+  name: string;
+  normalized_name?: string;
+  category?: string;
+  location: string;
+  zone?: string;
+  quantity?: number | null;
+  unit?: string;
+  status?: string;
+  expires_at?: string | null;
+  updated_at?: string;
+  source?: Record<string, unknown>;
+}
+
+export interface HomeInventoryDoc {
+  version?: number;
+  updated_at?: string;
+  items: HomeInventoryItem[];
+}
+
+export interface HomeReminder {
+  id: string;
+  title: string;
+  description?: string;
+  trigger?: {
+    type?: string;
+    raw_text?: string;
+    run_at?: string | null;
+    rrule?: string | null;
+  };
+  recipients?: string[];
+  channels?: string[];
+  status?: string;
+  priority?: string;
+  next_run_at?: string | null;
+  updated_at?: string;
+}
+
+export interface HomeNotification {
+  id: string;
+  title: string;
+  body?: string;
+  url?: string;
+  status?: string;
+  reason?: string | null;
+  created_at?: string;
+  read_at?: string | null;
+}
+
+export interface HomeTaskSummary {
+  kpis?: Record<string, number>;
+  status_distribution?: Array<Record<string, unknown>>;
+  channel_distribution?: Array<Record<string, unknown>>;
+  frequency_distribution?: Array<Record<string, unknown>>;
+  alerts?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}

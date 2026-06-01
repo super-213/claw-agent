@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 from typing import Any
+import uuid
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -16,7 +17,7 @@ import uvicorn
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
-from services import LLMClient, CommandExecutor, ConversationStore, TokenUsageEstimator, UserStore
+from services import LLMClient, CommandExecutor, ConversationStore, HomeDataService, TokenUsageEstimator, UserStore
 from services.access_control import (
     can_delete_session,
     can_manage_users,
@@ -31,7 +32,7 @@ from services.branch_service import (
     get_session_tree as get_session_tree_payload,
     switch_session_branch,
 )
-from services.chat_runner import SessionRunLocks, run_chat, stream_chat_events
+from services.chat_runner import SessionRunLocks, run_chat, stream_chat_events, stream_event
 from services.dashboard_metrics import DashboardMetrics
 from services.message_media import normalize_attachments, normalize_images
 from skills import SkillRegistry
@@ -104,6 +105,14 @@ class ShareUpdateRequest(BaseModel):
     scope: str | None = None
     user_ids: list[str] | None = None
     permission: str | None = None
+
+
+class InventoryConsumeRequest(BaseModel):
+    quantity: float | int | None = None
+
+
+class ReminderSnoozeRequest(BaseModel):
+    minutes: int | None = 10
 
 
 app = FastAPI(
@@ -249,6 +258,15 @@ def _safe_file_response(directory: Path, filename: str) -> FileResponse:
 
 
 config = ConfigManager()
+home_data_dir = Path(config["home_data_dir"])
+if not home_data_dir.is_absolute():
+    home_data_dir = PROJECT_ROOT / home_data_dir
+home_service = HomeDataService(
+    home_data_dir,
+    timezone_name=config["home_timezone"],
+    quiet_start=config["home_notification_quiet_start"],
+    quiet_end=config["home_notification_quiet_end"],
+)
 agent_path = Path(config["agent_file"])
 if not agent_path.is_absolute():
     agent_path = PROJECT_ROOT / agent_path
@@ -704,6 +722,71 @@ def _dashboard_metrics() -> DashboardMetrics:
     )
 
 
+def _append_direct_chat_response(session_id: str, user_message: str, assistant_message: str) -> list[dict[str, Any]]:
+    session = store.load_session(session_id)
+    messages = list(session.get("messages") or [])
+    now = datetime.now().isoformat()
+    parent_id = session.get("active_node_id") or (messages[-1].get("node_id") if messages else None)
+    user_node_id = uuid.uuid4().hex
+    assistant_node_id = uuid.uuid4().hex
+    new_messages = [
+        {
+            "role": "user",
+            "content": user_message,
+            "ts": now,
+            "node_id": user_node_id,
+            "parent_id": parent_id,
+        },
+        {
+            "role": "assistant",
+            "content": assistant_message,
+            "ts": now,
+            "node_id": assistant_node_id,
+            "parent_id": user_node_id,
+        },
+    ]
+    store.save_messages(
+        session_id,
+        messages + new_messages,
+        summary=session.get("summary", ""),
+        summarized_until=session.get("summarized_until", 1),
+        active_node_id=assistant_node_id,
+        summarized_nodes=session.get("summarized_nodes"),
+    )
+    return new_messages
+
+
+async def _home_scheduler_loop() -> None:
+    interval = max(5, int(config["home_scheduler_interval_seconds"]))
+    while True:
+        try:
+            await asyncio.to_thread(home_service.process_due_reminders)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"[home_scheduler] {exc}")
+        await asyncio.sleep(interval)
+
+
+@app.on_event("startup")
+async def _start_home_scheduler() -> None:
+    if app.config.get("TESTING"):
+        return
+    app.state.home_scheduler_task = asyncio.create_task(_home_scheduler_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_home_scheduler() -> None:
+    task = getattr(app.state, "home_scheduler_task", None)
+    if not task:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 @app.get("/api/dashboard/summary", tags=["dashboard"])
 def dashboard_summary(
     range: str = "all",
@@ -799,6 +882,349 @@ def dashboard_users(_admin: dict[str, Any] = Depends(require_admin)):
         })
     rows.sort(key=lambda row: row["total_tokens"], reverse=True)
     return {"users": rows}
+
+
+@app.get("/api/dashboard/home/tasks/summary", tags=["dashboard"])
+def dashboard_home_tasks_summary(_user: dict[str, Any] = Depends(require_user)):
+    return home_service.dashboard_task_summary()
+
+
+@app.get("/api/dashboard/home/tasks/timeseries", tags=["dashboard"])
+def dashboard_home_tasks_timeseries(days: int = 30, _user: dict[str, Any] = Depends(require_user)):
+    return home_service.dashboard_task_timeseries(days)
+
+
+@app.get("/api/dashboard/home/tasks", tags=["dashboard"])
+def dashboard_home_tasks(
+    status: str | None = None,
+    type: str | None = None,
+    recipient_user_id: str | None = None,
+    channel: str | None = None,
+    next_run_before: str | None = None,
+    _user: dict[str, Any] = Depends(require_user),
+):
+    return home_service.dashboard_tasks(
+        status=status,
+        type=type,
+        recipient_user_id=recipient_user_id,
+        channel=channel,
+        next_run_before=next_run_before,
+    )
+
+
+@app.get("/api/dashboard/home/notifications/summary", tags=["dashboard"])
+def dashboard_home_notifications_summary(_user: dict[str, Any] = Depends(require_user)):
+    return home_service.dashboard_notifications_summary()
+
+
+@app.get("/api/home/household", tags=["home"])
+def home_household(_user: dict[str, Any] = Depends(require_user)):
+    return home_service.household()
+
+
+@app.patch("/api/home/household", tags=["home"])
+def home_update_household(payload: dict[str, Any] | None = Body(default=None), admin: dict[str, Any] = Depends(require_admin)):
+    return home_service.update_household(payload or {}, admin)
+
+
+@app.get("/api/home/activity-log", tags=["home"])
+def home_activity_log(limit: int = 100, _user: dict[str, Any] = Depends(require_user)):
+    return {"activity": home_service.activity_log(limit)}
+
+
+@app.get("/api/home/inventory/expiring", tags=["home"])
+def home_inventory_expiring(
+    days: int = 3,
+    location: str | None = None,
+    _user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.expiring_items(days=days, location=location)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.get("/api/home/inventory", tags=["home"])
+def home_inventory(
+    location: str | None = None,
+    category: str | None = None,
+    status: str | None = None,
+    expires_before: str | None = None,
+    _user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.list_inventory(
+            location=location,
+            category=category,
+            status=status,
+            expires_before=expires_before,
+        )
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.get("/api/home/inventory/{location}", tags=["home"])
+def home_inventory_location(
+    location: str,
+    category: str | None = None,
+    status: str | None = None,
+    expires_before: str | None = None,
+    _user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.list_inventory(
+            location=location,
+            category=category,
+            status=status,
+            expires_before=expires_before,
+        )
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.post("/api/home/inventory/{location}/items", tags=["home"], status_code=201)
+def home_inventory_add_item(
+    location: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return _json(home_service.add_inventory_item(location, payload or {}, user), 201)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.patch("/api/home/inventory/{location}/items/{item_id}", tags=["home"])
+def home_inventory_update_item(
+    location: str,
+    item_id: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.update_inventory_item(location, item_id, payload or {}, user)
+    except KeyError:
+        return _json({"error": "item_not_found"}, 404)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.delete("/api/home/inventory/{location}/items/{item_id}", tags=["home"])
+def home_inventory_delete_item(location: str, item_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.delete_inventory_item(location, item_id, user)
+    except KeyError:
+        return _json({"error": "item_not_found"}, 404)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.post("/api/home/inventory/{location}/items/{item_id}/consume", tags=["home"])
+def home_inventory_consume_item(
+    location: str,
+    item_id: str,
+    payload: InventoryConsumeRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.consume_inventory_item(location, item_id, _payload(payload).get("quantity"), user)
+    except KeyError:
+        return _json({"error": "item_not_found"}, 404)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.post("/api/home/inventory/{location}/items/{item_id}/restore", tags=["home"])
+def home_inventory_restore_item(location: str, item_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.restore_inventory_item(location, item_id, user)
+    except KeyError:
+        return _json({"error": "item_not_found"}, 404)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.get("/api/home/reminders", tags=["home"])
+def home_reminders(
+    status: str | None = None,
+    type: str | None = None,
+    recipient_user_id: str | None = None,
+    channel: str | None = None,
+    next_run_before: str | None = None,
+    _user: dict[str, Any] = Depends(require_user),
+):
+    return home_service.list_reminders(
+        status=status,
+        type=type,
+        recipient_user_id=recipient_user_id,
+        channel=channel,
+        next_run_before=next_run_before,
+    )
+
+
+@app.post("/api/home/reminders", tags=["home"], status_code=201)
+def home_create_reminder(
+    payload: dict[str, Any] | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return _json(home_service.create_reminder(payload or {}, user), 201)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.get("/api/home/reminders/{reminder_id}", tags=["home"])
+def home_get_reminder(reminder_id: str, _user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.get_reminder(reminder_id)
+    except KeyError:
+        return _json({"error": "reminder_not_found"}, 404)
+
+
+@app.patch("/api/home/reminders/{reminder_id}", tags=["home"])
+def home_update_reminder(
+    reminder_id: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.update_reminder(reminder_id, payload or {}, user)
+    except KeyError:
+        return _json({"error": "reminder_not_found"}, 404)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.delete("/api/home/reminders/{reminder_id}", tags=["home"])
+def home_delete_reminder(reminder_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.delete_reminder(reminder_id, user)
+    except KeyError:
+        return _json({"error": "reminder_not_found"}, 404)
+
+
+@app.post("/api/home/reminders/{reminder_id}/complete", tags=["home"])
+def home_complete_reminder(reminder_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.complete_reminder(reminder_id, user)
+    except KeyError:
+        return _json({"error": "reminder_not_found"}, 404)
+
+
+@app.post("/api/home/reminders/{reminder_id}/snooze", tags=["home"])
+def home_snooze_reminder(
+    reminder_id: str,
+    payload: ReminderSnoozeRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.snooze_reminder(reminder_id, int(_payload(payload).get("minutes") or 10), user)
+    except KeyError:
+        return _json({"error": "reminder_not_found"}, 404)
+
+
+@app.post("/api/home/reminders/{reminder_id}/cancel", tags=["home"])
+def home_cancel_reminder(reminder_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.cancel_reminder(reminder_id, user)
+    except KeyError:
+        return _json({"error": "reminder_not_found"}, 404)
+
+
+@app.get("/api/home/schedules", tags=["home"])
+def home_schedules(_user: dict[str, Any] = Depends(require_user)):
+    return home_service.list_schedules()
+
+
+@app.post("/api/home/schedules", tags=["home"], status_code=201)
+def home_create_schedule(payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
+    return _json(home_service.create_schedule(payload or {}, user), 201)
+
+
+@app.patch("/api/home/schedules/{schedule_id}", tags=["home"])
+def home_update_schedule(schedule_id: str, payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.update_schedule(schedule_id, payload or {}, user)
+    except KeyError:
+        return _json({"error": "schedule_not_found"}, 404)
+
+
+@app.delete("/api/home/schedules/{schedule_id}", tags=["home"])
+def home_delete_schedule(schedule_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.delete_schedule(schedule_id, user)
+    except KeyError:
+        return _json({"error": "schedule_not_found"}, 404)
+
+
+@app.get("/api/home/notifications", tags=["home"])
+def home_notifications(unread_only: bool = False, limit: int = 100, _user: dict[str, Any] = Depends(require_user)):
+    return home_service.notifications(unread_only=unread_only, limit=limit)
+
+
+@app.post("/api/home/notifications/{notification_id}/read", tags=["home"])
+def home_notification_read(notification_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.mark_notification_read(notification_id, user)
+    except KeyError:
+        return _json({"error": "notification_not_found"}, 404)
+
+
+@app.post("/api/home/notifications/read-all", tags=["home"])
+def home_notification_read_all(user: dict[str, Any] = Depends(require_user)):
+    return home_service.mark_all_notifications_read(user)
+
+
+@app.get("/api/push/vapid-public-key", tags=["push"])
+def push_vapid_public_key(_user: dict[str, Any] = Depends(require_user)):
+    return home_service.vapid_public_key()
+
+
+@app.get("/api/push/subscriptions", tags=["push"])
+def push_subscriptions(user: dict[str, Any] = Depends(require_user)):
+    return home_service.list_push_subscriptions(user)
+
+
+@app.post("/api/push/subscriptions", tags=["push"], status_code=201)
+def push_create_subscription(payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
+    try:
+        return _json(home_service.add_push_subscription(payload or {}, user), 201)
+    except ValueError as e:
+        return _json({"error": str(e)}, 400)
+
+
+@app.patch("/api/push/subscriptions/{subscription_id}", tags=["push"])
+def push_update_subscription(
+    subscription_id: str,
+    payload: dict[str, Any] | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        return home_service.update_push_subscription(subscription_id, payload or {}, user)
+    except KeyError:
+        return _json({"error": "subscription_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+
+
+@app.delete("/api/push/subscriptions/{subscription_id}", tags=["push"])
+def push_delete_subscription(subscription_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.delete_push_subscription(subscription_id, user)
+    except KeyError:
+        return _json({"error": "subscription_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+
+
+@app.post("/api/push/test", tags=["push"])
+def push_test(payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_service.send_test_push(payload or {}, user)
+    except KeyError:
+        return _json({"error": "subscription_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
 
 
 @app.get("/api/skills", tags=["skills"])
@@ -1051,6 +1477,21 @@ async def chat(
 
     try:
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+        if not images and not attachments:
+            home_reply = await asyncio.to_thread(
+                home_service.handle_home_chat_intent,
+                user_message,
+                user,
+                session_id,
+            )
+            if home_reply:
+                messages = await asyncio.to_thread(
+                    _append_direct_chat_response,
+                    session_id,
+                    user_message,
+                    home_reply,
+                )
+                return {"messages": messages, "session_id": session_id}
         return await run_chat(
             store=store,
             build_orchestrator=_build_orchestrator,
@@ -1091,6 +1532,59 @@ async def chat_stream(
         return _json({"error": "session_not_found"}, 404)
     except PermissionError:
         return _json({"error": "forbidden"}, 403)
+
+    if not images and not attachments:
+        home_reply = await asyncio.to_thread(
+            home_service.handle_home_chat_intent,
+            user_message,
+            user,
+            session_id,
+        )
+        if home_reply:
+            async def direct_home_stream():
+                yield stream_event({
+                    "type": "step",
+                    "stage": "home",
+                    "message": "家庭记忆已处理",
+                })
+                messages = await asyncio.to_thread(
+                    _append_direct_chat_response,
+                    session_id,
+                    user_message,
+                    home_reply,
+                )
+                yield stream_event({
+                    "type": "model_start",
+                    "stage": "home",
+                    "iteration": 1,
+                    "model": "home-agent",
+                    "message_count": 1,
+                })
+                yield stream_event({
+                    "type": "model_delta",
+                    "stage": "home",
+                    "iteration": 1,
+                    "delta": home_reply,
+                })
+                yield stream_event({
+                    "type": "model_done",
+                    "stage": "home",
+                    "iteration": 1,
+                    "content": home_reply,
+                })
+                yield stream_event({
+                    "type": "done",
+                    "stage": "done",
+                    "message": "响应完成",
+                    "messages": messages,
+                    "session_id": session_id,
+                })
+
+            return StreamingResponse(
+                direct_home_stream(),
+                media_type="application/x-ndjson",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
 
     return StreamingResponse(
         stream_chat_events(

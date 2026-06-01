@@ -31,6 +31,12 @@ class ConfigManager:
         "summary_target_chars": 6000,
         "summary_input_chars": 30000,
         "token_encoding": "cl100k_base",
+        "home_data_dir": ".data/home",
+        "home_timezone": "Asia/Shanghai",
+        "home_scheduler_interval_seconds": 60,
+        "home_notification_quiet_start": "22:00",
+        "home_notification_quiet_end": "07:00",
+        "home_backup_retention_days": 30,
     }
     
     def __init__(self, config_path: str = None):
@@ -87,6 +93,18 @@ class ConfigManager:
         if token_encoding := os.getenv("TOKEN_ENCODING"):
             config["token_encoding"] = token_encoding
 
+        if home_data_dir := os.getenv("HOME_DATA_DIR"):
+            config["home_data_dir"] = home_data_dir
+
+        if home_timezone := os.getenv("HOME_TIMEZONE"):
+            config["home_timezone"] = home_timezone
+
+        if quiet_start := os.getenv("HOME_NOTIFICATION_QUIET_START"):
+            config["home_notification_quiet_start"] = quiet_start
+
+        if quiet_end := os.getenv("HOME_NOTIFICATION_QUIET_END"):
+            config["home_notification_quiet_end"] = quiet_end
+
         if timeout := os.getenv("TIMEOUT"):
             try:
                 config["timeout"] = int(timeout)
@@ -104,6 +122,8 @@ class ConfigManager:
             "CONTEXT_RECENT_MESSAGES": "context_recent_messages",
             "SUMMARY_TARGET_CHARS": "summary_target_chars",
             "SUMMARY_INPUT_CHARS": "summary_input_chars",
+            "HOME_SCHEDULER_INTERVAL_SECONDS": "home_scheduler_interval_seconds",
+            "HOME_BACKUP_RETENTION_DAYS": "home_backup_retention_days",
         }
         for env_name, config_key in int_envs.items():
             if value := os.getenv(env_name):

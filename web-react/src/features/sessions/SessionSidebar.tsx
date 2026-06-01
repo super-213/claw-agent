@@ -1,4 +1,4 @@
-import { BarChart3, LogOut, Menu, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { BarChart3, Home, LogOut, Menu, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
 import type { SessionSummary, Skill, User } from '../../api/types';
 import { formatTime, formatTokens } from '../../utils/format';
 import { isAdmin } from '../../stores/appStore';
@@ -164,6 +164,9 @@ export function SessionSidebar({
                 <Shield size={14} />
               </button>
             ) : null}
+            <a className="dashboard-btn" href="/home" title="家庭事务">
+              <Home size={14} />
+            </a>
             <a className="dashboard-btn" href="/dashboard" title="后台看板">
               <BarChart3 size={14} />
             </a>

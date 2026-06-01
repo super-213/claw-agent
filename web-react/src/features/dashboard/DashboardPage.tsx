@@ -2,7 +2,7 @@ import { RefreshCw, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { dashboardApi, type DashboardRange, type WordScope } from '../../api/dashboard';
-import type { DashboardSessionDetail, DashboardSummary } from '../../api/types';
+import type { DashboardSessionDetail, DashboardSummary, HomeTaskSummary } from '../../api/types';
 import { formatNumber, formatTime } from '../../utils/format';
 
 const colors = ['#007aff', '#34c759', '#ff9500', '#ff3b30', '#af52de', '#30b0c7', '#5856d6'];
@@ -350,6 +350,7 @@ export function DashboardPage() {
   const [range, setRange] = useState<DashboardRange>('all');
   const [scope, setScope] = useState<WordScope>('all');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [homeSummary, setHomeSummary] = useState<HomeTaskSummary | null>(null);
   const [sessions, setSessions] = useState<Array<Record<string, any>>>([]);
   const [wordRows, setWordRows] = useState<Array<Record<string, any>>>([]);
   const [search, setSearch] = useState('');
@@ -368,8 +369,13 @@ export function DashboardPage() {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextSummary, nextSessions] = await Promise.all([dashboardApi.summary(range), dashboardApi.sessions(range)]);
+      const [nextSummary, nextSessions, nextHomeSummary] = await Promise.all([
+        dashboardApi.summary(range),
+        dashboardApi.sessions(range),
+        dashboardApi.homeTaskSummary(),
+      ]);
       setSummary(nextSummary);
+      setHomeSummary(nextHomeSummary);
       setSessions(nextSessions.sessions || []);
       setSubtitle(`范围：${range === 'all' ? '全部' : range} · ${formatTime(nextSummary.generated_at)} 更新`);
       if (scope === 'all') setWordRows((nextSummary.word_cloud as Array<Record<string, any>>) || []);
@@ -416,9 +422,9 @@ export function DashboardPage() {
           </div>
         </div>
         <nav className="dash-nav">
-          {['overview', 'tokens', 'sessions', 'tools', 'words'].map((id, index) => (
+          {['overview', 'home', 'tokens', 'sessions', 'tools', 'words'].map((id, index) => (
             <a key={id} href={`#${id}`} className={`dash-nav-link${index === 0 ? ' active' : ''}`}>
-              {['总览', 'Token', '会话', '工具', '词云'][index]}
+              {['总览', '家庭', 'Token', '会话', '工具', '词云'][index]}
             </a>
           ))}
         </nav>
@@ -458,6 +464,58 @@ export function DashboardPage() {
           <KpiTile label="会话" value={kpis.total_sessions || 0} hint={`${formatNumber(kpis.total_messages || 0)} 条消息`} />
           <KpiTile label="工具调用" value={kpis.tool_calls || 0} hint={`${formatNumber(kpis.tool_failures || 0)} 次失败`} />
           <KpiTile label="工具成功率" value={`${asNumber(kpis.tool_success_rate).toFixed(1)}%`} hint={`平均输出 ${formatNumber(toolSummary.avg_output_chars || 0)} 字符`} />
+        </section>
+
+        <section className="dashboard-grid" id="home">
+          <article className="panel panel-wide">
+            <div className="panel-head">
+              <div>
+                <h2>家庭任务总览</h2>
+                <p>提醒、周期任务和未触达通知</p>
+              </div>
+              <span className="panel-stat">{formatNumber(homeSummary?.kpis?.total_tasks || 0)}</span>
+            </div>
+            <div className="mini-kpis">
+              <div className="mini-kpi">
+                <span>今日待执行</span>
+                <strong>{formatNumber(homeSummary?.kpis?.due_today || 0)}</strong>
+              </div>
+              <div className="mini-kpi">
+                <span>未来 7 天</span>
+                <strong>{formatNumber(homeSummary?.kpis?.due_next_7_days || 0)}</strong>
+              </div>
+              <div className="mini-kpi">
+                <span>逾期未发送</span>
+                <strong>{formatNumber(homeSummary?.kpis?.overdue || 0)}</strong>
+              </div>
+              <div className="mini-kpi">
+                <span>通知成功率</span>
+                <strong>{formatNumber(homeSummary?.kpis?.notification_success_rate || 0)}%</strong>
+              </div>
+            </div>
+          </article>
+          <article className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>任务状态</h2>
+                <p>按提醒状态聚合</p>
+              </div>
+            </div>
+            <div className="bar-list compact">
+              <BarList rows={homeSummary?.status_distribution as Array<Record<string, any>>} valueKey="value" limit={8} emptyText="暂无家庭任务" />
+            </div>
+          </article>
+          <article className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>提醒渠道</h2>
+                <p>站内、浏览器推送与备用渠道</p>
+              </div>
+            </div>
+            <div className="bar-list compact">
+              <BarList rows={homeSummary?.channel_distribution as Array<Record<string, any>>} valueKey="value" limit={8} emptyText="暂无渠道数据" />
+            </div>
+          </article>
         </section>
 
         <section className="dashboard-grid" id="tokens">
