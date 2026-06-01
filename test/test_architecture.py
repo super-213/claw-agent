@@ -316,6 +316,8 @@ def test_frontend_branch_tree_boundaries():
         assert "onSelectNode" in branch_tree
         assert "onDeleteBranch" in branch_tree
         assert "buildBranchTree(tree)" in branch_tree
+        assert "if (!node.isActive)" not in branch_tree
+        assert "node.nodeId !== activeNodeId" in branch_tree
         assert "onSelectNode" in branch_panel
         assert "onDeleteBranch" in branch_panel
         assert "from './BranchTree'" in branch_panel

@@ -61,10 +61,12 @@ function MessageSlot({
 
 function NodeBlock({
   node,
+  activeNodeId,
   onSelectNode,
   onDeleteBranch,
 }: {
   node: TreeNode;
+  activeNodeId?: string | null;
   onSelectNode: (nodeId: string) => void | Promise<void>;
   onDeleteBranch: (nodeId: string) => void | Promise<void>;
 }) {
@@ -87,7 +89,7 @@ function NodeBlock({
       transform={`translate(${node.x}, ${node.y})`}
       onClick={(event) => {
         event.stopPropagation();
-        if (!node.isActive) void onSelectNode(node.nodeId);
+        if (node.nodeId !== activeNodeId) void onSelectNode(node.nodeId);
       }}
       onContextMenu={contextMenu}
     >
@@ -200,7 +202,13 @@ export function BranchTree({ tree, onSelectNode, onDeleteBranch }: BranchTreePro
         </g>
         <g className="branch-tree-nodes-layer">
           {built.nodes.map((node) => (
-            <NodeBlock key={node.nodeId} node={node} onSelectNode={onSelectNode} onDeleteBranch={onDeleteBranch} />
+            <NodeBlock
+              key={node.nodeId}
+              node={node}
+              activeNodeId={tree?.active_node_id}
+              onSelectNode={onSelectNode}
+              onDeleteBranch={onDeleteBranch}
+            />
           ))}
         </g>
       </g>
