@@ -17,6 +17,12 @@ def create_session_branch(
 ) -> dict[str, Any]:
     session = store.load_session(session_id)
     conversation = load_session_conversation(session, system_prompt)
+    if (
+        conversation.branch_engine is not None
+        and conversation.active_node_id is not None
+        and conversation.branch_engine.is_placeholder(conversation.active_node_id)
+    ):
+        raise ValueError("新分支尚未对话，不能继续创建分支")
     result = conversation.create_branch(branch_point_node_id)
 
     store.save_messages(

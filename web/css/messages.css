@@ -527,6 +527,11 @@
   pointer-events: none;
 }
 
+.message-actions.always-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .message-row:hover .message-actions {
   opacity: 1;
   pointer-events: auto;
@@ -558,5 +563,7 @@
 }
 
 .action-icon {
+  align-items: center;
+  display: inline-flex;
   line-height: 1;
 }

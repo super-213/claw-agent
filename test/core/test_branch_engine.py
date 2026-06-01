@@ -184,6 +184,20 @@ class TestCreateBranch:
 
         assert new_id in engine._children["n1"]
 
+    def test_placeholder_node_is_marked_and_not_branchable(self):
+        """The empty node created for a new branch cannot be branched again."""
+        messages = [
+            {"node_id": "root", "parent_id": None, "role": "system", "content": "Sys"},
+            {"node_id": "n1", "parent_id": "root", "role": "user", "content": "Hello"},
+        ]
+        engine = BranchEngine(messages)
+
+        new_id = engine.create_branch("n1")
+
+        assert engine.is_placeholder(new_id) is True
+        with pytest.raises(ValueError, match="新分支尚未对话"):
+            engine.create_branch(new_id)
+
     def test_branch_point_child_count_increases(self):
         """Creating a branch increases the branch point's child count by 1."""
         messages = [

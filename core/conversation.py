@@ -100,6 +100,8 @@ class ConversationManager:
         """
         if self.branch_engine is None:
             raise ValueError("BranchEngine 未初始化，无法创建分支")
+        if self.active_node_id is not None and self.branch_engine.is_placeholder(self.active_node_id):
+            raise ValueError("新分支尚未对话，不能继续创建分支")
 
         # Create the branch via BranchEngine (raises ValueError if node_id doesn't exist)
         new_node_id = self.branch_engine.create_branch(node_id)

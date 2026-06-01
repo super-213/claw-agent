@@ -75,6 +75,7 @@ class TestGetSessionTreeEndpoint:
             assert "role" in node
             assert "summary" in node
             assert "is_active" in node
+            assert "is_placeholder" in node
             assert "child_count" in node
 
     def test_get_tree_active_path_marked(self, client, session_with_tree):

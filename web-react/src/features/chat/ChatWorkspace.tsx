@@ -15,10 +15,16 @@ import { SkillModal } from '../plugins/SkillModal';
 import { UserAdminModal } from '../users/UserAdminModal';
 import { Composer } from './Composer';
 import { MessageList } from './MessageList';
+import type { BranchActionState } from './MessageRows';
 import { isAdmin, selectCurrentSession, useAppStore } from '../../stores/appStore';
 import { formatTokens } from '../../utils/format';
 
 type ModalKind = 'settings' | 'plugins' | 'users' | null;
+
+interface BranchNotice {
+  branchNodeId: string;
+  sourceNodeId: string;
+}
 
 export function ChatWorkspace({
   initialTreeOpen = false,
@@ -56,9 +62,17 @@ export function ChatWorkspace({
   const [treeOpen, setTreeOpen] = useState(initialTreeOpen);
   const [tree, setTree] = useState<BranchTree | null>(null);
   const [draft, setDraft] = useState('');
+  const [branchActionStates, setBranchActionStates] = useState<Record<string, BranchActionState>>({});
+  const [branchNotice, setBranchNotice] = useState<BranchNotice | null>(null);
 
   const busySessionIds = useMemo(() => new Set(Object.keys(streams)), [streams]);
   const currentBusy = Boolean(currentSessionId && streams[currentSessionId]);
+  const activeTreeNode = useMemo(
+    () => tree?.nodes.find((node) => node.node_id === tree.active_node_id) || null,
+    [tree],
+  );
+  const pendingBranchNodeId = activeTreeNode?.is_placeholder ? activeTreeNode.node_id : null;
+  const branchCreationLocked = Boolean(pendingBranchNodeId || branchNotice);
 
   const loadConfig = useCallback(async () => {
     if (!isAdmin(currentUser)) return;
@@ -138,6 +152,20 @@ export function ChatWorkspace({
     setModal(initialModal);
   }, [initialModal]);
 
+  useEffect(() => {
+    setBranchActionStates({});
+    setBranchNotice(null);
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    if (!pendingBranchNodeId && !currentBusy) {
+      setBranchNotice(null);
+      setBranchActionStates((current) =>
+        Object.fromEntries(Object.entries(current).filter(([, state]) => state !== 'pending' && state !== 'success')),
+      );
+    }
+  }, [currentBusy, pendingBranchNodeId]);
+
   const refreshCurrent = useCallback(async () => {
     await loadSessions();
     if (currentSessionId) {
@@ -169,6 +197,7 @@ export function ChatWorkspace({
   };
 
   const sendMessage = async (text: string) => {
+    setBranchNotice(null);
     let targetSessionId = currentSessionId;
     if (!targetSessionId) {
       const created = await sessionsApi.create();
@@ -274,14 +303,23 @@ export function ChatWorkspace({
 
   const createBranchFromNode = async (nodeId: string) => {
     if (!currentSessionId) return;
+    if (branchCreationLocked) {
+      setStatusText('新分支待输入');
+      return;
+    }
+    setBranchActionStates((current) => ({ ...current, [nodeId]: 'pending' }));
     setStatusText('正在创建分支...');
     try {
-      await sessionsApi.createBranch(currentSessionId, nodeId);
+      const result = await sessionsApi.createBranch(currentSessionId, nodeId);
+      const branchNodeId = String(result.branch_node_id || '');
+      setBranchActionStates((current) => ({ ...current, [nodeId]: 'success' }));
+      setBranchNotice({ branchNodeId, sourceNodeId: nodeId });
       setTreeOpen(true);
       await refreshCurrent();
-      setStatusText('分支已创建');
-      setTimeout(() => setStatusText('就绪'), 1200);
+      await loadTree(currentSessionId).catch(() => undefined);
+      setStatusText('新分支待输入');
     } catch (caught) {
+      setBranchActionStates((current) => ({ ...current, [nodeId]: 'error' }));
       alert(`创建分支失败: ${(caught as Error).message || '未知错误'}`);
       setStatusText('创建分支失败');
     }
@@ -289,6 +327,7 @@ export function ChatWorkspace({
 
   const switchBranch = async (nodeId: string) => {
     if (!currentSessionId) return;
+    setBranchNotice(null);
     const result = await sessionsApi.switchBranch(currentSessionId, nodeId);
     setMessages(result.messages || []);
     await loadTree(currentSessionId);
@@ -373,7 +412,21 @@ export function ChatWorkspace({
 
         <div className="main-content">
           <div className="chat-area">
-            <MessageList messages={messages} onCreateBranch={createBranchFromNode} />
+            <MessageList
+              messages={messages}
+              onCreateBranch={createBranchFromNode}
+              branchActionStates={branchActionStates}
+              branchCreationLocked={branchCreationLocked}
+            />
+            {branchNotice ? (
+              <div className="branch-feedback-bar" role="status" aria-live="polite">
+                <GitFork size={18} />
+                <div>
+                  <strong>已切到新分支</strong>
+                  <span>继续输入会写入新分支；发送第一条消息前不能再次分支。</span>
+                </div>
+              </div>
+            ) : null}
             <Composer disabled={currentBusy} draft={draft} onDraftChange={setDraft} onSend={sendMessage} />
           </div>
           <BranchTreePanel

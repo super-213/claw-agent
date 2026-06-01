@@ -82,10 +82,11 @@ class TestCreateBranch:
         assert path[2]["content"] == "Hi there"
 
     def test_create_branch_multiple_at_same_point(self):
-        """Multiple branches at the same point should be supported."""
+        """Multiple branches at the same point are allowed after leaving the empty branch."""
         cm = self._make_manager_with_tree()
 
         result1 = cm.create_branch("n1")
+        cm.switch_branch("n2")
         result2 = cm.create_branch("n1")
 
         # Both should be different nodes
@@ -93,6 +94,15 @@ class TestCreateBranch:
         # Both should be children of n1
         assert result1["branch_node_id"] in cm.branch_engine._children["n1"]
         assert result2["branch_node_id"] in cm.branch_engine._children["n1"]
+
+    def test_create_branch_rejects_when_active_branch_is_empty(self):
+        """An empty active branch must be used before creating another branch."""
+        cm = self._make_manager_with_tree()
+
+        cm.create_branch("n1")
+
+        with pytest.raises(ValueError, match="新分支尚未对话"):
+            cm.create_branch("n1")
 
     def test_create_branch_invalid_node_raises_error(self):
         """create_branch should raise ValueError for non-existent node_id."""

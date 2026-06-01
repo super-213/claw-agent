@@ -303,6 +303,60 @@
   background: rgba(255, 77, 106, 0.12);
 }
 
+.message-action-btn.branch-btn.is-locked {
+  color: var(--ink-ghost);
+  border-color: rgba(122, 143, 168, 0.22);
+  background: rgba(122, 143, 168, 0.08);
+}
+
+.message-action-btn.branch-btn.is-pending svg {
+  animation: branch-action-spin 0.9s linear infinite;
+}
+
+.branch-feedback-bar {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(0, 229, 200, 0.18), rgba(20, 30, 46, 0.94));
+  border-top: 1px solid rgba(0, 229, 200, 0.36);
+  box-shadow: 0 -12px 34px rgba(0, 229, 200, 0.08);
+  color: var(--ink);
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin: 0;
+  padding: 12px 28px;
+}
+
+.branch-feedback-bar > svg {
+  color: var(--neon);
+  flex: 0 0 auto;
+}
+
+.branch-feedback-bar > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  max-width: 780px;
+  min-width: 0;
+}
+
+.branch-feedback-bar strong {
+  color: var(--neon);
+  font-size: 13px;
+}
+
+.branch-feedback-bar span {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+@keyframes branch-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes branch-action-pulse {
   0%, 100% {
     opacity: 0.45;

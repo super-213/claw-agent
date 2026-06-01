@@ -136,8 +136,8 @@ class TestCreateBranchEndpoint:
         assert data["ancestor_path"][0] == "root"
         assert len(data["ancestor_path"]) == 2  # root + new branch node
 
-    def test_create_branch_multiple_at_same_point(self, client, session_with_tree):
-        """Multiple branches at the same point should be supported."""
+    def test_create_branch_rejects_when_active_branch_is_empty(self, client, session_with_tree):
+        """A new empty branch must receive a message before another branch can be created."""
         session_id, session_data = session_with_tree
 
         with patch("web_app.store") as mock_store:
@@ -172,10 +172,9 @@ class TestCreateBranchEndpoint:
                 json={"branch_point_node_id": "n1"},
             )
 
-        assert response2.status_code == 200
+        assert response2.status_code == 400
         data2 = response2.get_json()
-        # Both branches should have different node IDs
-        assert data1["branch_node_id"] != data2["branch_node_id"]
+        assert data2["error"] == "branch_rejected"
 
     def test_create_branch_persists_messages(self, client, session_with_tree):
         """Creating a branch should persist the updated messages via store.save_messages."""

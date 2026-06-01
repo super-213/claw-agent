@@ -1,13 +1,17 @@
 import { useEffect, useRef } from 'react';
 import type { Message } from '../../api/types';
-import { MessageRows } from './MessageRows';
+import { MessageRows, type BranchActionState } from './MessageRows';
 
 export function MessageList({
   messages,
   onCreateBranch,
+  branchActionStates,
+  branchCreationLocked = false,
 }: {
   messages: Message[];
   onCreateBranch: (nodeId: string) => void | Promise<void>;
+  branchActionStates?: Record<string, BranchActionState>;
+  branchCreationLocked?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const visibleMessages = messages.filter((message) => message.role !== 'system');
@@ -24,7 +28,14 @@ export function MessageList({
           <div className="empty-icon">◈</div>
           <div className="empty-text">// 开始输入以启动对话</div>
         </div>
-        {visibleMessages.length ? <MessageRows messages={messages} onCreateBranch={onCreateBranch} /> : null}
+        {visibleMessages.length ? (
+          <MessageRows
+            messages={messages}
+            onCreateBranch={onCreateBranch}
+            branchActionStates={branchActionStates}
+            branchCreationLocked={branchCreationLocked}
+          />
+        ) : null}
       </div>
     </div>
   );

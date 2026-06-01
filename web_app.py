@@ -1393,6 +1393,8 @@ def create_branch(
     except PermissionError:
         return _json({"error": "forbidden"}, 403)
     except ValueError as e:
+        if "尚未对话" in str(e):
+            return _json({"error": "branch_rejected", "message": str(e)}, 400)
         return _json({"error": "invalid_node_id", "message": str(e)}, 404)
 
 

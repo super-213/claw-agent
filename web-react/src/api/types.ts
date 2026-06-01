@@ -95,6 +95,8 @@ export interface BranchApiNode {
   parent_id: string | null;
   role: string;
   summary?: string;
+  is_active?: boolean;
+  is_placeholder?: boolean;
   child_count?: number;
 }
 

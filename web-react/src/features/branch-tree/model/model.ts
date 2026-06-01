@@ -6,6 +6,7 @@ export interface TreeNode {
   role: string;
   summary: string;
   isActive: boolean;
+  isPlaceholder: boolean;
   childCount: number;
   x: number;
   y: number;
@@ -51,6 +52,7 @@ export const buildTree = (
       role: n.role,
       summary: n.summary || '',
       isActive: false,
+      isPlaceholder: Boolean(n.is_placeholder),
       childCount: n.child_count || 0,
       x: 0,
       y: 0,
@@ -75,7 +77,7 @@ export const buildTree = (
 const hasContent = (node?: TreeNode) => Boolean((node?.summary || '').trim());
 const isToolCallNode = (node?: TreeNode) => node?.role === 'assistant' && (node.summary || '').trim().startsWith('[命令]');
 const isToolResultNode = (node?: TreeNode) => node?.role === 'user' && (node.summary || '').trim().startsWith('[执行完成]');
-const isPlaceholderNode = (node?: TreeNode) => node?.role === 'user' && !hasContent(node);
+const isPlaceholderNode = (node?: TreeNode) => Boolean(node?.isPlaceholder) || (node?.role === 'user' && !hasContent(node));
 const isUserInputNode = (node?: TreeNode) => node?.role === 'user' && hasContent(node) && !isToolResultNode(node);
 
 const createDisplayNode = ({
@@ -89,12 +91,14 @@ const createDisplayNode = ({
   toolSummary = '',
   modelSummary = '',
   toolCount = 0,
+  isPlaceholder = false,
 }: Partial<TreeNode> & Pick<TreeNode, 'nodeId' | 'parentId' | 'role' | 'summary' | 'isActive' | 'nodeIds'>): TreeNode => ({
   nodeId,
   parentId,
   role,
   summary,
   isActive,
+  isPlaceholder,
   childCount: 0,
   x: 0,
   y: 0,

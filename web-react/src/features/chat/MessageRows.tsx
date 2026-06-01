@@ -1,4 +1,4 @@
-import { GitBranch } from 'lucide-react';
+import { Check, GitBranch, Loader2 } from 'lucide-react';
 import type { Message } from '../../api/types';
 import {
   extractCommandFromContent,
@@ -15,7 +15,11 @@ interface MessageRowsProps {
   messages: Message[];
   summarizedNodes?: string[];
   onCreateBranch: (nodeId: string) => void | Promise<void>;
+  branchActionStates?: Record<string, BranchActionState>;
+  branchCreationLocked?: boolean;
 }
+
+export type BranchActionState = 'idle' | 'pending' | 'success' | 'error';
 
 interface ToolCardProps {
   iteration: number;
@@ -37,6 +41,13 @@ function ProtocolFlow({ flow }: { flow: NonNullable<ReturnType<typeof getMessage
     </div>
   );
 }
+
+const isEmptyBranchPlaceholder = (message: Message): boolean =>
+  message.role === 'user' &&
+  !(message.content || '').trim() &&
+  !message.images?.length &&
+  !message.attachments?.length &&
+  Boolean(message.node_id && message.parent_id);
 
 function LlmHeader({
   iteration,
@@ -65,21 +76,45 @@ function LlmHeader({
   );
 }
 
-function BranchAction({ nodeId, onCreateBranch }: { nodeId?: string; onCreateBranch: (nodeId: string) => void | Promise<void> }) {
+function BranchAction({
+  nodeId,
+  onCreateBranch,
+  state = 'idle',
+  locked = false,
+}: {
+  nodeId?: string;
+  onCreateBranch: (nodeId: string) => void | Promise<void>;
+  state?: BranchActionState;
+  locked?: boolean;
+}) {
   if (!nodeId) return null;
+  const disabled = locked || state === 'pending' || state === 'success';
+  const title = locked
+    ? '新分支尚未对话，发送一条消息后才能继续分支'
+    : state === 'pending'
+      ? '正在创建分支'
+      : state === 'success'
+        ? '已切到新分支'
+        : state === 'error'
+          ? '创建分支失败，点击重试'
+          : '从此处创建分支';
   return (
-    <div className="message-actions">
+    <div className={`message-actions${state !== 'idle' ? ' always-visible' : ''}`}>
       <button
         type="button"
-        className="message-action-btn branch-btn"
-        title="从此处创建分支"
-        aria-label="从此处创建分支"
+        className={`message-action-btn branch-btn is-${locked ? 'locked' : state}`}
+        title={title}
+        aria-label={title}
+        disabled={disabled}
         onClick={(event) => {
           event.stopPropagation();
+          if (disabled) return;
           void onCreateBranch(nodeId);
         }}
       >
-        <GitBranch size={14} />
+        <span className="action-icon">
+          {state === 'pending' ? <Loader2 size={14} /> : state === 'success' ? <Check size={14} /> : <GitBranch size={14} />}
+        </span>
       </button>
     </div>
   );
@@ -143,6 +178,8 @@ function MessageRow({
   label,
   showHeader,
   onCreateBranch,
+  branchActionStates,
+  branchCreationLocked,
 }: {
   message: Message;
   index: number;
@@ -150,6 +187,8 @@ function MessageRow({
   label?: string;
   showHeader?: boolean;
   onCreateBranch: (nodeId: string) => void | Promise<void>;
+  branchActionStates?: Record<string, BranchActionState>;
+  branchCreationLocked?: boolean;
 }) {
   const view = getMessageView(message);
   const isFinal = view.role === 'final';
@@ -169,17 +208,25 @@ function MessageRow({
         <MessageContent message={message} />
       </div>
       {formatUsage(message.usage) ? <div className="msg-usage">{formatUsage(message.usage)}</div> : null}
-      {isFinal ? <BranchAction nodeId={nodeId} onCreateBranch={onCreateBranch} /> : null}
+      {isFinal ? (
+        <BranchAction
+          nodeId={nodeId}
+          onCreateBranch={onCreateBranch}
+          state={(nodeId && branchActionStates?.[nodeId]) || 'idle'}
+          locked={Boolean(branchCreationLocked && nodeId && branchActionStates?.[nodeId] !== 'success')}
+        />
+      ) : null}
     </div>
   );
 }
 
-export function MessageRows({ messages, onCreateBranch }: MessageRowsProps) {
+export function MessageRows({ messages, onCreateBranch, branchActionStates, branchCreationLocked = false }: MessageRowsProps) {
   const rows: JSX.Element[] = [];
   let iteration = 0;
 
   for (let index = 0; index < messages.length; index += 1) {
     const msg = messages[index];
+    if (isEmptyBranchPlaceholder(msg)) continue;
     if (msg.role === 'system' || isFormatNudgeMessage(msg)) continue;
 
     if (isToolCallMessage(msg)) {
@@ -195,6 +242,8 @@ export function MessageRows({ messages, onCreateBranch }: MessageRowsProps) {
           iteration={iteration}
           showHeader
           onCreateBranch={onCreateBranch}
+          branchActionStates={branchActionStates}
+          branchCreationLocked={branchCreationLocked}
         />,
       );
 
@@ -222,6 +271,8 @@ export function MessageRows({ messages, onCreateBranch }: MessageRowsProps) {
             index={index}
             iteration={iteration}
             onCreateBranch={onCreateBranch}
+            branchActionStates={branchActionStates}
+            branchCreationLocked={branchCreationLocked}
           />,
         );
       });
@@ -240,13 +291,25 @@ export function MessageRows({ messages, onCreateBranch }: MessageRowsProps) {
             iteration={iteration}
             showHeader={splitIndex === 0}
             onCreateBranch={onCreateBranch}
+            branchActionStates={branchActionStates}
+            branchCreationLocked={branchCreationLocked}
           />,
         );
       });
       continue;
     }
 
-    rows.push(<MessageRow key={`${msg.node_id || index}-message`} message={msg} index={index} iteration={iteration} onCreateBranch={onCreateBranch} />);
+    rows.push(
+      <MessageRow
+        key={`${msg.node_id || index}-message`}
+        message={msg}
+        index={index}
+        iteration={iteration}
+        onCreateBranch={onCreateBranch}
+        branchActionStates={branchActionStates}
+        branchCreationLocked={branchCreationLocked}
+      />,
+    );
   }
 
   return <>{rows}</>;
@@ -255,11 +318,22 @@ export function MessageRows({ messages, onCreateBranch }: MessageRowsProps) {
 export function StreamingRows({
   rows,
   onCreateBranch,
+  branchActionStates,
+  branchCreationLocked,
 }: {
   rows: Message[];
   onCreateBranch: (nodeId: string) => void | Promise<void>;
+  branchActionStates?: Record<string, BranchActionState>;
+  branchCreationLocked?: boolean;
 }) {
-  return <MessageRows messages={rows} onCreateBranch={onCreateBranch} />;
+  return (
+    <MessageRows
+      messages={rows}
+      onCreateBranch={onCreateBranch}
+      branchActionStates={branchActionStates}
+      branchCreationLocked={branchCreationLocked}
+    />
+  );
 }
 
 export function RunningToolCard({ iteration, command }: { iteration: number; command: string }) {

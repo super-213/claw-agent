@@ -80,6 +80,8 @@ class BranchEngine:
         """
         if branch_point_id not in self._nodes:
             raise ValueError(f"分支点不存在: {branch_point_id}")
+        if self.is_placeholder(branch_point_id):
+            raise ValueError("新分支尚未对话，不能继续创建分支")
 
         new_node_id = str(uuid.uuid4())
 
@@ -103,6 +105,11 @@ class BranchEngine:
         self._children[branch_point_id].append(new_node_id)
 
         return new_node_id
+
+    def is_placeholder(self, node_id: str) -> bool:
+        """判断节点是否为 create_branch 生成的空分支占位节点。"""
+        node = self._nodes.get(node_id)
+        return bool(node and node.get("role") == "user" and not (node.get("content") or "").strip())
 
     def delete_branch(self, node_id: str, active_node_id: str) -> int:
         """删除指定节点及其所有后代，返回删除数量。
@@ -190,6 +197,7 @@ class BranchEngine:
                 "role": node.get("role", ""),
                 "summary": summary,
                 "is_active": node_id in active_path_ids,
+                "is_placeholder": self.is_placeholder(node_id),
                 "child_count": len(self._children.get(node_id, [])),
             })
 
