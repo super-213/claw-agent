@@ -1,4 +1,4 @@
-import { BarChart3, Home, LogOut, Menu, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { BarChart3, ChevronDown, Home, LogOut, Menu, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
 import type { SessionSummary, Skill, User } from '../../api/types';
 import { formatTime, formatTokens } from '../../utils/format';
 import { isAdmin } from '../../stores/appStore';
@@ -72,118 +72,135 @@ export function SessionSidebar({
             新建对话
           </button>
         </div>
-        <div className="section-label">// Sessions</div>
-        <div className="session-list">
-          {sessions.map((session) => {
-            const busy = busySessionIds.has(session.id);
-            const sharing = session.sharing || { scope: 'private' };
-            const scopeLabel = sharing.scope === 'all' ? 'ALL' : sharing.scope === 'selected' ? 'SHARED' : '';
-            const menuOpen = menuSessionId === session.id;
-            return (
-              <div
-                key={session.id}
-                className={`session-item${session.id === currentSessionId ? ' active' : ''}${menuOpen ? ' menu-open' : ''}${busy ? ' busy' : ''}`}
-                onClick={() => void onOpenSession(session.id)}
-              >
-                <div className="session-content">
-                  <div className="session-title">
-                    {session.title || '新对话'}
-                    {scopeLabel ? <span className="session-scope">{scopeLabel}</span> : null}
-                    {busy ? <span className="session-busy-dot" title="生成中" /> : null}
-                  </div>
-                  <div className="session-time">
-                    {formatTime(session.updated_at || session.created_at)} · {formatTokens(session.token_usage?.total_tokens)} tok
-                  </div>
-                </div>
-                <button
-                  className="session-more"
-                  type="button"
-                  title="更多操作"
-                  aria-label="更多操作"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onToggleSessionMenu(menuOpen ? null : session.id);
-                  }}
+        <div className="history-panel">
+          <div className="section-label">// Sessions</div>
+          <div className="session-list">
+            {sessions.map((session) => {
+              const busy = busySessionIds.has(session.id);
+              const sharing = session.sharing || { scope: 'private' };
+              const scopeLabel = sharing.scope === 'all' ? 'ALL' : sharing.scope === 'selected' ? 'SHARED' : '';
+              const menuOpen = menuSessionId === session.id;
+              return (
+                <div
+                  key={session.id}
+                  className={`session-item${session.id === currentSessionId ? ' active' : ''}${menuOpen ? ' menu-open' : ''}${busy ? ' busy' : ''}`}
+                  onClick={() => void onOpenSession(session.id)}
                 >
-                  ⋯
-                </button>
-                {menuOpen ? (
-                  <div className="session-menu" onClick={(event) => event.stopPropagation()}>
-                    <button type="button" onClick={() => void onCopySession(session.id)}>
-                      复制会话
-                    </button>
-                    {canManageShare(session, currentUser) ? (
-                      <button type="button" onClick={() => void onShareSession(session.id)}>
-                        共享设置
-                      </button>
-                    ) : null}
-                    {canDelete(session, currentUser) ? (
-                      <button type="button" className="danger" onClick={() => void onDeleteSession(session.id)}>
-                        删除
-                      </button>
-                    ) : null}
+                  <div className="session-content">
+                    <div className="session-title">
+                      {session.title || '新对话'}
+                      {scopeLabel ? <span className="session-scope">{scopeLabel}</span> : null}
+                      {busy ? <span className="session-busy-dot" title="生成中" /> : null}
+                    </div>
+                    <div className="session-time">
+                      {formatTime(session.updated_at || session.created_at)} · {formatTokens(session.token_usage?.total_tokens)} tok
+                    </div>
                   </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-        <div className="skill-panel">
-          <div className="section-label">// Skills</div>
-          <div className="skill-toolbar">
-            <button className="skill-add-btn" type="button" onClick={onOpenSkillModal}>
-              <Wrench size={14} />
-              添加技能
-            </button>
-            <button className="skill-reload-btn" type="button" title="重载技能" aria-label="重载技能" onClick={() => void onReloadSkills()}>
-              <RefreshCcw size={14} />
-            </button>
+                  <button
+                    className="session-more"
+                    type="button"
+                    title="更多操作"
+                    aria-label="更多操作"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleSessionMenu(menuOpen ? null : session.id);
+                    }}
+                  >
+                    ⋯
+                  </button>
+                  {menuOpen ? (
+                    <div className="session-menu" onClick={(event) => event.stopPropagation()}>
+                      <button type="button" onClick={() => void onCopySession(session.id)}>
+                        复制会话
+                      </button>
+                      {canManageShare(session, currentUser) ? (
+                        <button type="button" onClick={() => void onShareSession(session.id)}>
+                          共享设置
+                        </button>
+                      ) : null}
+                      {canDelete(session, currentUser) ? (
+                        <button type="button" className="danger" onClick={() => void onDeleteSession(session.id)}>
+                          删除
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-          <div className="skill-list">
-            {skills.length ? (
-              skills.map((skill) => (
-                <button key={skill.name} className="skill-item" type="button" title={`插入调用 ${skill.name} skill`} onClick={() => onInsertSkill(skill)}>
-                  {skill.name}
+        </div>
+
+        <details className="sidebar-drawer skill-panel">
+          <summary className="drawer-summary">
+            <span>Skills</span>
+            <span className="drawer-meta">{skills.length}</span>
+            <ChevronDown size={14} />
+          </summary>
+          <div className="drawer-body">
+            <div className="skill-toolbar">
+              <button className="skill-add-btn" type="button" onClick={onOpenSkillModal}>
+                <Wrench size={14} />
+                添加技能
+              </button>
+              <button className="skill-reload-btn" type="button" title="重载技能" aria-label="重载技能" onClick={() => void onReloadSkills()}>
+                <RefreshCcw size={14} />
+              </button>
+            </div>
+            <div className="skill-list">
+              {skills.length ? (
+                skills.map((skill) => (
+                  <button key={skill.name} className="skill-item" type="button" title={`插入调用 ${skill.name} skill`} onClick={() => onInsertSkill(skill)}>
+                    {skill.name}
+                  </button>
+                ))
+              ) : (
+                <div className="skill-empty">暂无技能</div>
+              )}
+            </div>
+          </div>
+        </details>
+
+        <details className="sidebar-drawer sidebar-footer">
+          <summary className="drawer-summary">
+            <span>后台</span>
+            <span className="drawer-meta">{currentUser?.role || 'guest'}</span>
+            <ChevronDown size={14} />
+          </summary>
+          <div className="drawer-body">
+            <div className="user-summary">
+              <span>当前用户</span>
+              <strong>
+                {currentUser ? `${currentUser.display_name || currentUser.username} · ${currentUser.role}` : '-'}
+              </strong>
+            </div>
+            <div className="sidebar-action-grid" aria-label="账号操作">
+              {isAdmin(currentUser) ? (
+                <button className="user-admin-btn" type="button" title="用户管理" onClick={onOpenUsers}>
+                  <Shield size={14} />
                 </button>
-              ))
-            ) : (
-              <div className="skill-empty">暂无技能</div>
-            )}
-          </div>
-        </div>
-        <div className="sidebar-footer">
-          <div className="user-summary">
-            <span>当前用户</span>
-            <strong>
-              {currentUser ? `${currentUser.display_name || currentUser.username} · ${currentUser.role}` : '-'}
-            </strong>
-          </div>
-          <div className="sidebar-action-grid" aria-label="账号操作">
-            {isAdmin(currentUser) ? (
-              <button className="user-admin-btn" type="button" title="用户管理" onClick={onOpenUsers}>
-                <Shield size={14} />
+              ) : null}
+              <a className="dashboard-btn" href="/home" title="家庭事务">
+                <Home size={14} />
+              </a>
+              <a className="dashboard-btn" href="/dashboard" title="后台看板">
+                <BarChart3 size={14} />
+              </a>
+              {isAdmin(currentUser) ? (
+                <button className="config-btn" type="button" title="模型设置" onClick={onOpenConfig}>
+                  <Settings size={14} />
+                </button>
+              ) : null}
+              <button className="logout-btn" type="button" title="退出登录" onClick={() => void onLogout()}>
+                <LogOut size={14} />
               </button>
-            ) : null}
-            <a className="dashboard-btn" href="/home" title="家庭事务">
-              <Home size={14} />
-            </a>
-            <a className="dashboard-btn" href="/dashboard" title="后台看板">
-              <BarChart3 size={14} />
-            </a>
-            {isAdmin(currentUser) ? (
-              <button className="config-btn" type="button" title="模型设置" onClick={onOpenConfig}>
-                <Settings size={14} />
-              </button>
-            ) : null}
-            <button className="logout-btn" type="button" title="退出登录" onClick={() => void onLogout()}>
-              <LogOut size={14} />
-            </button>
+            </div>
+            <div className="sys-status">
+              <div className="dot" />
+              <span>System Online</span>
+            </div>
           </div>
-          <div className="sys-status">
-            <div className="dot" />
-            <span>System Online</span>
-          </div>
-        </div>
+        </details>
       </aside>
       <div className={`sidebar-backdrop${open ? ' open' : ''}`} aria-hidden="true" onClick={onCloseMobile} />
     </>
