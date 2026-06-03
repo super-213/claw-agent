@@ -53,7 +53,15 @@ def test_config_update_security():
     import os
     from tempfile import TemporaryDirectory
 
-    env_names = ["DASHSCOPE_API_KEY", "API_BASE_URL", "MODEL_NAME"]
+    env_names = [
+        "DASHSCOPE_API_KEY",
+        "API_BASE_URL",
+        "MODEL_NAME",
+        "HOME_ASSISTANT_URL",
+        "HOME_ASSISTANT_TOKEN",
+        "HOME_ASSISTANT_ALLOWED_ENTITIES",
+        "HOME_ASSISTANT_REQUEST_TIMEOUT",
+    ]
     original_env = {name: os.environ.get(name) for name in env_names}
     for name in env_names:
         os.environ.pop(name, None)
@@ -92,6 +100,20 @@ def test_config_update_security():
             updated = config.update_llm_config(api_key="new-secret-key-1234")
             assert "new-secret-key-1234" not in str(updated)
             assert "DASHSCOPE_API_KEY=new-secret-key-1234" in env_path.read_text(encoding="utf-8")
+
+            ha_public = config.update_home_assistant_config(
+                base_url="http://homeassistant.local:8123/",
+                token="ha-long-lived-token",
+                allowed_entities="switch.desk_lamp|书桌插座\nlight.living_room|客厅灯",
+                request_timeout=12,
+            )
+            text = env_path.read_text(encoding="utf-8")
+            assert ha_public["token_set"] is True
+            assert "ha-long-lived-token" not in str(ha_public)
+            assert "HOME_ASSISTANT_URL=http://homeassistant.local:8123" in text
+            assert "HOME_ASSISTANT_TOKEN=ha-long-lived-token" in text
+            assert "HOME_ASSISTANT_ALLOWED_ENTITIES=switch.desk_lamp|书桌插座,light.living_room|客厅灯" in text
+            assert "HOME_ASSISTANT_REQUEST_TIMEOUT=12" in text
 
         print("✅ LLM 配置安全更新正常")
         return True

@@ -87,7 +87,31 @@ export interface ModelConfig {
   base_url?: string;
   model?: string;
   api_key_masked?: string;
+  home_assistant?: HomeAssistantConfig;
   [key: string]: unknown;
+}
+
+export interface HomeAssistantEntityRule {
+  entity_id: string;
+  domain?: string;
+  name?: string;
+  aliases?: string[];
+  power_control?: boolean;
+}
+
+export interface HomeAssistantConfig {
+  base_url?: string;
+  token_set?: boolean;
+  token_masked?: string;
+  allowed_entities?: string;
+  allowed_entity_count?: number;
+  allowed_entity_rules?: HomeAssistantEntityRule[];
+  request_timeout?: number;
+  configured?: boolean;
+  config_error?: string | null;
+  config_file?: string;
+  env_names?: Record<string, string>;
+  tools?: Array<Record<string, unknown>>;
 }
 
 export interface BranchApiNode {

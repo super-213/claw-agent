@@ -22,6 +22,7 @@
   border: 1px solid var(--separator);
   border-radius: 16px;
   box-shadow: var(--shadow-popover);
+  max-height: calc(100vh - 36px);
   overflow: hidden;
   width: min(620px, 100%);
 }
@@ -65,7 +66,20 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
   padding: 18px 20px 20px;
+}
+
+.config-section-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.config-entities-textarea {
+  min-height: 96px;
 }
 
 .field-label {

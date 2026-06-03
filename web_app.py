@@ -18,7 +18,7 @@ import uvicorn
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
-from services import LLMClient, CommandExecutor, ConversationStore, HomeDataService, TokenUsageEstimator, UserStore
+from services import LLMClient, CommandExecutor, ConversationStore, HomeAssistantService, HomeDataService, TokenUsageEstimator, UserStore
 from services.access_control import (
     can_delete_session,
     can_manage_users,
@@ -42,10 +42,23 @@ from skills import SkillRegistry
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 
+class HomeAssistantConfigRequest(BaseModel):
+    base_url: str | None = None
+    token: str | None = None
+    allowed_entities: str | None = None
+    request_timeout: int | None = None
+
+
 class ConfigUpdateRequest(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model: str | None = None
+    home_assistant: HomeAssistantConfigRequest | None = None
+
+
+class HomeAssistantToolCallRequest(BaseModel):
+    name: str | None = None
+    arguments: dict[str, Any] | None = None
 
 
 class SkillCreateRequest(BaseModel):
@@ -282,6 +295,13 @@ home_service = HomeDataService(
     quiet_start=config["home_notification_quiet_start"],
     quiet_end=config["home_notification_quiet_end"],
 )
+home_assistant_service = HomeAssistantService(
+    base_url=config["home_assistant_url"],
+    token=config["home_assistant_token"],
+    allowed_entities=config["home_assistant_allowed_entities"],
+    request_timeout=config["home_assistant_request_timeout"],
+    root_dir=home_data_dir.parent / "home_assistant",
+)
 agent_path = Path(config["agent_file"])
 if not agent_path.is_absolute():
     agent_path = PROJECT_ROOT / agent_path
@@ -465,6 +485,28 @@ def _dashboard_metrics_for_user(user: dict[str, Any]) -> DashboardMetrics:
 
 
 _ensure_env_admin()
+
+
+def _public_config_payload() -> dict[str, Any]:
+    payload = config.get_public_llm_config()
+    payload["home_assistant"] = home_assistant_service.public_config(mask_secret=config.mask_secret)
+    payload["home_assistant"]["config_file"] = str(config._target_dotenv_path())
+    payload["home_assistant"]["env_names"] = config.HOME_ASSISTANT_ENV_KEYS.copy()
+    return payload
+
+
+def _home_assistant_error(exc: ValueError) -> JSONResponse:
+    message = str(exc)
+    status_code = 400
+    if message == "entity_not_allowed":
+        status_code = 403
+    elif message == "home_assistant_not_configured":
+        status_code = 503
+    elif message.startswith("home_assistant_connection_error"):
+        status_code = 502
+    elif message.startswith("home_assistant_http_"):
+        status_code = 502
+    return _json({"error": message.split(":", 1)[0], "message": message}, status_code)
 
 
 def _skill_payload(skill_name: str) -> dict:
@@ -1314,7 +1356,7 @@ def list_skills(_user: dict[str, Any] = Depends(require_user)):
 
 @app.get("/api/config", tags=["config"])
 def get_config(_user: dict[str, Any] = Depends(require_user)):
-    return config.get_public_llm_config()
+    return _public_config_payload()
 
 
 @app.post("/api/config", tags=["config"])
@@ -1324,15 +1366,92 @@ def update_config(
 ):
     payload_data = _payload(payload)
     try:
-        public_config = config.update_llm_config(
+        config.update_llm_config(
             api_key=payload_data.get("api_key"),
             base_url=payload_data.get("base_url"),
             model=payload_data.get("model"),
         )
+        home_assistant_payload = payload_data.get("home_assistant")
+        if isinstance(home_assistant_payload, dict):
+            config.update_home_assistant_config(
+                base_url=home_assistant_payload.get("base_url"),
+                token=home_assistant_payload.get("token"),
+                allowed_entities=home_assistant_payload.get("allowed_entities"),
+                request_timeout=home_assistant_payload.get("request_timeout"),
+            )
+            home_assistant_service.update_runtime(
+                base_url=config["home_assistant_url"],
+                token=config["home_assistant_token"],
+                allowed_entities=config["home_assistant_allowed_entities"],
+                request_timeout=config["home_assistant_request_timeout"],
+            )
     except ValueError as e:
         return _json({"error": "invalid_config", "message": str(e)}, 400)
 
-    return {"ok": True, "config": public_config}
+    return {"ok": True, "config": _public_config_payload()}
+
+
+@app.get("/api/home-assistant/config", tags=["home-assistant"])
+def home_assistant_config(_admin: dict[str, Any] = Depends(require_admin)):
+    return _public_config_payload()["home_assistant"]
+
+
+@app.get("/api/home-assistant/activity-log", tags=["home-assistant"])
+def home_assistant_activity_log(limit: int = 100, _admin: dict[str, Any] = Depends(require_admin)):
+    return {"activity": home_assistant_service.activity_log(limit)}
+
+
+@app.get("/api/home-assistant/entities", tags=["home-assistant"])
+def home_assistant_entities(include_states: bool = False, _user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_assistant_service.list_allowed_entities(include_states=include_states)
+    except ValueError as e:
+        return _home_assistant_error(e)
+
+
+@app.get("/api/home-assistant/entities/{entity_id}/state", tags=["home-assistant"])
+def home_assistant_entity_state(entity_id: str, _user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_assistant_service.get_state(entity_id)
+    except ValueError as e:
+        return _home_assistant_error(e)
+
+
+@app.post("/api/home-assistant/entities/{entity_id}/turn-on", tags=["home-assistant"])
+def home_assistant_turn_on(entity_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_assistant_service.set_power(entity_id, True, actor=user)
+    except ValueError as e:
+        return _home_assistant_error(e)
+
+
+@app.post("/api/home-assistant/entities/{entity_id}/turn-off", tags=["home-assistant"])
+def home_assistant_turn_off(entity_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        return home_assistant_service.set_power(entity_id, False, actor=user)
+    except ValueError as e:
+        return _home_assistant_error(e)
+
+
+@app.get("/api/home-assistant/tools/schema", tags=["home-assistant"])
+def home_assistant_tools_schema(_user: dict[str, Any] = Depends(require_user)):
+    return {"tools": home_assistant_service.tools_schema()}
+
+
+@app.post("/api/home-assistant/tools/call", tags=["home-assistant"])
+def home_assistant_tools_call(
+    payload: HomeAssistantToolCallRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    payload_data = _payload(payload)
+    try:
+        return home_assistant_service.call_tool(
+            str(payload_data.get("name") or ""),
+            payload_data.get("arguments") if isinstance(payload_data.get("arguments"), dict) else {},
+            actor=user,
+        )
+    except ValueError as e:
+        return _home_assistant_error(e)
 
 
 @app.post("/api/skills/reload", tags=["skills"])
@@ -1559,6 +1678,19 @@ async def chat(
     try:
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
         if not images and not attachments:
+            ha_reply = await asyncio.to_thread(
+                home_assistant_service.handle_chat_intent,
+                user_message,
+                user,
+            )
+            if ha_reply:
+                messages = await asyncio.to_thread(
+                    _append_direct_chat_response,
+                    session_id,
+                    user_message,
+                    ha_reply,
+                )
+                return {"messages": messages, "session_id": session_id}
             home_reply = await asyncio.to_thread(
                 home_service.handle_home_chat_intent,
                 user_message,
@@ -1615,6 +1747,57 @@ async def chat_stream(
         return _json({"error": "forbidden"}, 403)
 
     if not images and not attachments:
+        ha_reply = await asyncio.to_thread(
+            home_assistant_service.handle_chat_intent,
+            user_message,
+            user,
+        )
+        if ha_reply:
+            async def direct_home_assistant_stream():
+                yield stream_event({
+                    "type": "step",
+                    "stage": "home_assistant",
+                    "message": "Home Assistant 已处理",
+                })
+                messages = await asyncio.to_thread(
+                    _append_direct_chat_response,
+                    session_id,
+                    user_message,
+                    ha_reply,
+                )
+                yield stream_event({
+                    "type": "model_start",
+                    "stage": "home_assistant",
+                    "iteration": 1,
+                    "model": "home-assistant-tool",
+                    "message_count": 1,
+                })
+                yield stream_event({
+                    "type": "model_delta",
+                    "stage": "home_assistant",
+                    "iteration": 1,
+                    "delta": ha_reply,
+                })
+                yield stream_event({
+                    "type": "model_done",
+                    "stage": "home_assistant",
+                    "iteration": 1,
+                    "content": ha_reply,
+                })
+                yield stream_event({
+                    "type": "done",
+                    "stage": "done",
+                    "message": "响应完成",
+                    "messages": messages,
+                    "session_id": session_id,
+                })
+
+            return StreamingResponse(
+                direct_home_assistant_stream(),
+                media_type="application/x-ndjson",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
         home_reply = await asyncio.to_thread(
             home_service.handle_home_chat_intent,
             user_message,
