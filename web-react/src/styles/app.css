@@ -69,8 +69,7 @@ body.home-route .home-shell {
 }
 
 .empty-note {
-  color: var(--muted);
-  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-tertiary);
   font-size: 12px;
   padding: 18px;
 }
@@ -96,8 +95,8 @@ body.home-route .home-shell {
 }
 
 .home-shell {
-  background: var(--page);
-  color: var(--ink);
+  background: var(--app-bg);
+  color: var(--text-primary);
   min-height: 100vh;
   padding: 28px clamp(18px, 4vw, 54px) 54px;
 }
@@ -112,13 +111,11 @@ body.home-route .home-shell {
 }
 
 .home-kicker {
-  color: var(--ink-muted);
+  color: var(--text-tertiary);
   display: block;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
+  font-weight: 600;
   margin-bottom: 4px;
-  text-transform: uppercase;
 }
 
 .home-topbar h1 {
@@ -142,11 +139,11 @@ body.home-route .home-shell {
 .row-actions button,
 .home-notification {
   align-items: center;
-  background: color-mix(in srgb, var(--surface-solid) 72%, var(--page));
+  background: var(--surface-elevated);
   backdrop-filter: blur(24px);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--ink);
+  border: 1px solid var(--separator-soft);
+  border-radius: 10px;
+  color: var(--text-primary);
   cursor: pointer;
   display: inline-flex;
   font: inherit;
@@ -155,6 +152,7 @@ body.home-route .home-shell {
   min-height: 36px;
   padding: 0 12px;
   text-decoration: none;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
 .home-nav-link:hover,
@@ -163,8 +161,9 @@ body.home-route .home-shell {
 .home-stack-form button:hover,
 .row-actions button:hover,
 .home-notification:hover {
-  border-color: #2f6f73;
-  color: var(--blue);
+  background: var(--surface-solid);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--separator));
+  color: var(--accent);
 }
 
 .home-ops {
@@ -174,14 +173,14 @@ body.home-route .home-shell {
   margin: 0 auto 22px;
   max-width: 1320px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--line);
+  border: 1px solid var(--separator-soft);
+  border-radius: 12px;
+  background: var(--separator-soft);
 }
 
 .home-kpi {
   align-items: center;
-  background: color-mix(in srgb, var(--surface-solid) 76%, var(--page));
+  background: color-mix(in srgb, var(--surface-solid) 82%, var(--app-bg));
   backdrop-filter: blur(24px);
   display: grid;
   gap: 8px;
@@ -191,11 +190,11 @@ body.home-route .home-shell {
 }
 
 .home-kpi svg {
-  color: var(--blue);
+  color: var(--accent);
 }
 
 .home-kpi span {
-  color: var(--ink-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -204,11 +203,13 @@ body.home-route .home-shell {
 }
 
 .home-message {
-  background: color-mix(in srgb, var(--green) 12%, var(--surface-solid));
-  border: 1px solid color-mix(in srgb, var(--green) 28%, var(--line));
-  border-radius: 8px;
-  color: var(--ink);
-  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: color-mix(in srgb, var(--success) 11%, var(--surface-solid));
+  border: 1px solid color-mix(in srgb, var(--success) 26%, var(--separator));
+  border-radius: 10px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
   margin: 0 auto 22px;
   max-width: 1320px;
   overflow: auto;
@@ -225,11 +226,11 @@ body.home-route .home-shell {
 }
 
 .home-section {
-  background: color-mix(in srgb, var(--surface-solid) 76%, var(--page));
+  background: color-mix(in srgb, var(--surface-solid) 82%, var(--app-bg));
   backdrop-filter: blur(24px);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--separator-soft);
+  border-radius: 12px;
+  box-shadow: none;
   min-width: 0;
   padding: 18px;
 }
@@ -240,7 +241,7 @@ body.home-route .home-shell {
 
 .home-section-head {
   align-items: flex-start;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--separator-soft);
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -258,7 +259,7 @@ body.home-route .home-shell {
 .home-list-item small,
 .home-row small,
 .home-notification small {
-  color: var(--ink-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -284,9 +285,9 @@ body.home-route .home-shell {
 .home-inline-form select,
 .home-stack-form input {
   background: var(--surface-solid);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--ink);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  color: var(--text-primary);
   font: inherit;
   font-size: 13px;
   min-height: 36px;
@@ -301,7 +302,7 @@ body.home-route .home-shell {
 
 .home-row {
   align-items: center;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--separator-soft);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(160px, 1.5fr) minmax(70px, 0.55fr) minmax(96px, 0.8fr) minmax(86px, 0.7fr) 92px;
@@ -310,14 +311,14 @@ body.home-route .home-shell {
 }
 
 .home-row.head {
-  color: #667782;
+  color: var(--text-tertiary);
   font-size: 12px;
   font-weight: 700;
   min-height: 34px;
 }
 
 .home-row.urgent {
-  box-shadow: inset 3px 0 0 var(--orange);
+  box-shadow: inset 3px 0 0 var(--warning);
   padding-left: 10px;
 }
 
@@ -346,7 +347,7 @@ body.home-route .home-shell {
 
 .home-list-item {
   align-items: center;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--separator-soft);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -362,7 +363,7 @@ body.home-route .home-shell {
 }
 
 .push-state span {
-  color: var(--ink-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -387,8 +388,8 @@ body.home-route .home-shell {
 }
 
 .home-stat-line div {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid var(--separator-soft);
+  border-radius: 10px;
   display: grid;
   gap: 4px;
   min-width: 116px;
@@ -397,7 +398,7 @@ body.home-route .home-shell {
 
 .home-stat-line span,
 .home-alerts span {
-  color: var(--ink-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -411,9 +412,9 @@ body.home-route .home-shell {
 }
 
 .home-alerts div {
-  background: color-mix(in srgb, var(--orange) 12%, var(--surface-solid));
-  border: 1px solid color-mix(in srgb, var(--orange) 30%, var(--line));
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface-solid));
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--separator));
+  border-radius: 10px;
   display: grid;
   gap: 3px;
   padding: 10px 12px;

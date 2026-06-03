@@ -12,17 +12,17 @@ export const TREE_CONSTANTS = {
 };
 
 export const NODE_COLORS = {
-  user: '#75a7ff',
-  assistant: '#52d987',
-  tool: '#f5a623',
+  user: '#007aff',
+  assistant: '#34c759',
+  tool: '#ff9500',
   system: '#8e8e93',
-  activeBorder: '#00e5c8',
-  defaultBorder: 'rgba(122, 143, 168, 0.5)',
+  activeBorder: '#007aff',
+  defaultBorder: 'rgba(110, 110, 115, 0.38)',
 } as const;
 
 export const EDGE_STYLES = {
-  color: 'rgba(122, 143, 168, 0.36)',
-  activeColor: '#00e5c8',
+  color: 'rgba(110, 110, 115, 0.28)',
+  activeColor: '#007aff',
   width: 2,
 };
 

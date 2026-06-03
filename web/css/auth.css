@@ -1,43 +1,44 @@
 .auth-body {
-  min-height: 100vh;
   background:
-    radial-gradient(circle at 20% 20%, rgba(0, 229, 200, 0.12), transparent 30%),
-    linear-gradient(135deg, var(--bg-0), var(--bg-1));
+    radial-gradient(circle at 16% 10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 28%),
+    radial-gradient(circle at 84% 14%, color-mix(in srgb, var(--purple) 8%, transparent), transparent 30%),
+    var(--app-bg);
+  min-height: 100vh;
 }
 
 .auth-shell {
-  min-height: 100vh;
   display: grid;
-  place-items: center;
+  min-height: 100vh;
   padding: 28px;
+  place-items: center;
 }
 
 .auth-panel {
-  width: min(420px, 100%);
+  background: var(--surface-elevated);
+  backdrop-filter: blur(30px) saturate(1.2);
+  border: 1px solid var(--separator);
+  border-radius: 18px;
+  box-shadow: var(--shadow-popover);
   padding: 30px;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius-md);
-  background: rgba(13, 17, 23, 0.94);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  width: min(420px, 100%);
 }
 
 .auth-title {
-  margin-top: 12px;
-  font-family: 'Syne', sans-serif;
+  color: var(--text-primary);
   font-size: 28px;
-  font-weight: 800;
-  color: var(--ink);
+  font-weight: 750;
+  line-height: 1.1;
+  margin-top: 12px;
 }
 
 .auth-title span {
-  color: var(--neon);
+  color: inherit;
 }
 
 .auth-subtitle {
-  margin-top: 6px;
-  color: var(--ink-ghost);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 7px;
 }
 
 .auth-form {
@@ -47,13 +48,13 @@
 }
 
 .auth-submit {
-  width: 100%;
   height: 42px;
+  width: 100%;
 }
 
 .auth-remember {
   align-items: center;
-  color: var(--ink-dim);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 13px;
@@ -62,7 +63,7 @@
 }
 
 .auth-remember input {
-  accent-color: var(--neon);
+  accent-color: var(--accent);
   height: 15px;
   width: 15px;
 }

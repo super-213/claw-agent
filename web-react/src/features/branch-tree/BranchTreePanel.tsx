@@ -15,7 +15,7 @@ export function BranchTreePanel({ open, tree, onClose, onSelectNode, onDeleteBra
     <aside className={`tree-panel${open ? ' open' : ''}`} aria-label="分支树状图" aria-hidden={!open}>
       <div className="tree-panel-resize" aria-hidden="true" />
       <div className="tree-panel-header">
-        <span className="tree-panel-title">// Branch Tree</span>
+        <span className="tree-panel-title">分支树</span>
         <button className="tree-panel-close" type="button" aria-label="关闭分支树面板" onClick={onClose}>
           <X size={18} />
         </button>

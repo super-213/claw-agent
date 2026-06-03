@@ -1,8 +1,5 @@
 /* Branch tree panel and SVG tree */
 
-/* ─── TREE PANEL ─── */
-
-/* Main content area: flex container for chat + tree panel */
 .main-content {
   display: flex;
   flex: 1;
@@ -12,125 +9,105 @@
 
 .chat-area {
   display: flex;
-  flex-direction: column;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
 }
 
-/* Tree toggle button in topbar */
 .tree-toggle-btn {
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--stroke-soft);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--ink-dim);
-  cursor: pointer;
-  display: flex;
   align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  display: flex;
+  height: 36px;
   justify-content: center;
-  transition: color 0.18s, border-color 0.18s, background 0.18s;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+  width: 36px;
 }
 
-.tree-toggle-btn:hover {
-  color: var(--neon);
-  border-color: var(--stroke);
-  background: rgba(0, 229, 200, 0.08);
-}
-
+.tree-toggle-btn:hover,
 .tree-toggle-btn[aria-expanded="true"] {
-  color: var(--neon);
-  border-color: rgba(0, 229, 200, 0.4);
-  background: var(--neon-dim);
+  background: var(--surface-muted);
+  color: var(--accent);
 }
 
-.tree-toggle-btn svg {
-  width: 18px;
-  height: 18px;
+.tree-toggle-btn:active {
+  transform: scale(0.98);
 }
 
-/* Tree panel (desktop: right side panel) */
 .tree-panel {
+  background: var(--surface);
+  backdrop-filter: blur(26px) saturate(1.24);
+  border-left: 1px solid var(--separator-soft);
   display: none;
   flex-direction: column;
-  width: 420px;
-  min-width: 320px;
-  max-width: 60vw;
-  border-left: 1px solid var(--stroke);
-  background: rgba(8, 11, 16, 0.95);
-  position: relative;
-  overflow: hidden;
   flex-shrink: 0;
+  max-width: 60vw;
+  min-width: 320px;
+  overflow: hidden;
+  position: relative;
+  width: 420px;
 }
 
 .tree-panel.open {
   display: flex;
 }
 
-/* Resize handle (desktop only) */
 .tree-panel-resize {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 5px;
-  cursor: col-resize;
-  z-index: 5;
   background: transparent;
-  transition: background 0.18s;
+  bottom: 0;
+  cursor: col-resize;
+  left: 0;
+  position: absolute;
+  top: 0;
+  transition: background 150ms ease;
+  width: 5px;
+  z-index: 5;
 }
 
 .tree-panel-resize:hover,
 .tree-panel-resize.dragging {
-  background: rgba(0, 229, 200, 0.3);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
-/* Tree panel header */
 .tree-panel-header {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--stroke-soft);
-  background: rgba(13, 17, 23, 0.8);
+  background: color-mix(in srgb, var(--surface-solid) 58%, transparent);
+  border-bottom: 1px solid var(--separator-soft);
+  display: flex;
   flex-shrink: 0;
+  justify-content: space-between;
+  min-height: 50px;
+  padding: 10px 12px 10px 16px;
 }
 
 .tree-panel-title {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--ink-ghost);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .tree-panel-close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--stroke-soft);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--ink-dim);
-  cursor: pointer;
-  display: flex;
   align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text-secondary);
+  display: flex;
+  height: 32px;
   justify-content: center;
-  transition: color 0.18s, border-color 0.18s, background 0.18s;
+  transition: background 150ms ease, color 150ms ease;
+  width: 32px;
 }
 
 .tree-panel-close:hover {
-  color: var(--neon);
-  border-color: var(--stroke);
-  background: rgba(0, 229, 200, 0.08);
+  background: var(--surface-muted);
+  color: var(--text-primary);
 }
 
-.tree-panel-close svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Tree panel body (hosts the SVG tree) */
 .tree-panel-body {
   flex: 1;
   overflow: hidden;
@@ -138,92 +115,84 @@
 }
 
 .tree-panel-empty {
-  display: flex;
   align-items: center;
-  justify-content: center;
+  color: var(--text-tertiary);
+  display: flex;
+  font-size: 13px;
   height: 100%;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: var(--ink-ghost);
-  opacity: 0.5;
+  justify-content: center;
 }
 
-/* ─── BRANCH TREE SVG STYLES ─── */
-
-/* SVG container */
 .branch-tree-svg {
+  background-color: color-mix(in srgb, var(--surface-solid) 42%, transparent);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--text-tertiary) 13%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--text-tertiary) 13%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--text-tertiary) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--text-tertiary) 7%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px, 12px 12px, 12px 12px;
   display: block;
-  width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: rgba(255, 255, 255, 0.012);
-  background-image:
-    linear-gradient(rgba(122, 143, 168, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(122, 143, 168, 0.07) 1px, transparent 1px),
-    linear-gradient(rgba(122, 143, 168, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(122, 143, 168, 0.035) 1px, transparent 1px);
-  background-size: 48px 48px, 48px 48px, 12px 12px, 12px 12px;
+  touch-action: none;
+  width: 100%;
 }
 
-/* Node group: branch block inspired by the provided sketch */
 .branch-tree-node {
   cursor: pointer;
-  transition: opacity 0.2s, filter 0.2s;
+  transition: opacity 180ms ease, filter 180ms ease;
 }
 
 .branch-tree-node.inactive {
-  opacity: 0.36;
+  opacity: 0.4;
 }
 
 .branch-tree-node.inactive:hover {
-  opacity: 0.68;
+  opacity: 0.72;
 }
 
-.branch-tree-node.active {
-  filter: drop-shadow(0 0 10px rgba(0, 229, 200, 0.16));
-}
-
+.branch-tree-node.active,
 .branch-tree-node:hover {
-  filter: drop-shadow(0 0 12px rgba(0, 229, 200, 0.22));
+  filter: none;
 }
 
 .branch-block {
   stroke-dasharray: 7 7;
-  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
+  transition: fill 180ms ease, stroke 180ms ease, stroke-width 180ms ease;
 }
 
 .branch-block.active {
+  fill: color-mix(in srgb, var(--accent) 6%, transparent);
   stroke-dasharray: none;
-  fill: rgba(0, 229, 200, 0.035);
 }
 
 .branch-message-rect {
-  fill: rgba(8, 11, 16, 0.9);
-  stroke: rgba(232, 237, 245, 0.72);
-  stroke-width: 1.8;
-  transition: stroke 0.2s, fill 0.2s;
+  fill: var(--surface-solid);
+  stroke: var(--separator);
+  stroke-width: 1.2;
+  transition: fill 180ms ease, stroke 180ms ease;
 }
 
 .branch-message-card.active .branch-message-rect {
-  fill: rgba(0, 229, 200, 0.08);
-  stroke: rgba(0, 229, 200, 0.92);
-  stroke-width: 2.4;
+  fill: color-mix(in srgb, var(--accent) 8%, var(--surface-solid));
+  stroke: color-mix(in srgb, var(--accent) 52%, var(--separator));
+  stroke-width: 1.6;
 }
 
 .branch-message-slot.role-user .branch-message-role {
-  fill: #75a7ff;
+  fill: var(--accent);
 }
 
 .branch-message-slot.role-assistant .branch-message-role {
-  fill: #52d987;
+  fill: var(--success);
 }
 
 .branch-message-slot.role-tool .branch-message-role {
-  fill: var(--amber);
+  fill: var(--warning);
 }
 
 .branch-message-slot.role-system .branch-message-role {
-  fill: #a5b0bf;
+  fill: var(--text-tertiary);
 }
 
 .branch-message-slot.muted {
@@ -232,47 +201,42 @@
 
 .branch-message-role,
 .branch-message-summary {
-  font-family: 'Outfit', 'Noto Sans SC', sans-serif;
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 0;
   dominant-baseline: middle;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Noto Sans SC", sans-serif;
+  font-size: 14px;
+  font-weight: 520;
+  letter-spacing: 0;
   pointer-events: none;
   user-select: none;
 }
 
 .branch-message-summary {
-  fill: var(--ink);
+  fill: var(--text-primary);
 }
 
 .branch-tree-node.inactive .branch-message-summary {
-  fill: var(--ink-dim);
+  fill: var(--text-secondary);
 }
 
-/* Edge (connection line) styles */
 .branch-tree-edge {
-  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
-  opacity: 0.42;
+  opacity: 0.48;
   stroke-dasharray: 7 7;
+  transition: opacity 180ms ease, stroke 180ms ease, stroke-width 180ms ease;
 }
 
-/* Active path edges: brighter and more opaque */
 .branch-tree-edge.active {
   opacity: 1;
   stroke-dasharray: none;
-  filter: drop-shadow(0 0 4px rgba(0, 229, 200, 0.36));
 }
 
-/* ─── BRANCH BUTTON (specific style for the branch action button) ─── */
 .message-action-btn.branch-btn {
   font-size: 16px;
   position: relative;
 }
 
 .message-action-btn.branch-btn:hover {
-  color: var(--amber);
-  border-color: rgba(245, 166, 35, 0.4);
-  background: rgba(245, 166, 35, 0.1);
+  border-color: color-mix(in srgb, var(--purple) 28%, var(--separator));
+  color: var(--purple);
 }
 
 .message-action-btn.branch-btn:disabled {
@@ -280,45 +244,38 @@
 }
 
 .message-action-btn.branch-btn.is-pending {
-  color: var(--amber);
-  border-color: rgba(245, 166, 35, 0.55);
-  background: rgba(245, 166, 35, 0.14);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--separator));
+  color: var(--warning);
   cursor: wait;
-}
-
-.message-action-btn.branch-btn.is-pending .action-icon {
-  animation: branch-action-pulse 0.9s ease-in-out infinite;
-}
-
-.message-action-btn.branch-btn.is-success {
-  color: var(--neon);
-  border-color: rgba(0, 229, 200, 0.6);
-  background: rgba(0, 229, 200, 0.14);
-  box-shadow: 0 0 14px rgba(0, 229, 200, 0.18);
-}
-
-.message-action-btn.branch-btn.is-error {
-  color: var(--red);
-  border-color: rgba(255, 77, 106, 0.55);
-  background: rgba(255, 77, 106, 0.12);
-}
-
-.message-action-btn.branch-btn.is-locked {
-  color: var(--ink-ghost);
-  border-color: rgba(122, 143, 168, 0.22);
-  background: rgba(122, 143, 168, 0.08);
 }
 
 .message-action-btn.branch-btn.is-pending svg {
   animation: branch-action-spin 0.9s linear infinite;
 }
 
+.message-action-btn.branch-btn.is-success {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--success) 32%, var(--separator));
+  color: var(--success);
+}
+
+.message-action-btn.branch-btn.is-error {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--separator));
+  color: var(--danger);
+}
+
+.message-action-btn.branch-btn.is-locked {
+  background: color-mix(in srgb, var(--surface-muted) 76%, transparent);
+  color: var(--text-tertiary);
+}
+
 .branch-feedback-bar {
   align-items: center;
-  background: linear-gradient(135deg, rgba(0, 229, 200, 0.18), rgba(20, 30, 46, 0.94));
-  border-top: 1px solid rgba(0, 229, 200, 0.36);
-  box-shadow: 0 -12px 34px rgba(0, 229, 200, 0.08);
-  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-solid));
+  border-top: 1px solid color-mix(in srgb, var(--accent) 18%, var(--separator));
+  color: var(--text-primary);
   display: flex;
   gap: 12px;
   justify-content: center;
@@ -327,7 +284,7 @@
 }
 
 .branch-feedback-bar > svg {
-  color: var(--neon);
+  color: var(--accent);
   flex: 0 0 auto;
 }
 
@@ -336,34 +293,20 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 10px;
-  margin: 0;
   max-width: 780px;
   min-width: 0;
 }
 
 .branch-feedback-bar strong {
-  color: var(--neon);
+  color: var(--accent);
   font-size: 13px;
 }
 
 .branch-feedback-bar span {
-  color: var(--ink-dim);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 @keyframes branch-action-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes branch-action-pulse {
-  0%, 100% {
-    opacity: 0.45;
-    transform: translateY(0);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(-1px);
-  }
+  to { transform: rotate(360deg); }
 }

@@ -138,7 +138,7 @@ export function BranchTree({ tree, onSelectNode, onDeleteBranch }: BranchTreePro
   if (!built.root) {
     return (
       <div className="tree-panel-empty">
-        <span>// 暂无分支数据</span>
+        <span>暂无分支数据</span>
       </div>
     );
   }

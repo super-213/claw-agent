@@ -86,7 +86,8 @@ export function ChatWorkspace({
     if (typeof window === 'undefined' || !window.visualViewport || !window.matchMedia('(max-width: 860px)').matches) return;
     const resetPageOffset = () => {
       const active = document.activeElement;
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) return;
+      const activeTag = (active as { tagName?: string } | null)?.tagName;
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
       window.scrollTo(0, 0);
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;

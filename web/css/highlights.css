@@ -1,113 +1,68 @@
 /* Context and active-path highlights */
 
-/* ─── CONTEXT HIGHLIGHT ─── */
-
-/* Generic context highlight: subtle left border indicator for all context messages */
-.message-row.context-highlight {
-  position: relative;
-}
-
-.message-row.context-highlight::before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--neon);
-  opacity: 0.5;
-}
-
-/* Full context: messages sent completely to the model */
-.message-row.context-highlight-full {
-  position: relative;
-}
-
-.message-row.context-highlight-full::before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--neon);
-  opacity: 0.8;
-}
-
-.message-row.context-highlight-full > .message {
-  border-color: rgba(0, 229, 200, 0.3);
-  box-shadow: 0 0 0 1px rgba(0, 229, 200, 0.05), inset 0 0 12px rgba(0, 229, 200, 0.03);
-}
-
-/* Context state badge for full messages */
-.message-row.context-highlight-full::after {
-  content: '● FULL';
-  position: absolute;
-  top: 4px;
-  right: 0;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--neon);
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-/* Summarized context: messages compressed as summary before sending */
-.message-row.context-highlight-summarized {
-  position: relative;
-  opacity: 0.7;
-}
-
-.message-row.context-highlight-summarized::before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--amber);
-  opacity: 0.7;
-}
-
-.message-row.context-highlight-summarized > .message {
-  border-color: rgba(245, 166, 35, 0.25);
-  border-style: dashed;
-  box-shadow: none;
-}
-
-/* Context state badge for summarized messages */
-.message-row.context-highlight-summarized::after {
-  content: '◌ SUMMARIZED';
-  position: absolute;
-  top: 4px;
-  right: 0;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--amber);
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-/* ─── ACTIVE PATH HIGHLIGHT (message list) ─── */
-
-/* Messages on the active path get a subtle left accent (distinct from context highlight) */
+.message-row.context-highlight,
+.message-row.context-highlight-full,
+.message-row.context-highlight-summarized,
 .message-row.active-path-highlight {
   position: relative;
 }
 
+.message-row.context-highlight::before,
+.message-row.context-highlight-full::before,
+.message-row.context-highlight-summarized::before,
 .message-row.active-path-highlight::before {
+  border-radius: 2px;
   content: '';
+  left: -8px;
   position: absolute;
-  left: -12px;
   top: 0;
   bottom: 0;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--amber);
-  opacity: 0.5;
+  width: 3px;
+}
+
+.message-row.context-highlight::before,
+.message-row.context-highlight-full::before {
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+.message-row.context-highlight-full > .message {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--separator));
+}
+
+.message-row.context-highlight-full::after {
+  color: var(--accent);
+  content: 'In context';
+  font-size: 10px;
+  opacity: 0.62;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 4px;
+}
+
+.message-row.context-highlight-summarized {
+  opacity: 0.78;
+}
+
+.message-row.context-highlight-summarized::before,
+.message-row.active-path-highlight::before {
+  background: var(--warning);
+  opacity: 0.6;
+}
+
+.message-row.context-highlight-summarized > .message {
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--separator));
+  border-style: dashed;
+}
+
+.message-row.context-highlight-summarized::after {
+  color: var(--warning);
+  content: 'Summarized';
+  font-size: 10px;
+  opacity: 0.68;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 4px;
 }

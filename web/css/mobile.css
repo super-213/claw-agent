@@ -68,7 +68,7 @@
     z-index: 20;
   }
 
-  .sidebar-backdrop.visible {
+  .sidebar-backdrop.open {
     opacity: 1;
     pointer-events: auto;
   }
@@ -267,7 +267,6 @@
   .iteration-divider {
     gap: 6px;
     font-size: 8px;
-    letter-spacing: 0.18em;
     margin: 4px 0 -2px;
   }
 }
@@ -283,7 +282,7 @@
     min-width: unset;
     max-width: unset;
     border-left: none;
-    border-top: 1px solid var(--stroke);
+    border-top: 1px solid var(--separator);
     position: fixed;
     left: 0;
     right: 0;
@@ -327,7 +326,7 @@
 
   .tree-panel-resize:hover::after,
   .tree-panel-resize.dragging::after {
-    background: var(--neon);
+    background: var(--accent);
   }
 
   .tree-panel-header {

@@ -1,99 +1,169 @@
-/* Base tokens and global primitives */
+/* Apple-style tokens and global primitives */
 
 :root {
-  --bg-0: #080b10;
-  --bg-1: #0d1117;
-  --bg-2: #121820;
-  --bg-3: #1a2130;
-  --surface: rgba(20, 28, 42, 0.85);
-  --ink: #e8edf5;
-  --ink-dim: #7a8fa8;
-  --ink-ghost: #3a4d63;
-  --neon: #00e5c8;
-  --neon-dim: rgba(0, 229, 200, 0.12);
-  --neon-glow: 0 0 20px rgba(0, 229, 200, 0.4);
-  --amber: #f5a623;
-  --amber-dim: rgba(245, 166, 35, 0.12);
-  --red: #ff4d6a;
-  --stroke: rgba(0, 229, 200, 0.1);
-  --stroke-soft: rgba(255,255,255,0.05);
-  --radius-sm: 6px;
+  color-scheme: light;
+  --app-bg: #f5f5f7;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-solid: #ffffff;
+  --surface-elevated: rgba(255, 255, 255, 0.88);
+  --surface-muted: #f0f1f4;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #86868b;
+  --separator: rgba(0, 0, 0, 0.1);
+  --separator-soft: rgba(0, 0, 0, 0.06);
+  --accent: #007aff;
+  --success: #34c759;
+  --warning: #ff9500;
+  --danger: #ff3b30;
+  --purple: #af52de;
+  --focus-ring: rgba(0, 122, 255, 0.22);
+  --shadow-popover: 0 18px 50px rgba(0, 0, 0, 0.16);
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.1);
+  --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-lg: 16px;
+  --radius-bubble: 20px;
+
+  /* Legacy aliases kept for older class names while pointing at the new system. */
+  --bg-0: var(--app-bg);
+  --bg-1: #fbfbfd;
+  --bg-2: var(--surface-solid);
+  --bg-3: var(--surface-elevated);
+  --ink: var(--text-primary);
+  --ink-bright: var(--text-primary);
+  --ink-dim: var(--text-secondary);
+  --ink-ghost: var(--text-tertiary);
+  --stroke: var(--separator);
+  --stroke-soft: var(--separator-soft);
+  --page: var(--app-bg);
+  --line: var(--separator);
+  --line-strong: rgba(0, 0, 0, 0.14);
+  --blue: var(--accent);
+  --green: var(--success);
+  --orange: var(--warning);
+  --red: var(--danger);
+  --ink-soft: #515154;
+  --ink-muted: var(--text-tertiary);
+  --radius: 8px;
+  --shadow: none;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --app-bg: #0f0f10;
+    --surface: rgba(28, 28, 30, 0.72);
+    --surface-solid: #1c1c1e;
+    --surface-elevated: rgba(44, 44, 46, 0.88);
+    --surface-muted: #2c2c2e;
+    --text-primary: #f5f5f7;
+    --text-secondary: #a1a1a6;
+    --text-tertiary: #737377;
+    --separator: rgba(255, 255, 255, 0.12);
+    --separator-soft: rgba(255, 255, 255, 0.08);
+    --accent: #0a84ff;
+    --success: #30d158;
+    --warning: #ff9f0a;
+    --danger: #ff453a;
+    --purple: #bf5af2;
+    --focus-ring: rgba(10, 132, 255, 0.28);
+    --shadow-popover: 0 20px 54px rgba(0, 0, 0, 0.42);
+    --shadow-float: 0 14px 36px rgba(0, 0, 0, 0.3);
+    --bg-1: #151517;
+    --ink-soft: #d1d1d6;
+    --line-strong: rgba(255, 255, 255, 0.18);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 html {
-  background: var(--bg-0);
+  background: var(--app-bg);
   height: 100%;
   overflow-x: hidden;
 }
 
 body {
+  background: var(--app-bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
   height: 100%;
   min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
-  font-family: 'Outfit', sans-serif;
-  color: var(--ink);
-  background: var(--bg-0);
   overflow: hidden;
+  text-rendering: geometricPrecision;
 }
 
-/* Subtle scanline overlay */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 229, 200, 0.015) 2px,
-    rgba(0, 229, 200, 0.015) 4px
-  );
-  pointer-events: none;
-  z-index: 1000;
-}
-
-/* Grid background */
+body::before,
 body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(0, 229, 200, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 229, 200, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
+  display: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .sys-status {
-  display: flex;
   align-items: center;
+  color: var(--text-tertiary);
+  display: flex;
+  font-size: 12px;
   gap: 7px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: var(--ink-dim);
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  background: var(--success);
   border-radius: 50%;
-  background: var(--neon);
-  box-shadow: 0 0 6px var(--neon);
-  animation: pulse 2.4s ease-in-out infinite;
+  height: 6px;
+  width: 6px;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+@keyframes softPulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--ink-ghost); border-radius: 4px; }
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-tertiary) 34%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
