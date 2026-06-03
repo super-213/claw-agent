@@ -6,7 +6,7 @@ import { chatApi } from '../../api/chat';
 import { configApi } from '../../api/config';
 import { sessionsApi } from '../../api/sessions';
 import { skillsApi } from '../../api/skills';
-import type { BranchTree, ChatStreamEvent, Message } from '../../api/types';
+import type { BranchTree, ChatStreamEvent, Message, MessageMedia } from '../../api/types';
 import { BranchTreePanel } from '../branch-tree/BranchTreePanel';
 import { ConfigModal } from '../settings/ConfigModal';
 import { ShareModal } from '../sessions/ShareModal';
@@ -17,7 +17,7 @@ import { Composer } from './Composer';
 import { MessageList } from './MessageList';
 import type { BranchActionState } from './MessageRows';
 import { isAdmin, selectCurrentSession, useAppStore } from '../../stores/appStore';
-import { formatTokens } from '../../utils/format';
+import { formatTokens, isImageAttachment } from '../../utils/format';
 
 type ModalKind = 'settings' | 'plugins' | 'users' | null;
 
@@ -200,7 +200,12 @@ export function ChatWorkspace({
     await openSession(session.id);
   };
 
-  const sendMessage = async (text: string) => {
+  const uploadFiles = useCallback(async (files: File[]) => {
+    const result = await chatApi.uploadMedia(files);
+    return result.media || [];
+  }, []);
+
+  const sendMessage = async (text: string, media: MessageMedia[] = []) => {
     setBranchNotice(null);
     let targetSessionId = currentSessionId;
     if (!targetSessionId) {
@@ -211,12 +216,20 @@ export function ChatWorkspace({
     }
     if (!targetSessionId || streams[targetSessionId]) return;
 
+    const images = media.filter(isImageAttachment);
+    const attachments = media.filter((item) => !isImageAttachment(item));
     const abortController = new AbortController();
     beginStream(targetSessionId, text, abortController);
     setStatusText('处理中...');
     setSessionMessages(targetSessionId, (currentMessages) => [
       ...currentMessages,
-      { role: 'user', content: text, node_id: `optimistic-user-${Date.now()}` },
+      {
+        role: 'user',
+        content: text,
+        images,
+        attachments,
+        node_id: `optimistic-user-${Date.now()}`,
+      },
     ]);
 
     const streamMessages = new Map<number, string>();
@@ -286,7 +299,7 @@ export function ChatWorkspace({
     };
 
     try {
-      await chatApi.stream({ sessionId: targetSessionId, message: text, signal: abortController.signal }, handleEvent);
+      await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, signal: abortController.signal }, handleEvent);
       await loadSessions();
       if (useAppStore.getState().currentSessionId === targetSessionId) {
         const detail = await sessionsApi.get(targetSessionId);
@@ -429,7 +442,7 @@ export function ChatWorkspace({
                 </div>
               </div>
             ) : null}
-            <Composer disabled={currentBusy} draft={draft} onDraftChange={setDraft} onSend={sendMessage} />
+            <Composer disabled={currentBusy} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
           </div>
           <BranchTreePanel
             open={treeOpen}

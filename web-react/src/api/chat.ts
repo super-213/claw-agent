@@ -1,4 +1,4 @@
-import { jsonRequest, streamRequest } from './client';
+import { formRequest, jsonRequest, streamRequest } from './client';
 import type { ChatStreamEvent, MessageMedia, SessionDetail } from './types';
 
 export interface ChatPayload {
@@ -9,6 +9,10 @@ export interface ChatPayload {
   signal?: AbortSignal;
 }
 
+interface UploadResponse {
+  media: MessageMedia[];
+}
+
 const toWirePayload = ({ sessionId, message, attachments = [], images = [] }: ChatPayload) => ({
   session_id: sessionId,
   message,
@@ -17,6 +21,11 @@ const toWirePayload = ({ sessionId, message, attachments = [], images = [] }: Ch
 });
 
 export const chatApi = {
+  uploadMedia: (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    return formRequest<UploadResponse>('/api/chat/uploads', formData);
+  },
   send: (payload: ChatPayload) =>
     jsonRequest<SessionDetail>('/api/chat', {
       method: 'POST',

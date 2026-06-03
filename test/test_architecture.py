@@ -130,7 +130,7 @@ def test_conversation():
 
 
 def test_message_media_metadata():
-    """测试消息图片/附件元数据可持久化但不会发送给 LLM"""
+    """测试消息图片/附件元数据可持久化，且路径会作为文本提示发送给 LLM"""
     print("\n测试消息媒体元数据...")
     try:
         from tempfile import TemporaryDirectory
@@ -155,7 +155,11 @@ def test_message_media_metadata():
         assert messages[1]["attachments"] == [attachment]
 
         cleaned = LLMClient._chat_messages(messages)
-        assert cleaned[1] == {"role": "user", "content": "带图消息"}
+        assert cleaned[1]["role"] == "user"
+        assert "带图消息" in cleaned[1]["content"]
+        assert "[上传内容]" in cleaned[1]["content"]
+        assert "/generated/demo.png" in cleaned[1]["content"]
+        assert "/images/local.webp" in cleaned[1]["content"]
         assert "images" not in cleaned[1]
         assert "attachments" not in cleaned[1]
 

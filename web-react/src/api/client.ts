@@ -40,6 +40,19 @@ export const jsonRequest = async <T>(url: string, options: RequestInit = {}): Pr
   return parseJson(response) as Promise<T>;
 };
 
+export const formRequest = async <T>(url: string, formData: FormData, options: RequestInit = {}): Promise<T> => {
+  const response = await fetch(url, {
+    ...options,
+    method: options.method || 'POST',
+    body: formData,
+    headers: {
+      Accept: 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  return parseJson(response) as Promise<T>;
+};
+
 interface StreamOptions extends RequestInit {
   onEvent?: (event: ChatStreamEvent) => void;
 }

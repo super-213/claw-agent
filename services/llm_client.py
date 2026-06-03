@@ -77,14 +77,46 @@ class LLMClient:
 
     @staticmethod
     def _chat_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
-        """OpenAI Chat Completions 只接收 role/content，附件仅用于本地展示。"""
+        """OpenAI Chat Completions receives text, so expose media as readable paths."""
         return [
             {
                 "role": message.get("role", ""),
-                "content": str(message.get("content") or ""),
+                "content": LLMClient._content_with_media(message),
             }
             for message in messages
         ]
+
+    @staticmethod
+    def _content_with_media(message: Dict[str, Any]) -> str:
+        content = str(message.get("content") or "")
+        media_lines = LLMClient._media_lines("图片", message.get("images"))
+        media_lines.extend(LLMClient._media_lines("附件", message.get("attachments")))
+        if not media_lines:
+            return content
+        media_text = "\n".join(["[上传内容]", *media_lines])
+        return f"{content}\n\n{media_text}".strip()
+
+    @staticmethod
+    def _media_lines(label: str, items: Any) -> List[str]:
+        if not isinstance(items, list):
+            return []
+        lines: List[str] = []
+        for item in items:
+            if isinstance(item, str):
+                source = item.strip()
+                name = source.rsplit("/", 1)[-1] or source
+                mime = ""
+            elif isinstance(item, dict):
+                source = str(item.get("path") or item.get("url") or item.get("src") or "").strip()
+                name = str(item.get("name") or item.get("alt") or item.get("title") or source.rsplit("/", 1)[-1]).strip()
+                mime = str(item.get("type") or item.get("mime_type") or item.get("mimeType") or "").strip()
+            else:
+                continue
+            if not source:
+                continue
+            suffix = f", {mime}" if mime else ""
+            lines.append(f"- {label}: {name} ({source}{suffix})")
+        return lines
     
     def close(self):
         """关闭客户端"""

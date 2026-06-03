@@ -277,6 +277,44 @@
   object-fit: contain;
 }
 
+.message-attachments {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  max-width: 100%;
+}
+
+.message-attachment-link {
+  align-items: center;
+  background: rgba(8, 11, 16, 0.38);
+  border: 1px solid var(--stroke-soft);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 38px;
+  padding: 8px 10px;
+  text-decoration: none;
+}
+
+.message-attachment-link:hover {
+  border-color: rgba(0, 229, 200, 0.32);
+  color: var(--neon);
+}
+
+.message-attachment-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-attachment-link small {
+  color: var(--ink-ghost);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .message.user {
   background: linear-gradient(135deg, rgba(245, 166, 35, 0.18), rgba(245, 166, 35, 0.08));
   border: 1px solid rgba(245, 166, 35, 0.25);

@@ -7,10 +7,11 @@ from dataclasses import asdict
 from datetime import datetime
 import os
 from pathlib import Path
+import re
 from typing import Any
 import uuid
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import uvicorn
@@ -123,6 +124,8 @@ app = FastAPI(
 )
 app.config = {"TESTING": False}
 AUTH_COOKIE_NAME = "claw_session"
+MAX_UPLOAD_FILES = 10
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 @app.exception_handler(HTTPException)
@@ -261,6 +264,14 @@ def _safe_file_response(directory: Path, filename: str) -> FileResponse:
     return FileResponse(requested_path)
 
 
+def _safe_upload_name(filename: str) -> str:
+    raw_name = Path(filename or "upload").name
+    stem = Path(raw_name).stem or "upload"
+    suffix = Path(raw_name).suffix[:16].lower()
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-") or "upload"
+    return f"{safe_stem[:64]}-{uuid.uuid4().hex[:12]}{suffix}"
+
+
 config = ConfigManager()
 home_data_dir = Path(config["home_data_dir"])
 if not home_data_dir.is_absolute():
@@ -279,6 +290,8 @@ if not generated_dir.is_absolute():
     generated_dir = PROJECT_ROOT / generated_dir
 GENERATED_DIR = generated_dir.resolve()
 GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = GENERATED_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 agent_prompt = agent_path.read_text(encoding="utf-8")
 agent_prompt += (
     "\n\n## 文件生成目录\n\n"
@@ -508,6 +521,60 @@ def generated_file(filename: str):
 @app.get("/files/{filename:path}", include_in_schema=False)
 def files_file(filename: str):
     return _safe_file_response(GENERATED_DIR, filename)
+
+
+@app.post("/api/chat/uploads", tags=["chat"])
+async def upload_chat_files(
+    files: list[UploadFile] | None = File(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    uploads = files or []
+    if not uploads:
+        return _json({"error": "missing_files", "message": "请选择要上传的文件"}, 400)
+    if len(uploads) > MAX_UPLOAD_FILES:
+        return _json({"error": "too_many_files", "message": f"一次最多上传 {MAX_UPLOAD_FILES} 个文件"}, 400)
+
+    media: list[dict[str, Any]] = []
+    for upload in uploads:
+        stored_name = _safe_upload_name(upload.filename or "upload")
+        stored_path = UPLOAD_DIR / stored_name
+        size = 0
+        try:
+            with stored_path.open("wb") as output:
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        output.close()
+                        stored_path.unlink(missing_ok=True)
+                        return _json(
+                            {
+                                "error": "file_too_large",
+                                "message": f"{upload.filename or '文件'} 超过 25MB 限制",
+                            },
+                            413,
+                        )
+                    output.write(chunk)
+        finally:
+            await upload.close()
+
+        mime_type = upload.content_type or "application/octet-stream"
+        item = {
+            "name": upload.filename or stored_name,
+            "url": f"/generated/uploads/{stored_name}",
+            "path": f"uploads/{stored_name}",
+            "type": mime_type,
+            "mime_type": mime_type,
+            "mimeType": mime_type,
+            "size": size,
+        }
+        if mime_type.startswith("image/"):
+            item["alt"] = upload.filename or stored_name
+        media.append(item)
+
+    return {"media": media}
 
 
 @app.get("/api/auth/bootstrap-status", tags=["auth"])
