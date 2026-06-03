@@ -46,3 +46,30 @@ def test_sync_stream_process_user_input_uses_async_main_flow(tmp_path):
     assert any(event.get("type") == "model_delta" for event in events)
     assert events[-1]["type"] == "done"
     assert events[-1]["should_continue"] is False
+
+
+def test_realtime_question_auto_loads_search_skill(tmp_path):
+    skills_dir = tmp_path / "skills"
+    search_dir = skills_dir / "search"
+    search_dir.mkdir(parents=True)
+    (search_dir / "search.md").write_text("# search\nfallback search rules", encoding="utf-8")
+    orchestrator = _orchestrator(tmp_path)
+
+    accepted, events = orchestrator._prepare_user_input(
+        "上海今天天气怎么样",
+        emit_events=True,
+    )
+
+    messages = orchestrator.conversation.get_messages()
+    assert accepted is True
+    assert any(
+        message["role"] == "system"
+        and message["content"].startswith("## 激活技能：search")
+        for message in messages
+    )
+    assert any(
+        message["role"] == "system"
+        and "切换到同类备用来源重试" in message["content"]
+        for message in messages
+    )
+    assert any(event.get("stage") == "skill_loaded" for event in events)

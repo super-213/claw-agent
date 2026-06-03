@@ -15,6 +15,8 @@ export interface StreamState {
   abortController?: AbortController;
 }
 
+type MessageUpdater = Message[] | ((messages: Message[]) => Message[]);
+
 interface AppState {
   currentUser: User | null;
   sessions: SessionSummary[];
@@ -22,6 +24,7 @@ interface AppState {
   config: ModelConfig | null;
   currentSessionId: string | null;
   messages: Message[];
+  sessionMessages: Record<string, Message[]>;
   streams: Record<string, StreamState>;
   statusText: string;
   setCurrentUser: (user: User | null) => void;
@@ -30,6 +33,7 @@ interface AppState {
   setConfig: (config: ModelConfig | null) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
   setMessages: (messages: Message[]) => void;
+  setSessionMessages: (sessionId: string, messages: MessageUpdater) => void;
   beginStream: (sessionId: string, pendingUserMessage: string, abortController?: AbortController) => void;
   updateStream: (sessionId: string, patch: Partial<StreamState>) => void;
   endStream: (sessionId: string) => void;
@@ -43,14 +47,40 @@ export const useAppStore = create<AppState>((set) => ({
   config: null,
   currentSessionId: null,
   messages: [],
+  sessionMessages: {},
   streams: {},
   statusText: '就绪',
   setCurrentUser: (currentUser) => set({ currentUser }),
   setSessions: (sessions) => set({ sessions }),
   setSkills: (skills) => set({ skills }),
   setConfig: (config) => set({ config }),
-  setCurrentSessionId: (currentSessionId) => set({ currentSessionId }),
-  setMessages: (messages) => set({ messages }),
+  setCurrentSessionId: (currentSessionId) =>
+    set((state) => ({
+      currentSessionId,
+      messages: currentSessionId ? state.sessionMessages[currentSessionId] || [] : [],
+    })),
+  setMessages: (messages) =>
+    set((state) => ({
+      messages,
+      sessionMessages: state.currentSessionId
+        ? {
+            ...state.sessionMessages,
+            [state.currentSessionId]: messages,
+          }
+        : state.sessionMessages,
+    })),
+  setSessionMessages: (sessionId, messages) =>
+    set((state) => {
+      const currentMessages = state.sessionMessages[sessionId] || [];
+      const nextMessages = typeof messages === 'function' ? messages(currentMessages) : messages;
+      return {
+        messages: state.currentSessionId === sessionId ? nextMessages : state.messages,
+        sessionMessages: {
+          ...state.sessionMessages,
+          [sessionId]: nextMessages,
+        },
+      };
+    }),
   beginStream: (sessionId, pendingUserMessage, abortController) =>
     set((state) => ({
       streams: {

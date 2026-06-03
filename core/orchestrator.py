@@ -159,11 +159,30 @@ class AgentOrchestrator:
                     })
 
         if InputParser.needs_realtime_search(user_input):
+            search_skill_loaded = False
+            if skill_name != "search":
+                if emit_events:
+                    events.append({
+                        "type": "step",
+                        "stage": "skill",
+                        "message": "加载实时查询工具上下文：search",
+                    })
+                search_skill_loaded = self._load_skill("search")
+                if emit_events:
+                    events.append({
+                        "type": "step",
+                        "stage": "skill_loaded" if search_skill_loaded else "skill_missing",
+                        "message": "实时查询工具已激活：search"
+                        if search_skill_loaded
+                        else "未找到 search 技能，仅注入实时查询提醒",
+                    })
             self.conversation.add_system_message(
                 "## 提醒：用户的问题涉及实时信息\n"
                 "你的训练数据有截止日期，不具备实时信息。"
-                "请先使用 [命令] curl 等方式搜索获取最新数据，"
-                "然后基于搜索结果回答。禁止凭记忆编造实时数据。"
+                "请先使用 [命令] curl 等方式获取最新数据，"
+                "优先使用已加载的 search 技能说明选择稳定来源。"
+                "如果某个搜索源或 API 无法访问，必须切换到同类备用来源重试，"
+                "然后基于成功获取的结果回答。禁止凭记忆编造实时数据。"
             )
             if emit_events:
                 events.append({

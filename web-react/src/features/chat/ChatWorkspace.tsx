@@ -49,6 +49,7 @@ export function ChatWorkspace({
   const setConfig = useAppStore((state) => state.setConfig);
   const setCurrentSessionId = useAppStore((state) => state.setCurrentSessionId);
   const setMessages = useAppStore((state) => state.setMessages);
+  const setSessionMessages = useAppStore((state) => state.setSessionMessages);
   const setCurrentUser = useAppStore((state) => state.setCurrentUser);
   const beginStream = useAppStore((state) => state.beginStream);
   const updateStream = useAppStore((state) => state.updateStream);
@@ -109,12 +110,15 @@ export function ChatWorkspace({
       }
       const detail = await sessionsApi.get(sessionId);
       if (useAppStore.getState().currentSessionId !== sessionId) return;
-      setMessages(detail.messages || []);
+      const state = useAppStore.getState();
+      const cachedMessages = state.sessionMessages[sessionId];
+      const nextMessages = state.streams[sessionId] && cachedMessages ? cachedMessages : detail.messages || [];
+      state.setSessionMessages(sessionId, nextMessages);
       setStatusText(useAppStore.getState().streams[sessionId] ? '处理中...' : '就绪');
       void loadTree(sessionId).catch(() => undefined);
       setMobileSidebarOpen(false);
     },
-    [loadTree, navigate, params.sessionId, setCurrentSessionId, setMessages, setStatusText],
+    [loadTree, navigate, params.sessionId, setCurrentSessionId, setStatusText],
   );
 
   const createSession = useCallback(async () => {
@@ -210,23 +214,20 @@ export function ChatWorkspace({
     const abortController = new AbortController();
     beginStream(targetSessionId, text, abortController);
     setStatusText('处理中...');
-    setMessages([
-      ...useAppStore.getState().messages,
+    setSessionMessages(targetSessionId, (currentMessages) => [
+      ...currentMessages,
       { role: 'user', content: text, node_id: `optimistic-user-${Date.now()}` },
     ]);
 
     const streamMessages = new Map<number, string>();
     const appendSynthetic = (message: Message) => {
-      if (useAppStore.getState().currentSessionId !== targetSessionId) return;
-      useAppStore.getState().setMessages([...useAppStore.getState().messages, message]);
+      useAppStore.getState().setSessionMessages(targetSessionId as string, (currentMessages) => [...currentMessages, message]);
     };
     const updateSyntheticAssistant = (iteration: number, content: string) => {
-      if (useAppStore.getState().currentSessionId !== targetSessionId) return;
       const nodeId = `stream-assistant-${iteration}`;
-      const next = useAppStore.getState().messages.map((message) =>
-        message.node_id === nodeId ? { ...message, content } : message,
+      useAppStore.getState().setSessionMessages(targetSessionId as string, (currentMessages) =>
+        currentMessages.map((message) => (message.node_id === nodeId ? { ...message, content } : message)),
       );
-      useAppStore.getState().setMessages(next);
     };
 
     const handleEvent = (event: ChatStreamEvent) => {
@@ -289,7 +290,7 @@ export function ChatWorkspace({
       await loadSessions();
       if (useAppStore.getState().currentSessionId === targetSessionId) {
         const detail = await sessionsApi.get(targetSessionId);
-        setMessages(detail.messages || []);
+        setSessionMessages(targetSessionId, detail.messages || []);
         await loadTree(targetSessionId);
       }
     } catch (caught) {
