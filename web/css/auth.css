@@ -50,3 +50,19 @@
   width: 100%;
   height: 42px;
 }
+
+.auth-remember {
+  align-items: center;
+  color: var(--ink-dim);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 8px;
+  user-select: none;
+}
+
+.auth-remember input {
+  accent-color: var(--neon);
+  height: 15px;
+  width: 15px;
+}

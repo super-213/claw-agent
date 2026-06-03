@@ -80,6 +80,7 @@ class BootstrapAdminRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str | None = None
     password: str | None = None
+    remember_me: bool | None = False
 
 
 class UserCreateRequest(BaseModel):
@@ -138,6 +139,9 @@ async def http_exception_handler(_request: Request, exc: HTTPException):
 async def _set_static_cache_headers(_request: Request, call_next):
     """Disable browser caching for static assets during development."""
     response = await call_next(_request)
+    auth_cookie_refresh = getattr(_request.state, "auth_cookie_refresh", None)
+    if auth_cookie_refresh:
+        _set_login_cookie(response, auth_cookie_refresh["token"], remember_me=True)
     content_type = response.headers.get("content-type", "")
     if _request.url.path.startswith("/assets/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -298,7 +302,7 @@ user_file = Path(config["user_file"])
 if not user_file.is_absolute():
     user_file = PROJECT_ROOT / user_file
 user_store = UserStore(user_file)
-auth_sessions = AuthSessionStore()
+auth_sessions = AuthSessionStore(path=user_file.with_name("auth_sessions.json"))
 session_run_locks = SessionRunLocks()
 skills_dir = Path(config["skills_dir"])
 if not skills_dir.is_absolute():
@@ -343,6 +347,8 @@ async def current_user(request: Request) -> dict[str, Any] | None:
     user = user_store.get_user(user_id)
     if not user or user.get("status") != "active":
         return None
+    if auth_sessions.should_refresh_cookie(token):
+        request.state.auth_cookie_refresh = {"token": token}
     return user
 
 
@@ -359,17 +365,23 @@ async def require_admin(user: dict[str, Any] = Depends(require_user)) -> dict[st
     return user
 
 
-def _response_with_login_cookie(user: dict[str, Any]) -> JSONResponse:
-    token = auth_sessions.create(user["id"])
+def _response_with_login_cookie(user: dict[str, Any], *, remember_me: bool = False) -> JSONResponse:
+    token = auth_sessions.create(user["id"], remember_me=remember_me)
     response = _json({"ok": True, "user": user})
-    response.set_cookie(
-        AUTH_COOKIE_NAME,
-        token,
-        httponly=True,
-        samesite="lax",
-        max_age=72 * 60 * 60,
-    )
+    _set_login_cookie(response, token, remember_me=remember_me)
     return response
+
+
+def _set_login_cookie(response: Response, token: str, *, remember_me: bool = False) -> None:
+    cookie_kwargs = {
+        "key": AUTH_COOKIE_NAME,
+        "value": token,
+        "httponly": True,
+        "samesite": "lax",
+    }
+    if remember_me:
+        cookie_kwargs["max_age"] = auth_sessions.max_age_seconds(remember_me=True)
+    response.set_cookie(**cookie_kwargs)
 
 
 def _clear_login_cookie(response: Response) -> None:
@@ -541,7 +553,7 @@ def auth_login(payload: LoginRequest | None = Body(default=None)):
     if not user:
         return _error("invalid_credentials", 401)
     user_store.mark_login(user["id"])
-    return _response_with_login_cookie(user)
+    return _response_with_login_cookie(user, remember_me=payload_data.get("remember_me") is True)
 
 
 @app.post("/api/auth/logout", tags=["auth"])

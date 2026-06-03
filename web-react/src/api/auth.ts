@@ -4,6 +4,7 @@ import type { User } from './types';
 export interface LoginPayload {
   username: string;
   password: string;
+  remember_me?: boolean;
 }
 
 export interface BootstrapAdminPayload extends LoginPayload {

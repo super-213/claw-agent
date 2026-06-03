@@ -19,6 +19,7 @@ export function LoginPage() {
   const [usernames, setUsernames] = useState<string[]>([]);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
@@ -63,7 +64,7 @@ export function LoginPage() {
             password,
             display_name: displayName.trim() || trimmedUsername,
           })
-        : await authApi.login({ username: trimmedUsername, password });
+        : await authApi.login({ username: trimmedUsername, password, remember_me: rememberMe });
       setCurrentUser(result.user);
       navigate('/', { replace: true });
     } catch (caught) {
@@ -134,6 +135,16 @@ export function LoginPage() {
                 />
               </label>
             </>
+          ) : null}
+          {!bootstrapMode ? (
+            <label className="auth-remember">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />
+              <span>自动登录</span>
+            </label>
           ) : null}
           <div className="skill-form-error">{error}</div>
           <button className="modal-primary auth-submit" type="submit" disabled={submitting}>

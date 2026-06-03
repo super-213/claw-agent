@@ -2,10 +2,10 @@ from fastapi.testclient import TestClient
 
 from services import ConversationStore, TokenUsageEstimator, UserStore
 from services.auth_service import AuthSessionStore
-from web_app import app
+from web_app import AUTH_COOKIE_NAME, app
 
 
-def _client_with_auth_state(tmp_path, monkeypatch):
+def _client_with_auth_state(tmp_path, monkeypatch, auth_session_store=None):
     user_store = UserStore(tmp_path / "users.json")
     conversation_store = ConversationStore(
         tmp_path / "conversations",
@@ -13,7 +13,7 @@ def _client_with_auth_state(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("web_app.user_store", user_store)
     monkeypatch.setattr("web_app.store", conversation_store)
-    monkeypatch.setattr("web_app.auth_sessions", AuthSessionStore())
+    monkeypatch.setattr("web_app.auth_sessions", auth_session_store or AuthSessionStore())
     app.config["TESTING"] = False
     return TestClient(app), user_store, conversation_store
 
@@ -65,6 +65,55 @@ def test_admin_crud_user_and_regular_user_login(tmp_path, monkeypatch):
     assert client.post("/api/auth/logout").status_code == 200
     assert client.post("/api/auth/login", json={"username": "alice", "password": "newpass123"}).status_code == 200
     assert client.get("/api/admin/users").status_code == 403
+
+
+def test_login_without_remember_me_uses_session_cookie(tmp_path, monkeypatch):
+    client, _users, _store = _client_with_auth_state(tmp_path, monkeypatch)
+    client.post("/api/auth/bootstrap-admin", json={"username": "admin", "password": "secret123"})
+    client.post("/api/auth/logout")
+
+    response = client.post("/api/auth/login", json={"username": "admin", "password": "secret123"})
+
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "").lower()
+    assert AUTH_COOKIE_NAME in set_cookie
+    assert "max-age" not in set_cookie
+
+    me = client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert "max-age" not in me.headers.get("set-cookie", "").lower()
+
+
+def test_remember_me_cookie_survives_session_store_restart(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth_sessions.json"
+    client, _users, _store = _client_with_auth_state(
+        tmp_path,
+        monkeypatch,
+        AuthSessionStore(path=auth_path),
+    )
+    client.post("/api/auth/bootstrap-admin", json={"username": "admin", "password": "secret123"})
+    client.post("/api/auth/logout")
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "secret123", "remember_me": True},
+    )
+
+    token = response.cookies.get(AUTH_COOKIE_NAME)
+    set_cookie = response.headers.get("set-cookie", "").lower()
+    assert response.status_code == 200
+    assert token
+    assert "max-age=2592000" in set_cookie
+
+    monkeypatch.setattr("web_app.auth_sessions", AuthSessionStore(path=auth_path))
+    restarted_client = TestClient(app)
+    restarted_client.cookies.set(AUTH_COOKIE_NAME, token)
+
+    me = restarted_client.get("/api/auth/me")
+
+    assert me.status_code == 200
+    assert me.json()["user"]["username"] == "admin"
+    assert "max-age=2592000" in me.headers.get("set-cookie", "").lower()
 
 
 def test_session_visibility_and_selected_share(tmp_path, monkeypatch):
