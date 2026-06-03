@@ -2,7 +2,39 @@
 
 /* Mobile */
 @media (max-width: 860px) {
+  body.chat-route {
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    position: fixed;
+    width: 100%;
+  }
+
+  body.chat-route #root,
+  body.chat-route .react-route-shell,
+  body.chat-route .app,
+  body.chat-route .main {
+    height: 100%;
+    min-height: 0;
+  }
+
   .app { grid-template-columns: 1fr; }
+
+  html,
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
 
   .sidebar {
     position: fixed;
@@ -83,7 +115,7 @@
   }
 
   .topbar {
-    padding: 12px 14px;
+    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
     gap: 12px;
   }
 
@@ -104,8 +136,51 @@
     display: none;
   }
 
-  .chat-window { padding: 20px 18px; }
-  .composer-area { padding: 12px 16px 18px; }
+  .chat-window {
+    padding: 18px 14px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .composer-area {
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .composer {
+    align-items: center;
+    border-radius: 14px;
+    gap: 8px;
+    max-width: none;
+    padding: 8px;
+  }
+
+  .composer-input {
+    font-size: 16px;
+    line-height: 1.45;
+    max-height: 34svh;
+    min-height: 42px;
+    padding: 8px 0;
+  }
+
+  .composer-input::placeholder {
+    font-size: 16px;
+  }
+
+  .attach-btn,
+  .send-btn {
+    height: 44px;
+    width: 44px;
+  }
+
+  .composer-hint {
+    display: none;
+  }
+
+  .composer-attachments {
+    max-height: 96px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .message { max-width: 92%; }
   .msg-usage { max-width: 92%; }
   .message.protocol,

@@ -3,8 +3,10 @@
 .app {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 0;
   height: 100vh;
   height: 100svh;
+  height: 100dvh;
   position: relative;
   z-index: 1;
 }
@@ -13,8 +15,10 @@
 .main {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   height: 100vh;
   height: 100svh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg-1);
   min-width: 0;
@@ -26,6 +30,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 28px;
+  padding-top: calc(16px + env(safe-area-inset-top));
   border-bottom: 1px solid var(--stroke-soft);
   background: rgba(13, 17, 23, 0.8);
   backdrop-filter: blur(12px);
@@ -127,6 +132,7 @@
 /* Composer */
 .composer-area {
   padding: 16px 28px 22px;
+  padding-bottom: calc(22px + env(safe-area-inset-bottom));
   background: rgba(8, 11, 16, 0.9);
   border-top: 1px solid var(--stroke-soft);
   flex-shrink: 0;
@@ -155,7 +161,7 @@
   display: none;
 }
 
-textarea {
+.composer-input {
   resize: none;
   border: none;
   outline: none;
@@ -170,7 +176,7 @@ textarea {
   scrollbar-width: thin;
 }
 
-textarea::placeholder {
+.composer-input::placeholder {
   color: var(--ink-ghost);
   font-size: 14px;
 }

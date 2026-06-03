@@ -75,6 +75,36 @@ export function ChatWorkspace({
   const pendingBranchNodeId = activeTreeNode?.is_placeholder ? activeTreeNode.node_id : null;
   const branchCreationLocked = Boolean(pendingBranchNodeId || branchNotice);
 
+  useEffect(() => {
+    document.body.classList.add('chat-route');
+    return () => {
+      document.body.classList.remove('chat-route');
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport || !window.matchMedia('(max-width: 860px)').matches) return;
+    const resetPageOffset = () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) return;
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    const scheduleReset = () => {
+      window.setTimeout(resetPageOffset, 80);
+      window.setTimeout(resetPageOffset, 280);
+    };
+    window.visualViewport.addEventListener('resize', scheduleReset);
+    window.visualViewport.addEventListener('scroll', scheduleReset);
+    window.addEventListener('focusout', scheduleReset);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', scheduleReset);
+      window.visualViewport?.removeEventListener('scroll', scheduleReset);
+      window.removeEventListener('focusout', scheduleReset);
+    };
+  }, []);
+
   const loadConfig = useCallback(async () => {
     if (!isAdmin(currentUser)) return;
     const data = await configApi.get().catch(() => null);

@@ -20,6 +20,20 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [media, setMedia] = useState<MessageMedia[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [canUseEnterToSend, setCanUseEnterToSend] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const query = window.matchMedia('(hover: none), (pointer: coarse)');
+    const updateInputMode = () => setCanUseEnterToSend(!query.matches);
+    updateInputMode();
+    if (query.addEventListener) {
+      query.addEventListener('change', updateInputMode);
+      return () => query.removeEventListener('change', updateInputMode);
+    }
+    query.addListener?.(updateInputMode);
+    return () => query.removeListener?.(updateInputMode);
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -58,7 +72,8 @@ export function Composer({
   };
 
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.nativeEvent.isComposing) return;
+    if (canUseEnterToSend && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void send();
     }
@@ -85,8 +100,10 @@ export function Composer({
         </button>
         <textarea
           ref={ref}
+          className="composer-input"
           placeholder="输入指令或问题..."
           rows={1}
+          enterKeyHint="enter"
           value={draft}
           disabled={disabled}
           onKeyDown={keyDown}
@@ -127,7 +144,7 @@ export function Composer({
           ) : null}
         </div>
       ) : null}
-      <div className="composer-hint">Enter 发送 · Shift+Enter 换行</div>
+      <div className="composer-hint">{canUseEnterToSend ? 'Enter 发送 · Shift+Enter 换行' : '点击发送按钮提交'}</div>
     </div>
   );
 }
