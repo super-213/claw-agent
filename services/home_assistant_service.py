@@ -7,12 +7,15 @@ import json
 from pathlib import Path
 from threading import Lock
 from typing import Any
+import uuid
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
 POWER_DOMAINS = {"switch", "light", "fan", "input_boolean"}
+RISK_LEVELS = {"low", "high"}
+CONFIRM_WORDS = {"确认", "确定", "执行", "同意", "是的", "yes", "confirm", "ok"}
 TOOL_NAMES = {
     "ha_list_devices": "home_assistant.list_devices",
     "home_assistant.list_devices": "home_assistant.list_devices",
@@ -29,6 +32,7 @@ TOOL_NAMES = {
 class HomeAssistantEntityRule:
     entity_id: str
     aliases: tuple[str, ...] = ()
+    risk_level: str = "low"
 
     def public_payload(self) -> dict[str, Any]:
         domain, _, name = self.entity_id.partition(".")
@@ -37,8 +41,14 @@ class HomeAssistantEntityRule:
             "domain": domain,
             "name": name,
             "aliases": list(self.aliases),
+            "risk_level": self.risk_level,
+            "requires_confirmation": self.requires_confirmation,
             "power_control": domain in POWER_DOMAINS,
         }
+
+    @property
+    def requires_confirmation(self) -> bool:
+        return self.risk_level == "high"
 
 
 class HomeAssistantService:
@@ -63,6 +73,7 @@ class HomeAssistantService:
         self.request_timeout = max(1, int(request_timeout or 10))
         self.root_dir = Path(root_dir) if root_dir else None
         self._lock = Lock()
+        self._pending_confirmations: dict[str, dict[str, Any]] = {}
         if self.root_dir:
             self.root_dir.mkdir(parents=True, exist_ok=True)
 
@@ -140,7 +151,15 @@ class HomeAssistantService:
             "last_updated": data.get("last_updated") if isinstance(data, dict) else None,
         }
 
-    def set_power(self, entity_id: str, turn_on: bool, *, actor: dict[str, Any] | None = None) -> dict[str, Any]:
+    def set_power(
+        self,
+        entity_id: str,
+        turn_on: bool,
+        *,
+        actor: dict[str, Any] | None = None,
+        confirmed: bool = False,
+        confirmation_token: str | None = None,
+    ) -> dict[str, Any]:
         rule = self._require_allowed(entity_id)
         self._require_configured()
         domain = rule.entity_id.split(".", 1)[0]
@@ -148,6 +167,15 @@ class HomeAssistantService:
             raise ValueError(f"unsupported_power_domain:{domain}")
 
         service = "turn_on" if turn_on else "turn_off"
+        if rule.requires_confirmation and not self._consume_confirmation(
+            rule.entity_id,
+            service,
+            actor,
+            confirmed=confirmed,
+            confirmation_token=confirmation_token,
+        ):
+            raise ValueError("confirmation_required")
+
         try:
             result = self._request(
                 "POST",
@@ -176,23 +204,46 @@ class HomeAssistantService:
         elif canonical_name == "home_assistant.get_state":
             result = self.get_state(str(args.get("entity_id") or ""))
         elif canonical_name == "home_assistant.turn_on":
-            result = self.set_power(str(args.get("entity_id") or ""), True, actor=actor)
+            result = self.set_power(
+                str(args.get("entity_id") or ""),
+                True,
+                actor=actor,
+                confirmation_token=str(args.get("confirmation_token") or ""),
+            )
         elif canonical_name == "home_assistant.turn_off":
-            result = self.set_power(str(args.get("entity_id") or ""), False, actor=actor)
+            result = self.set_power(
+                str(args.get("entity_id") or ""),
+                False,
+                actor=actor,
+                confirmation_token=str(args.get("confirmation_token") or ""),
+            )
         else:
             raise ValueError("unknown_home_assistant_tool")
         self._activity(f"tool.{canonical_name.rsplit('.', 1)[-1]}", str(args.get("entity_id") or ""), actor, ok=True)
         return {"ok": True, "tool": canonical_name, "result": result}
 
-    def handle_chat_intent(self, text: str, actor: dict[str, Any] | None = None) -> str | None:
+    def handle_chat_intent(
+        self,
+        text: str,
+        actor: dict[str, Any] | None = None,
+        session_id: str | None = None,
+    ) -> str | None:
+        if self._is_confirmation_text(text):
+            return self.confirm_pending(actor=actor, session_id=session_id)
         entity_id = self._match_entity(text)
         if not entity_id:
             return None
         try:
             if self._is_turn_on_text(text):
+                pending = self._confirmation_prompt(entity_id, True, actor, session_id)
+                if pending:
+                    return pending
                 result = self.set_power(entity_id, True, actor=actor)
                 return f"已调用 Home Assistant：{result['entity_id']} 已执行 {result['service']}。"
             if self._is_turn_off_text(text):
+                pending = self._confirmation_prompt(entity_id, False, actor, session_id)
+                if pending:
+                    return pending
                 result = self.set_power(entity_id, False, actor=actor)
                 return f"已调用 Home Assistant：{result['entity_id']} 已执行 {result['service']}。"
             if self._is_state_text(text):
@@ -201,6 +252,24 @@ class HomeAssistantService:
         except ValueError as exc:
             return f"Home Assistant 调用失败：{exc}"
         return None
+
+    def confirm_pending(self, *, actor: dict[str, Any] | None = None, session_id: str | None = None) -> str | None:
+        key = self._pending_key(actor, session_id)
+        with self._lock:
+            pending = self._pending_confirmations.pop(key, None)
+        if not pending:
+            return None
+        try:
+            result = self.set_power(
+                str(pending["entity_id"]),
+                pending["service"] == "turn_on",
+                actor=actor,
+                confirmed=True,
+                confirmation_token=str(pending["token"]),
+            )
+            return f"已确认并调用 Home Assistant：{result['entity_id']} 已执行 {result['service']}。"
+        except ValueError as exc:
+            return f"Home Assistant 确认执行失败：{exc}"
 
     def activity_log(self, limit: int = 100) -> list[dict[str, Any]]:
         if not self.root_dir:
@@ -242,20 +311,26 @@ class HomeAssistantService:
             },
             {
                 "name": "home_assistant.turn_on",
-                "description": "Turn on a whitelisted switch/light/fan/input_boolean entity.",
+                "description": "Turn on a whitelisted switch/light/fan/input_boolean entity. High-risk entities require a valid confirmation_token.",
                 "parameters": {
                     "type": "object",
-                    "properties": {"entity_id": {"type": "string"}},
+                    "properties": {
+                        "entity_id": {"type": "string"},
+                        "confirmation_token": {"type": "string"},
+                    },
                     "required": ["entity_id"],
                     "additionalProperties": False,
                 },
             },
             {
                 "name": "home_assistant.turn_off",
-                "description": "Turn off a whitelisted switch/light/fan/input_boolean entity.",
+                "description": "Turn off a whitelisted switch/light/fan/input_boolean entity. High-risk entities require a valid confirmation_token.",
                 "parameters": {
                     "type": "object",
-                    "properties": {"entity_id": {"type": "string"}},
+                    "properties": {
+                        "entity_id": {"type": "string"},
+                        "confirmation_token": {"type": "string"},
+                    },
                     "required": ["entity_id"],
                     "additionalProperties": False,
                 },
@@ -276,8 +351,29 @@ class HomeAssistantService:
             if entity_id in seen:
                 continue
             seen.add(entity_id)
-            rules.append(HomeAssistantEntityRule(entity_id=entity_id, aliases=tuple(parts[1:])))
+            aliases, risk_level = HomeAssistantService._parse_aliases_and_risk(parts[1:])
+            rules.append(
+                HomeAssistantEntityRule(
+                    entity_id=entity_id,
+                    aliases=tuple(aliases),
+                    risk_level=risk_level,
+                )
+            )
         return rules
+
+    @staticmethod
+    def _parse_aliases_and_risk(parts: list[str]) -> tuple[list[str], str]:
+        aliases = []
+        risk_level = "low"
+        for part in parts:
+            normalized = part.strip().lower()
+            if normalized.startswith("risk="):
+                normalized = normalized.split("=", 1)[1].strip()
+            if normalized in RISK_LEVELS:
+                risk_level = normalized
+                continue
+            aliases.append(part)
+        return aliases, risk_level
 
     @staticmethod
     def _entries(value: str | list[str] | None) -> list[str]:
@@ -311,6 +407,74 @@ class HomeAssistantService:
     def _require_configured(self) -> None:
         if not self.configured:
             raise ValueError("home_assistant_not_configured")
+
+    def _confirmation_prompt(
+        self,
+        entity_id: str,
+        turn_on: bool,
+        actor: dict[str, Any] | None,
+        session_id: str | None,
+    ) -> str | None:
+        rule = self._require_allowed(entity_id)
+        if not rule.requires_confirmation:
+            return None
+        self._require_configured()
+        domain = rule.entity_id.split(".", 1)[0]
+        if domain not in POWER_DOMAINS:
+            raise ValueError(f"unsupported_power_domain:{domain}")
+        service = "turn_on" if turn_on else "turn_off"
+        token = uuid.uuid4().hex[:12]
+        key = self._pending_key(actor, session_id)
+        pending = {
+            "token": token,
+            "entity_id": rule.entity_id,
+            "service": service,
+            "risk_level": rule.risk_level,
+            "created_at": datetime.now().astimezone().isoformat(),
+        }
+        with self._lock:
+            self._pending_confirmations[key] = pending
+        self._activity("confirmation.request", rule.entity_id, actor, ok=True)
+        return (
+            f"{rule.entity_id} 被标记为 high 风险设备，需要二次确认。\n"
+            f"如确认执行 {rule.entity_id} 的 {service}，请回复“确认”。"
+        )
+
+    def _consume_confirmation(
+        self,
+        entity_id: str,
+        service: str,
+        actor: dict[str, Any] | None,
+        *,
+        confirmed: bool,
+        confirmation_token: str | None,
+    ) -> bool:
+        if confirmed:
+            return True
+        token = (confirmation_token or "").strip()
+        if not token:
+            return False
+        with self._lock:
+            for key, pending in list(self._pending_confirmations.items()):
+                if (
+                    pending.get("token") == token
+                    and pending.get("entity_id") == entity_id
+                    and pending.get("service") == service
+                ):
+                    self._pending_confirmations.pop(key, None)
+                    consumed = True
+                    break
+            else:
+                consumed = False
+        if consumed:
+            self._activity("confirmation.consume", entity_id, actor, ok=True)
+            return True
+        return False
+
+    @staticmethod
+    def _pending_key(actor: dict[str, Any] | None, session_id: str | None) -> str:
+        actor_id = str((actor or {}).get("id") or (actor or {}).get("username") or "anonymous")
+        return f"{actor_id}:{session_id or 'global'}"
 
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -360,6 +524,11 @@ class HomeAssistantService:
     @staticmethod
     def _is_state_text(text: str) -> bool:
         return any(word in text for word in ("状态", "查询", "看看", "开着", "关着", "state"))
+
+    @staticmethod
+    def _is_confirmation_text(text: str) -> bool:
+        normalized = (text or "").strip().lower()
+        return normalized in CONFIRM_WORDS
 
     def _activity(
         self,

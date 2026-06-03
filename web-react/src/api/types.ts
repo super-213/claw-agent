@@ -96,6 +96,8 @@ export interface HomeAssistantEntityRule {
   domain?: string;
   name?: string;
   aliases?: string[];
+  risk_level?: 'low' | 'high' | string;
+  requires_confirmation?: boolean;
   power_control?: boolean;
 }
 

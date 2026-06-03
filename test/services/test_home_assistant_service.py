@@ -5,11 +5,14 @@ from services.home_assistant_service import HomeAssistantService
 
 def test_parse_allowed_entities_with_aliases():
     rules = HomeAssistantService.parse_allowed_entities(
-        "switch.desk_lamp|书桌插座|台灯\nlight.living_room|客厅灯"
+        "switch.desk_lamp|书桌插座|台灯|risk=high\nlight.living_room|客厅灯"
     )
 
     assert [rule.entity_id for rule in rules] == ["switch.desk_lamp", "light.living_room"]
     assert rules[0].aliases == ("书桌插座", "台灯")
+    assert rules[0].risk_level == "high"
+    assert rules[0].requires_confirmation is True
+    assert rules[1].risk_level == "low"
 
 
 def test_turn_on_rejects_entity_outside_whitelist():
@@ -87,3 +90,60 @@ def test_chat_intent_uses_alias(monkeypatch):
 
     assert "switch.allowed" in reply
     assert "switch.turn_on" in reply
+
+
+def test_high_risk_device_requires_confirmation_before_power_call(monkeypatch):
+    calls = []
+    service = HomeAssistantService(
+        base_url="http://ha.local:8123",
+        token="token",
+        allowed_entities="switch.heater|热水器|high",
+    )
+    monkeypatch.setattr(
+        service,
+        "_request",
+        lambda method, path, payload=None: calls.append((method, path, payload)) or [],
+    )
+
+    reply = service.handle_chat_intent("打开热水器", {"id": "u1"}, session_id="s1")
+
+    assert "需要二次确认" in reply
+    assert calls == []
+
+
+def test_high_risk_device_runs_after_chat_confirmation(monkeypatch):
+    calls = []
+    service = HomeAssistantService(
+        base_url="http://ha.local:8123",
+        token="token",
+        allowed_entities="switch.heater|热水器|high",
+    )
+    monkeypatch.setattr(
+        service,
+        "_request",
+        lambda method, path, payload=None: calls.append((method, path, payload)) or [],
+    )
+
+    service.handle_chat_intent("打开热水器", {"id": "u1"}, session_id="s1")
+    reply = service.handle_chat_intent("确认", {"id": "u1"}, session_id="s1")
+
+    assert "已确认并调用" in reply
+    assert calls == [
+        ("POST", "/api/services/switch/turn_on", {"entity_id": "switch.heater"})
+    ]
+
+
+def test_tool_call_cannot_bypass_high_risk_with_confirmed_flag(monkeypatch):
+    service = HomeAssistantService(
+        base_url="http://ha.local:8123",
+        token="token",
+        allowed_entities="switch.heater|热水器|high",
+    )
+    monkeypatch.setattr(service, "_request", lambda method, path, payload=None: [])
+
+    with pytest.raises(ValueError, match="confirmation_required"):
+        service.call_tool(
+            "home_assistant.turn_on",
+            {"entity_id": "switch.heater", "confirmed": True},
+            actor={"id": "u1"},
+        )

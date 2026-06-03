@@ -64,3 +64,31 @@ def test_home_assistant_rejects_non_whitelisted_entity(client):
 
     assert response.status_code == 403
     assert response.get_json()["error"] == "entity_not_allowed"
+
+
+def test_home_assistant_high_risk_requires_confirmation(client):
+    with patch("web_app.home_assistant_service") as mock_service:
+        mock_service.set_power.side_effect = ValueError("confirmation_required")
+
+        response = client.post("/api/home-assistant/entities/switch.heater/turn-on")
+
+    assert response.status_code == 409
+    assert response.get_json()["error"] == "confirmation_required"
+
+
+def test_home_assistant_power_endpoint_forwards_confirmation_token(client):
+    with patch("web_app.home_assistant_service") as mock_service:
+        mock_service.set_power.return_value = {
+            "ok": True,
+            "entity_id": "switch.heater",
+            "service": "switch.turn_on",
+        }
+
+        response = client.post(
+            "/api/home-assistant/entities/switch.heater/turn-on",
+            json={"confirmation_token": "abc123"},
+        )
+
+    assert response.status_code == 200
+    mock_service.set_power.assert_called_once()
+    assert mock_service.set_power.call_args.kwargs["confirmation_token"] == "abc123"

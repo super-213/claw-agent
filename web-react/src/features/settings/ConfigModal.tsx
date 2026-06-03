@@ -120,7 +120,7 @@ export function ConfigModal({
           设备白名单
           <textarea
             className="skill-textarea config-entities-textarea"
-            placeholder={'switch.desk_lamp|书桌插座\nlight.living_room|客厅灯|客厅主灯'}
+            placeholder={'switch.desk_lamp|书桌插座|low\nswitch.water_heater|热水器|risk=high\nlight.living_room|客厅灯|客厅主灯'}
             value={haAllowedEntities}
             onChange={(event) => setHaAllowedEntities(event.target.value)}
           />

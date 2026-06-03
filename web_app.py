@@ -61,6 +61,10 @@ class HomeAssistantToolCallRequest(BaseModel):
     arguments: dict[str, Any] | None = None
 
 
+class HomeAssistantPowerRequest(BaseModel):
+    confirmation_token: str | None = None
+
+
 class SkillCreateRequest(BaseModel):
     name: str | None = None
     content: str | None = None
@@ -500,6 +504,8 @@ def _home_assistant_error(exc: ValueError) -> JSONResponse:
     status_code = 400
     if message == "entity_not_allowed":
         status_code = 403
+    elif message == "confirmation_required":
+        status_code = 409
     elif message == "home_assistant_not_configured":
         status_code = 503
     elif message.startswith("home_assistant_connection_error"):
@@ -1418,17 +1424,37 @@ def home_assistant_entity_state(entity_id: str, _user: dict[str, Any] = Depends(
 
 
 @app.post("/api/home-assistant/entities/{entity_id}/turn-on", tags=["home-assistant"])
-def home_assistant_turn_on(entity_id: str, user: dict[str, Any] = Depends(require_user)):
+def home_assistant_turn_on(
+    entity_id: str,
+    payload: HomeAssistantPowerRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    payload_data = _payload(payload)
     try:
-        return home_assistant_service.set_power(entity_id, True, actor=user)
+        return home_assistant_service.set_power(
+            entity_id,
+            True,
+            actor=user,
+            confirmation_token=payload_data.get("confirmation_token"),
+        )
     except ValueError as e:
         return _home_assistant_error(e)
 
 
 @app.post("/api/home-assistant/entities/{entity_id}/turn-off", tags=["home-assistant"])
-def home_assistant_turn_off(entity_id: str, user: dict[str, Any] = Depends(require_user)):
+def home_assistant_turn_off(
+    entity_id: str,
+    payload: HomeAssistantPowerRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    payload_data = _payload(payload)
     try:
-        return home_assistant_service.set_power(entity_id, False, actor=user)
+        return home_assistant_service.set_power(
+            entity_id,
+            False,
+            actor=user,
+            confirmation_token=payload_data.get("confirmation_token"),
+        )
     except ValueError as e:
         return _home_assistant_error(e)
 
@@ -1682,6 +1708,7 @@ async def chat(
                 home_assistant_service.handle_chat_intent,
                 user_message,
                 user,
+                session_id,
             )
             if ha_reply:
                 messages = await asyncio.to_thread(
@@ -1751,6 +1778,7 @@ async def chat_stream(
             home_assistant_service.handle_chat_intent,
             user_message,
             user,
+            session_id,
         )
         if ha_reply:
             async def direct_home_assistant_stream():

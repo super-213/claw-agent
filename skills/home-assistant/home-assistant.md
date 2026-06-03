@@ -7,7 +7,20 @@
 - 只能操作后端白名单中的 entity。
 - 不要要求用户提供 Home Assistant Token。
 - 不要绕过后端直接连接 Home Assistant。
-- 高风险设备如果不在白名单内，必须说明无法控制。
+- 高风险设备必须先让用户二次确认，确认后所有登录用户都可以控制。
+
+## 白名单格式
+
+后台白名单每行一个设备：
+
+```text
+switch.desk_lamp|书桌插座|low
+switch.water_heater|热水器|risk=high
+```
+
+- `low`：低风险，命中明确指令后可直接控制。
+- `high` / `risk=high`：高风险，首次请求只创建待确认操作，用户回复“确认”后才执行。
+- 不写风险等级时默认 `low`。
 
 ## 可用工具
 
@@ -57,8 +70,11 @@ POST /api/home-assistant/tools/call
 
 ```json
 {
-  "entity_id": "switch.example"
+  "entity_id": "switch.example",
+  "confirmation_token": "optional-token"
 }
 ```
+
+高风险设备不要自行生成确认字段。没有确认时，先要求用户确认；用户确认后由后端执行待确认操作。
 
 完成后用自然语言告诉用户操作结果。
