@@ -414,6 +414,7 @@ export function ChatWorkspace({
           <div className="chat-area">
             <MessageList
               messages={messages}
+              conversationKey={currentSessionId}
               onCreateBranch={createBranchFromNode}
               branchActionStates={branchActionStates}
               branchCreationLocked={branchCreationLocked}
