@@ -1,14 +1,14 @@
-@import '../../../web/css/base.css';
-@import '../../../web/css/layout.css';
-@import '../../../web/css/sessions.css';
-@import '../../../web/css/modals.css';
-@import '../../../web/css/messages.css';
-@import '../../../web/css/tool-calls.css';
-@import '../../../web/css/tree.css';
-@import '../../../web/css/highlights.css';
-@import '../../../web/css/mobile.css';
-@import '../../../web/css/auth.css';
-@import '../../../web/dashboard.css';
+@import './base.css';
+@import './layout.css';
+@import './sessions.css';
+@import './modals.css';
+@import './messages.css';
+@import './tool-calls.css';
+@import './tree.css';
+@import './highlights.css';
+@import './mobile.css';
+@import './auth.css';
+@import './dashboard.css';
 
 html,
 body,

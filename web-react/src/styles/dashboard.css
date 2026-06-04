@@ -519,18 +519,18 @@ button {
   padding-top: 0;
 }
 
-.tool-status {
+.dashboard-shell .tool-status {
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--green);
 }
 
-.tool-status.failed {
+.dashboard-shell .tool-status.failed {
   background: var(--red);
 }
 
-.tool-status.unknown {
+.dashboard-shell .tool-status.unknown {
   background: var(--orange);
 }
 

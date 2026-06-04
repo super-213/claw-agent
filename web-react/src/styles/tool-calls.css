@@ -35,13 +35,16 @@
   align-items: center;
   color: var(--warning);
   display: flex;
+  flex: 0 0 auto;
   gap: 5px;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .llm-req-header .req-state .dot {
   animation: softPulse 1.2s ease-in-out infinite;
   background: currentColor;
+  flex: 0 0 auto;
   height: 5px;
   width: 5px;
 }
@@ -109,13 +112,16 @@
   align-items: center;
   color: var(--warning);
   display: flex;
+  flex: 0 0 auto;
   gap: 5px;
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .tool-call-head .tool-status .dot {
   animation: softPulse 1.2s ease-in-out infinite;
   background: currentColor;
+  flex: 0 0 auto;
   height: 5px;
   width: 5px;
 }

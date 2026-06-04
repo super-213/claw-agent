@@ -410,7 +410,7 @@ Dashboard 属于运营/监控页面，不应做成营销首页。
 
 ### 12.1 CSS 组织
 
-当前 `web-react/src/styles/app.css` 引入了旧的 `web/css/*.css`。改版建议分阶段处理：
+当前 React 前端的样式统一位于 `web-react/src/styles/`。改版建议分阶段处理：
 
 第一阶段：
 
@@ -421,14 +421,14 @@ Dashboard 属于运营/监控页面，不应做成营销首页。
 
 第二阶段：
 
-- 重构 `web/css/base.css`、`layout.css`、`sessions.css`、`messages.css`、`modals.css`、`tree.css`；
+- 重构 `web-react/src/styles/base.css`、`layout.css`、`sessions.css`、`messages.css`、`modals.css`、`tree.css`；
 - 将通用按钮、输入框、浮层、badge、列表样式抽为稳定 class；
 - 减少重复色值和重复边框样式。
 
 第三阶段：
 
-- 将旧 CSS 逐步迁移到 `web-react/src/styles/` 内；
-- 保留必要的 legacy class，但减少对旧 `web/css` 的依赖；
+- 将仍然偏全局的 CSS 逐步收敛到 `web-react/src/styles/` 或组件局部样式内；
+- 保留必要的 legacy class，但避免重新引入旧 `web` 目录依赖；
 - 为主题切换、暗色模式和组件测试建立稳定入口。
 
 ### 12.2 组件结构
@@ -476,10 +476,10 @@ Dashboard 属于运营/监控页面，不应做成营销首页。
 
 范围：
 
-- `web/css/base.css`
-- `web/css/layout.css`
-- `web/css/sessions.css`
-- `web/css/messages.css`
+- `web-react/src/styles/base.css`
+- `web-react/src/styles/layout.css`
+- `web-react/src/styles/sessions.css`
+- `web-react/src/styles/messages.css`
 - `web-react/src/styles/app.css`
 
 验收：
@@ -546,7 +546,7 @@ Dashboard 属于运营/监控页面，不应做成营销首页。
 
 - `DashboardPage`
 - `HomePage`
-- `web/dashboard.css`
+- `web-react/src/styles/dashboard.css`
 - `web-react/src/styles/app.css` 中 home/dashboard 相关样式
 
 验收：

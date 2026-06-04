@@ -49,8 +49,6 @@
 ├── skills/
 │   ├── registry.py                  # 技能注册表
 │   └── */*.md|*.skill               # 技能定义
-├── web/
-│   └── ...                          # 旧版原生 HTML/CSS/JS 前端，短期保留用于回滚参考
 ├── web-react/
 │   ├── index.html                   # Vite HTML shell
 │   ├── package.json                 # React/Vite/TypeScript 前端工程
@@ -190,7 +188,7 @@ Web 端的“模型设置”可修改 API URL、API Key 和模型名称。API Ke
 
 ## Web UI 功能
 
-当前默认生产前端已迁移到 Vite + React + TypeScript，并保留旧版原生前端代码作为短期回滚参考。React 前端按 `api/`、`app/`、`features/`、`stores/`、`utils/` 分层，API 请求、权限状态、流式解析和树布局逻辑集中管理。
+当前生产前端统一使用 Vite + React + TypeScript。React 前端按 `api/`、`app/`、`features/`、`stores/`、`utils/` 分层，API 请求、权限状态、流式解析和树布局逻辑集中管理。
 
 - 消息逐步渲染，模型输出以流式文本增量展示。
 - 过程事件展示解析输入、技能加载、上下文构建、模型调用、命令执行和保存状态。
