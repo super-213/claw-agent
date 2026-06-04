@@ -253,6 +253,49 @@ class HomeAssistantService:
             return f"Home Assistant 调用失败：{exc}"
         return None
 
+    def handle_structured_intent(
+        self,
+        intent: str,
+        slots: dict[str, Any],
+        actor: dict[str, Any] | None = None,
+        session_id: str | None = None,
+    ) -> str | None:
+        """Execute a validated structured Home Assistant intent."""
+        normalized_intent = (intent or "").strip()
+        args = slots or {}
+        if normalized_intent in {"confirm", "confirmation"}:
+            return self.confirm_pending(actor=actor, session_id=session_id)
+        if normalized_intent == "list_devices":
+            devices = self.list_allowed_entities(include_states=bool(args.get("include_states")))
+            if not devices.get("entities"):
+                return "当前没有配置可用的 Home Assistant 白名单设备。"
+            lines = ["当前可用的 Home Assistant 设备："]
+            for item in devices["entities"]:
+                aliases = "、".join(item.get("aliases") or [])
+                suffix = f"（{aliases}）" if aliases else ""
+                lines.append(f"- {item.get('entity_id')}{suffix}")
+            return "\n".join(lines)
+
+        entity_ref = str(args.get("entity_id") or args.get("entity_alias") or args.get("entity") or "")
+        entity_id = self._match_entity(entity_ref)
+        if not entity_id:
+            return None
+
+        try:
+            if normalized_intent == "get_state":
+                state = self.get_state(entity_id)
+                return f"{state['entity_id']} 当前状态是 {state.get('state') or 'unknown'}。"
+            if normalized_intent in {"turn_on", "turn_off"}:
+                turn_on = normalized_intent == "turn_on"
+                pending = self._confirmation_prompt(entity_id, turn_on, actor, session_id)
+                if pending:
+                    return pending
+                result = self.set_power(entity_id, turn_on, actor=actor)
+                return f"已调用 Home Assistant：{result['entity_id']} 已执行 {result['service']}。"
+        except ValueError as exc:
+            return f"Home Assistant 调用失败：{exc}"
+        return None
+
     def confirm_pending(self, *, actor: dict[str, Any] | None = None, session_id: str | None = None) -> str | None:
         key = self._pending_key(actor, session_id)
         with self._lock:

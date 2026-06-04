@@ -50,6 +50,7 @@ async def run_chat(
     user_message: str,
     attachments: list[dict[str, Any]],
     images: list[dict[str, Any]],
+    auto_skills: list[str] | None = None,
 ) -> dict[str, Any]:
     async with session_run_locks.locked(session_id):
         session = await asyncio.to_thread(store.load_session, session_id)
@@ -64,6 +65,7 @@ async def run_chat(
                 user_message,
                 attachments=attachments,
                 images=images,
+                auto_skills=auto_skills,
             )
 
         messages = conversation.get_messages()
@@ -84,6 +86,7 @@ async def stream_chat_events(
     user_message: str,
     attachments: list[dict[str, Any]],
     images: list[dict[str, Any]],
+    auto_skills: list[str] | None = None,
 ) -> AsyncIterator[str]:
     try:
         yield stream_event({
@@ -105,6 +108,7 @@ async def stream_chat_events(
                     user_message,
                     attachments=attachments,
                     images=images,
+                    auto_skills=auto_skills,
                 ):
                     if event.get("type") != "done":
                         yield stream_event(event)

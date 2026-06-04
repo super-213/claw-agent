@@ -18,7 +18,16 @@ import uvicorn
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
-from services import LLMClient, CommandExecutor, ConversationStore, HomeAssistantService, HomeDataService, TokenUsageEstimator, UserStore
+from services import (
+    LLMClient,
+    CommandExecutor,
+    ConversationStore,
+    HomeAssistantService,
+    HomeDataService,
+    HybridIntentRouter,
+    TokenUsageEstimator,
+    UserStore,
+)
 from services.access_control import (
     can_delete_session,
     can_manage_users,
@@ -352,6 +361,23 @@ executor = CommandExecutor(
 )
 
 
+def _new_llm_client() -> LLMClient:
+    return LLMClient(
+        api_key=config["api_key"],
+        base_url=config["base_url"],
+        model=config["model"],
+        timeout=config["timeout"],
+    )
+
+
+intent_router = HybridIntentRouter(
+    llm_factory=_new_llm_client,
+    home_assistant_service=home_assistant_service,
+    home_service=home_service,
+    skill_registry=skill_registry,
+)
+
+
 def _ensure_env_admin() -> None:
     """Optionally create the first admin from environment variables."""
     if user_store.has_admin():
@@ -533,12 +559,7 @@ def _skill_payload(skill_name: str) -> dict:
 
 
 def _build_orchestrator() -> AgentOrchestrator:
-    llm_client = LLMClient(
-        api_key=config["api_key"],
-        base_url=config["base_url"],
-        model=config["model"],
-        timeout=config["timeout"],
-    )
+    llm_client = _new_llm_client()
     conversation = ConversationManager(agent_prompt)
     context_compressor = ContextCompressor(
         llm_client=llm_client,
@@ -1703,35 +1724,19 @@ async def chat(
 
     try:
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+        auto_skills: list[str] = []
         if not images and not attachments:
-            ha_reply = await asyncio.to_thread(
-                home_assistant_service.handle_chat_intent,
-                user_message,
-                user,
-                session_id,
-            )
-            if ha_reply:
+            route = await intent_router.route(user_message, user, session_id)
+            if route.action == "direct_response" and route.reply:
                 messages = await asyncio.to_thread(
                     _append_direct_chat_response,
                     session_id,
                     user_message,
-                    ha_reply,
+                    route.reply,
                 )
                 return {"messages": messages, "session_id": session_id}
-            home_reply = await asyncio.to_thread(
-                home_service.handle_home_chat_intent,
-                user_message,
-                user,
-                session_id,
-            )
-            if home_reply:
-                messages = await asyncio.to_thread(
-                    _append_direct_chat_response,
-                    session_id,
-                    user_message,
-                    home_reply,
-                )
-                return {"messages": messages, "session_id": session_id}
+            if route.action == "load_skills":
+                auto_skills = route.skills
         return await run_chat(
             store=store,
             build_orchestrator=_build_orchestrator,
@@ -1740,6 +1745,7 @@ async def chat(
             user_message=user_message,
             attachments=attachments,
             images=images,
+            auto_skills=auto_skills,
         )
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
@@ -1773,44 +1779,40 @@ async def chat_stream(
     except PermissionError:
         return _json({"error": "forbidden"}, 403)
 
+    auto_skills: list[str] = []
     if not images and not attachments:
-        ha_reply = await asyncio.to_thread(
-            home_assistant_service.handle_chat_intent,
-            user_message,
-            user,
-            session_id,
-        )
-        if ha_reply:
-            async def direct_home_assistant_stream():
+        route = await intent_router.route(user_message, user, session_id)
+        if route.action == "direct_response" and route.reply:
+            async def direct_intent_stream():
                 yield stream_event({
                     "type": "step",
-                    "stage": "home_assistant",
-                    "message": "Home Assistant 已处理",
+                    "stage": route.stage,
+                    "message": "意图路由已处理",
                 })
                 messages = await asyncio.to_thread(
                     _append_direct_chat_response,
                     session_id,
                     user_message,
-                    ha_reply,
+                    route.reply,
                 )
                 yield stream_event({
                     "type": "model_start",
-                    "stage": "home_assistant",
+                    "stage": route.stage,
                     "iteration": 1,
-                    "model": "home-assistant-tool",
+                    "model": route.source,
                     "message_count": 1,
                 })
                 yield stream_event({
                     "type": "model_delta",
-                    "stage": "home_assistant",
+                    "stage": route.stage,
                     "iteration": 1,
-                    "delta": ha_reply,
+                    "delta": route.reply,
                 })
                 yield stream_event({
                     "type": "model_done",
-                    "stage": "home_assistant",
+                    "stage": route.stage,
                     "iteration": 1,
-                    "content": ha_reply,
+                    "content": route.reply,
                 })
                 yield stream_event({
                     "type": "done",
@@ -1821,62 +1823,12 @@ async def chat_stream(
                 })
 
             return StreamingResponse(
-                direct_home_assistant_stream(),
+                direct_intent_stream(),
                 media_type="application/x-ndjson",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
-
-        home_reply = await asyncio.to_thread(
-            home_service.handle_home_chat_intent,
-            user_message,
-            user,
-            session_id,
-        )
-        if home_reply:
-            async def direct_home_stream():
-                yield stream_event({
-                    "type": "step",
-                    "stage": "home",
-                    "message": "家庭记忆已处理",
-                })
-                messages = await asyncio.to_thread(
-                    _append_direct_chat_response,
-                    session_id,
-                    user_message,
-                    home_reply,
-                )
-                yield stream_event({
-                    "type": "model_start",
-                    "stage": "home",
-                    "iteration": 1,
-                    "model": "home-agent",
-                    "message_count": 1,
-                })
-                yield stream_event({
-                    "type": "model_delta",
-                    "stage": "home",
-                    "iteration": 1,
-                    "delta": home_reply,
-                })
-                yield stream_event({
-                    "type": "model_done",
-                    "stage": "home",
-                    "iteration": 1,
-                    "content": home_reply,
-                })
-                yield stream_event({
-                    "type": "done",
-                    "stage": "done",
-                    "message": "响应完成",
-                    "messages": messages,
-                    "session_id": session_id,
-                })
-
-            return StreamingResponse(
-                direct_home_stream(),
-                media_type="application/x-ndjson",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
+        if route.action == "load_skills":
+            auto_skills = route.skills
 
     return StreamingResponse(
         stream_chat_events(
@@ -1887,6 +1839,7 @@ async def chat_stream(
             user_message=user_message,
             attachments=attachments,
             images=images,
+            auto_skills=auto_skills,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

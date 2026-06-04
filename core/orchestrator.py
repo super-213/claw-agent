@@ -62,12 +62,14 @@ class AgentOrchestrator:
         user_input: str,
         attachments: List[Dict[str, Any]] | None = None,
         images: List[Dict[str, Any]] | None = None,
+        auto_skills: List[str] | None = None,
     ) -> bool:
         """异步处理用户输入，返回是否继续。"""
         accepted, _events = self._prepare_user_input(
             user_input,
             attachments=attachments,
             images=images,
+            auto_skills=auto_skills,
             emit_events=False,
         )
         if not accepted:
@@ -97,12 +99,14 @@ class AgentOrchestrator:
         user_input: str,
         attachments: List[Dict[str, Any]] | None = None,
         images: List[Dict[str, Any]] | None = None,
+        auto_skills: List[str] | None = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """异步处理用户输入，并逐步产出前端可展示的过程事件。"""
         accepted, events = self._prepare_user_input(
             user_input,
             attachments=attachments,
             images=images,
+            auto_skills=auto_skills,
             emit_events=True,
         )
         if not accepted:
@@ -121,6 +125,7 @@ class AgentOrchestrator:
         user_input: str,
         attachments: List[Dict[str, Any]] | None = None,
         images: List[Dict[str, Any]] | None = None,
+        auto_skills: List[str] | None = None,
         *,
         emit_events: bool = False,
     ) -> tuple[bool, List[Dict[str, Any]]]:
@@ -133,6 +138,29 @@ class AgentOrchestrator:
             events.append({"type": "step", "stage": "parse", "message": "解析用户输入"})
 
         skill_name, cleaned_input = InputParser.parse_user_input(user_input)
+        loaded_skills: set[str] = set()
+
+        for auto_skill in self._normalize_skill_names(auto_skills):
+            if emit_events:
+                events.append({
+                    "type": "step",
+                    "stage": "skill",
+                    "message": f"自动加载工具上下文：{auto_skill}",
+                })
+            if self._load_skill(auto_skill):
+                loaded_skills.add(auto_skill)
+                if emit_events:
+                    events.append({
+                        "type": "step",
+                        "stage": "skill_loaded",
+                        "message": f"工具已激活：{auto_skill}",
+                    })
+            elif emit_events:
+                events.append({
+                    "type": "step",
+                    "stage": "skill_missing",
+                    "message": f"未找到工具：{auto_skill}",
+                })
 
         if skill_name:
             if emit_events:
@@ -141,7 +169,16 @@ class AgentOrchestrator:
                     "stage": "skill",
                     "message": f"加载技能上下文：{skill_name}",
                 })
-            if self._load_skill(skill_name):
+            if skill_name in loaded_skills:
+                user_input = cleaned_input if cleaned_input else user_input
+                if emit_events:
+                    events.append({
+                        "type": "step",
+                        "stage": "skill_loaded",
+                        "message": f"技能已激活：{skill_name}",
+                    })
+            elif self._load_skill(skill_name):
+                loaded_skills.add(skill_name)
                 user_input = cleaned_input if cleaned_input else user_input
                 if emit_events:
                     events.append({
@@ -160,7 +197,7 @@ class AgentOrchestrator:
 
         if InputParser.needs_realtime_search(user_input):
             search_skill_loaded = False
-            if skill_name != "search":
+            if skill_name != "search" and "search" not in loaded_skills:
                 if emit_events:
                     events.append({
                         "type": "step",
@@ -168,6 +205,8 @@ class AgentOrchestrator:
                         "message": "加载实时查询工具上下文：search",
                     })
                 search_skill_loaded = self._load_skill("search")
+                if search_skill_loaded:
+                    loaded_skills.add("search")
                 if emit_events:
                     events.append({
                         "type": "step",
@@ -204,6 +243,18 @@ class AgentOrchestrator:
             })
 
         return True, events
+
+    @staticmethod
+    def _normalize_skill_names(skill_names: List[str] | None) -> List[str]:
+        seen: set[str] = set()
+        normalized: List[str] = []
+        for name in skill_names or []:
+            value = (name or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        return normalized
     
     def _load_skill(self, skill_name: str) -> bool:
         """加载技能"""
