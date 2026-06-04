@@ -1,3 +1,6 @@
+import json
+from datetime import datetime, timedelta
+
 import pytest
 
 from services.home_assistant_service import HomeAssistantService
@@ -147,3 +150,21 @@ def test_tool_call_cannot_bypass_high_risk_with_confirmed_flag(monkeypatch):
             {"entity_id": "switch.heater", "confirmed": True},
             actor={"id": "u1"},
         )
+
+
+def test_home_assistant_activity_prunes_entries_older_than_retention(tmp_path):
+    root = tmp_path / "home_assistant"
+    root.mkdir()
+    rows = [
+        {"id": "old", "at": (datetime.now().astimezone() - timedelta(days=16)).isoformat()},
+        {"id": "recent", "at": (datetime.now().astimezone() - timedelta(days=2)).isoformat()},
+        {"id": "unknown", "at": "not-a-date"},
+    ]
+    (root / "activity.jsonl").write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    service = HomeAssistantService(root_dir=root, log_retention_days=15)
+
+    assert [row["id"] for row in service.activity_log()] == ["recent", "unknown"]

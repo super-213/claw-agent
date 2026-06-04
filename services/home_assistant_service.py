@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 from threading import Lock
@@ -66,16 +66,19 @@ class HomeAssistantService:
         allowed_entities: str | list[str] | None = None,
         request_timeout: int = 10,
         root_dir: str | Path | None = None,
+        log_retention_days: int = 15,
     ):
         self.base_url = (base_url or "").rstrip("/")
         self.token = token or ""
         self.allowed_entities_raw = self._normalize_allowed_raw(allowed_entities)
         self.request_timeout = max(1, int(request_timeout or 10))
         self.root_dir = Path(root_dir) if root_dir else None
+        self.log_retention_days = max(1, int(log_retention_days or 15))
         self._lock = Lock()
         self._pending_confirmations: dict[str, dict[str, Any]] = {}
         if self.root_dir:
             self.root_dir.mkdir(parents=True, exist_ok=True)
+            self._prune_activity_log()
 
     @property
     def configured(self) -> bool:
@@ -596,5 +599,61 @@ class HomeAssistantService:
             entry["error"] = error
         path = self.root_dir / "activity.jsonl"
         with self._lock:
-            with path.open("a", encoding="utf-8") as output:
-                output.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            rows = self._read_activity_rows(path)
+            rows.append(entry)
+            self._write_activity_rows(path, self._retained_activity_rows(rows))
+
+    def _prune_activity_log(self) -> None:
+        if not self.root_dir:
+            return
+        path = self.root_dir / "activity.jsonl"
+        if not path.exists():
+            return
+        with self._lock:
+            rows = self._read_activity_rows(path)
+            retained = self._retained_activity_rows(rows)
+            if len(retained) != len(rows):
+                self._write_activity_rows(path, retained)
+
+    @staticmethod
+    def _read_activity_rows(path: Path) -> list[dict[str, Any]]:
+        if not path.exists():
+            return []
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return rows
+
+    @staticmethod
+    def _write_activity_rows(path: Path, rows: list[dict[str, Any]]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+    def _retained_activity_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        cutoff = datetime.now().astimezone() - timedelta(days=self.log_retention_days)
+        retained = []
+        for row in rows:
+            timestamp = row.get("at")
+            if not timestamp:
+                retained.append(row)
+                continue
+            try:
+                parsed = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            except ValueError:
+                retained.append(row)
+                continue
+            if parsed.tzinfo is None:
+                parsed = parsed.astimezone()
+            else:
+                parsed = parsed.astimezone()
+            if parsed >= cutoff:
+                retained.append(row)
+        return retained

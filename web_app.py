@@ -307,6 +307,7 @@ home_service = HomeDataService(
     timezone_name=config["home_timezone"],
     quiet_start=config["home_notification_quiet_start"],
     quiet_end=config["home_notification_quiet_end"],
+    log_retention_days=config["log_retention_days"],
 )
 home_assistant_service = HomeAssistantService(
     base_url=config["home_assistant_url"],
@@ -314,6 +315,7 @@ home_assistant_service = HomeAssistantService(
     allowed_entities=config["home_assistant_allowed_entities"],
     request_timeout=config["home_assistant_request_timeout"],
     root_dir=home_data_dir.parent / "home_assistant",
+    log_retention_days=config["log_retention_days"],
 )
 agent_path = Path(config["agent_file"])
 if not agent_path.is_absolute():

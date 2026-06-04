@@ -1,4 +1,6 @@
 import sys
+import json
+from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -77,3 +79,23 @@ def test_push_subscription_is_sanitized_and_test_falls_back(tmp_path):
     assert listed["subscriptions"][0]["endpoint_hash"].startswith("sha256:")
     assert test["web_push_configured"] is False
     assert test["notification"]["reason"] == "web_push_not_configured"
+
+
+def test_home_logs_prune_entries_older_than_retention(tmp_path):
+    root = tmp_path / "home"
+    service = HomeDataService(root, timezone_name="Asia/Shanghai", log_retention_days=15)
+    old = (service._now() - timedelta(days=16)).isoformat()
+    recent = (service._now() - timedelta(days=2)).isoformat()
+    rows = [
+        {"id": "old", "at": old},
+        {"id": "recent", "at": recent},
+        {"id": "unknown", "at": "not-a-date"},
+    ]
+    (root / "activity_log.jsonl").write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    service = HomeDataService(root, timezone_name="Asia/Shanghai", log_retention_days=15)
+
+    assert [row["id"] for row in service.activity_log()] == ["recent", "unknown"]

@@ -31,17 +31,20 @@ class HomeDataService:
         timezone_name: str = "Asia/Shanghai",
         quiet_start: str = "22:00",
         quiet_end: str = "07:00",
+        log_retention_days: int = 15,
     ):
         self.root_dir = Path(root_dir)
         self.timezone_name = timezone_name or "Asia/Shanghai"
         self.timezone = ZoneInfo(self.timezone_name)
         self.quiet_start = quiet_start
         self.quiet_end = quiet_end
+        self.log_retention_days = max(1, int(log_retention_days or 15))
         self._lock = Lock()
         self.root_dir.mkdir(parents=True, exist_ok=True)
         (self.root_dir / "inventory").mkdir(parents=True, exist_ok=True)
         (self.root_dir / "backups").mkdir(parents=True, exist_ok=True)
         self._ensure_defaults()
+        self._prune_logs()
 
     def household(self) -> dict[str, Any]:
         return self._read_json(self._household_path(), self._default_household())
@@ -752,7 +755,39 @@ class HomeDataService:
     def _append_jsonl(self, path: Path, row: dict[str, Any]) -> None:
         rows = self._read_jsonl(path)
         rows.append(row)
+        rows = self._retained_log_rows(path, rows)
         self._write_jsonl(path, rows)
+
+    def _prune_logs(self) -> None:
+        for path in (self._activity_path(), self._notification_path()):
+            rows = self._read_jsonl(path)
+            retained = self._retained_log_rows(path, rows)
+            if len(retained) != len(rows):
+                self._write_jsonl(path, retained)
+
+    def _retained_log_rows(self, path: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if path == self._activity_path():
+            return self._filter_rows_by_age(rows, "at")
+        if path == self._notification_path():
+            return self._filter_rows_by_age(rows, "created_at")
+        return rows
+
+    def _filter_rows_by_age(self, rows: list[dict[str, Any]], timestamp_key: str) -> list[dict[str, Any]]:
+        cutoff = self._now() - timedelta(days=self.log_retention_days)
+        retained = []
+        for row in rows:
+            timestamp = row.get(timestamp_key)
+            if not timestamp:
+                retained.append(row)
+                continue
+            try:
+                parsed = self._parse_datetime(str(timestamp))
+            except (TypeError, ValueError):
+                retained.append(row)
+                continue
+            if parsed >= cutoff:
+                retained.append(row)
+        return retained
 
     def _activity(
         self,

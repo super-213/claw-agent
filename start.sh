@@ -4,8 +4,36 @@ set -u
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$PROJECT_DIR/log"
 STATE_FILE="$LOG_DIR/service.env"
+LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-15}"
 
 mkdir -p "$LOG_DIR"
+
+is_positive_integer() {
+  [[ "${1:-}" =~ ^[0-9]+$ ]] && ((1 <= $1))
+}
+
+cleanup_old_logs() {
+  local days="$LOG_RETENTION_DAYS"
+  local mtime_days
+
+  if ! is_positive_integer "$days"; then
+    days=15
+  fi
+
+  mtime_days=$((days - 1))
+  find "$LOG_DIR" -type f \( -name "backend-*.log" -o -name "frontend-*.log" \) -mtime +"$mtime_days" -exec rm -f {} +
+}
+
+prepare_log_link() {
+  local link="$1"
+  local current_log="$2"
+  local legacy_prefix="$3"
+
+  if [[ -e "$link" && ! -L "$link" ]]; then
+    mv "$link" "$LOG_DIR/${legacy_prefix}-legacy-$(date +%Y%m%d%H%M%S).log"
+  fi
+  ln -sfn "$(basename "$current_log")" "$link"
+}
 
 is_valid_port() {
   local port="$1"
@@ -79,10 +107,19 @@ require_command npm
 BACKEND_PORT="$(ask_port "请输入后端 API 端口" "8000")"
 FRONTEND_PORT="$(ask_port "请输入前端访问端口" "5173" "$BACKEND_PORT")"
 
-BACKEND_LOG="$LOG_DIR/backend.log"
-FRONTEND_LOG="$LOG_DIR/frontend.log"
+cleanup_old_logs
+
+CURRENT_LOG_DATE="$(date +%Y-%m-%d)"
+BACKEND_LOG="$LOG_DIR/backend-$CURRENT_LOG_DATE.log"
+FRONTEND_LOG="$LOG_DIR/frontend-$CURRENT_LOG_DATE.log"
+BACKEND_LOG_LINK="$LOG_DIR/backend.log"
+FRONTEND_LOG_LINK="$LOG_DIR/frontend.log"
 BACKEND_PID_FILE="$LOG_DIR/backend.pid"
 FRONTEND_PID_FILE="$LOG_DIR/frontend.pid"
+
+prepare_log_link "$BACKEND_LOG_LINK" "$BACKEND_LOG" "backend"
+prepare_log_link "$FRONTEND_LOG_LINK" "$FRONTEND_LOG" "frontend"
+cleanup_old_logs
 
 cd "$PROJECT_DIR" || exit 1
 

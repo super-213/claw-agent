@@ -47,6 +47,7 @@ class ConfigManager:
         "home_assistant_token": "",
         "home_assistant_allowed_entities": "",
         "home_assistant_request_timeout": 10,
+        "log_retention_days": 15,
     }
     
     def __init__(self, config_path: str = None):
@@ -144,6 +145,7 @@ class ConfigManager:
             "HOME_SCHEDULER_INTERVAL_SECONDS": "home_scheduler_interval_seconds",
             "HOME_BACKUP_RETENTION_DAYS": "home_backup_retention_days",
             "HOME_ASSISTANT_REQUEST_TIMEOUT": "home_assistant_request_timeout",
+            "LOG_RETENTION_DAYS": "log_retention_days",
         }
         for env_name, config_key in int_envs.items():
             if value := os.getenv(env_name):
