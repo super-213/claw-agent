@@ -1,5 +1,27 @@
 /* Responsive overrides */
 
+@media (max-width: 1180px) {
+  .app {
+    grid-template-columns: 252px minmax(0, 1fr);
+  }
+
+  .tree-panel {
+    max-width: 46vw;
+    min-width: 320px;
+    width: 360px;
+  }
+
+  .chat-window {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .message,
+  .msg-usage {
+    max-width: min(84%, 680px);
+  }
+}
+
 /* Mobile */
 @media (max-width: 860px) {
   body.chat-route {
@@ -40,13 +62,13 @@
     position: fixed;
     inset: 0 auto 0 0;
     display: flex;
-    width: min(84vw, 320px);
+    width: min(88vw, 340px);
     height: 100vh;
     height: 100svh;
     z-index: 30;
     transform: translateX(-100%);
     transition: transform 0.24s ease;
-    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.36);
+    box-shadow: 20px 0 54px rgba(0, 0, 0, 0.34);
   }
 
   .sidebar.open {
@@ -87,14 +109,31 @@
     padding: 14px 14px 0;
   }
 
-  .section-label {
-    padding: 16px 18px 8px;
+  .history-panel {
+    flex: 0 0 144px;
+    min-height: 0;
+  }
+
+  .history-panel.expanded {
+    flex: 1 1 auto;
+    min-height: 190px;
+  }
+
+  .history-toggle {
+    min-height: 40px;
+    padding: 0 16px 0 18px;
   }
 
   .session-list {
+    flex: 0 0 104px;
     min-height: 0;
-    padding: 0 10px 14px;
+    padding: 0 10px 12px;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .history-panel.expanded .session-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
   }
 
   .skill-list {
@@ -115,7 +154,8 @@
   }
 
   .topbar {
-    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    min-height: 64px;
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
     gap: 12px;
   }
 
@@ -125,10 +165,11 @@
 
   .topbar-left {
     flex: 1;
+    min-width: 0;
   }
 
   .topbar-meta {
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
   }
 
@@ -136,21 +177,59 @@
     display: none;
   }
 
+  .topbar-eyebrow {
+    display: none;
+  }
+
+  .topbar-title {
+    font-size: 16px;
+    max-width: 48vw;
+  }
+
+  .status-badge {
+    max-width: 112px;
+    overflow: hidden;
+  }
+
+  .status-badge span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .chat-window {
-    padding: 18px 14px;
+    padding: 20px 14px 18px;
     -webkit-overflow-scrolling: touch;
   }
 
+  .messages-wrap {
+    gap: 18px;
+    max-width: none;
+  }
+
+  .empty-state {
+    height: 54vh;
+  }
+
+  .empty-icon {
+    height: 56px;
+    width: 56px;
+  }
+
+  .empty-copy strong {
+    font-size: 26px;
+  }
+
   .composer-area {
-    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    padding: 10px 10px calc(12px + env(safe-area-inset-bottom));
   }
 
   .composer {
     align-items: center;
-    border-radius: 14px;
+    border-radius: 18px;
     gap: 8px;
     max-width: none;
-    padding: 8px;
+    padding: 7px;
   }
 
   .composer-input {
@@ -167,8 +246,9 @@
 
   .attach-btn,
   .send-btn {
-    height: 44px;
-    width: 44px;
+    border-radius: 14px;
+    height: 42px;
+    width: 42px;
   }
 
   .composer-hint {
@@ -181,8 +261,13 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .message { max-width: 92%; }
-  .msg-usage { max-width: 92%; }
+  .message {
+    font-size: 14.5px;
+    max-width: 94%;
+    padding: 12px 14px;
+  }
+
+  .msg-usage { max-width: 94%; }
   .message.protocol,
   .message.process,
   .protocol-flow,

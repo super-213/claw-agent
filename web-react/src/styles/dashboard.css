@@ -116,7 +116,7 @@ button {
 }
 
 .dash-nav-link,
-.chat-link {
+.dashboard-nav-link {
   color: var(--ink-soft);
   text-decoration: none;
   border-radius: var(--radius);
@@ -129,7 +129,7 @@ button {
 }
 
 .dash-nav-link:hover,
-.chat-link:hover {
+.dashboard-nav-link:hover {
   color: var(--ink);
   background: var(--surface-muted);
 }
@@ -192,7 +192,21 @@ button {
 .topbar-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
+}
+
+.dashboard-nav-link {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.dashboard-nav-link:hover {
+  color: var(--blue);
+  background: var(--surface-solid);
 }
 
 .range-control,
@@ -896,8 +910,18 @@ button {
     width: 100%;
   }
 
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
   .range-control {
     justify-content: space-between;
+    order: 2;
+  }
+
+  .dashboard-nav-link {
+    flex: 1;
+    justify-content: center;
   }
 
   .range-control button {

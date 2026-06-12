@@ -1,4 +1,5 @@
-import { BarChart3, ChevronDown, Home, LogOut, Menu, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { BarChart3, Bot, ChevronDown, Home, LogOut, Menu, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { useState } from 'react';
 import type { SessionSummary, Skill, User } from '../../api/types';
 import { formatTime, formatTokens } from '../../utils/format';
 import { isAdmin } from '../../stores/appStore';
@@ -53,6 +54,14 @@ export function SessionSidebar({
   onOpenUsers,
   onLogout,
 }: SessionSidebarProps) {
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const orderedSessions = currentSessionId
+    ? [
+        ...sessions.filter((session) => session.id === currentSessionId),
+        ...sessions.filter((session) => session.id !== currentSessionId),
+      ]
+    : sessions;
+
   return (
     <>
       <aside className={`sidebar${open ? ' open' : ''}`} aria-label="历史对话">
@@ -60,11 +69,13 @@ export function SessionSidebar({
           <button className="sidebar-close" type="button" aria-label="关闭历史对话" onClick={onCloseMobile}>
             <X size={18} />
           </button>
-          <div className="brand-icon">⚡</div>
+          <div className="brand-icon" aria-hidden="true">
+            <Bot size={19} />
+          </div>
           <div className="brand-name">
             <span>Claw</span> Agent
           </div>
-          <div className="brand-tag">// React Console</div>
+          <div className="brand-tag">AI 工作台</div>
         </div>
         <div className="sidebar-actions">
           <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
@@ -72,10 +83,20 @@ export function SessionSidebar({
             新建对话
           </button>
         </div>
-        <div className="history-panel">
-          <div className="section-label">// Sessions</div>
-          <div className="session-list">
-            {sessions.map((session) => {
+        <div className={`history-panel${historyExpanded ? ' expanded' : ''}`}>
+          <button
+            className="history-toggle"
+            type="button"
+            aria-controls="session-history-list"
+            aria-expanded={historyExpanded}
+            onClick={() => setHistoryExpanded((value) => !value)}
+          >
+            <span>会话</span>
+            <strong>{sessions.length}</strong>
+            <ChevronDown size={14} />
+          </button>
+          <div className="session-list" id="session-history-list">
+            {orderedSessions.map((session) => {
               const busy = busySessionIds.has(session.id);
               const sharing = session.sharing || { scope: 'private' };
               const scopeLabel = sharing.scope === 'all' ? 'ALL' : sharing.scope === 'selected' ? 'SHARED' : '';
@@ -103,10 +124,11 @@ export function SessionSidebar({
                     aria-label="更多操作"
                     onClick={(event) => {
                       event.stopPropagation();
+                      setHistoryExpanded(true);
                       onToggleSessionMenu(menuOpen ? null : session.id);
                     }}
                   >
-                    ⋯
+                    <MoreHorizontal size={17} />
                   </button>
                   {menuOpen ? (
                     <div className="session-menu" onClick={(event) => event.stopPropagation()}>
@@ -131,17 +153,16 @@ export function SessionSidebar({
           </div>
         </div>
 
-        <details className="sidebar-drawer skill-panel">
-          <summary className="drawer-summary">
-            <span>Skills</span>
-            <span className="drawer-meta">{skills.length}</span>
-            <ChevronDown size={14} />
-          </summary>
-          <div className="drawer-body">
+        <div className="sidebar-utilities">
+          <section className="sidebar-section skill-panel" aria-label="技能">
+            <div className="sidebar-section-head">
+              <span>技能</span>
+              <strong>{skills.length}</strong>
+            </div>
             <div className="skill-toolbar">
               <button className="skill-add-btn" type="button" onClick={onOpenSkillModal}>
                 <Wrench size={14} />
-                添加技能
+                添加
               </button>
               <button className="skill-reload-btn" type="button" title="重载技能" aria-label="重载技能" onClick={() => void onReloadSkills()}>
                 <RefreshCcw size={14} />
@@ -158,16 +179,13 @@ export function SessionSidebar({
                 <div className="skill-empty">暂无技能</div>
               )}
             </div>
-          </div>
-        </details>
+          </section>
 
-        <details className="sidebar-drawer sidebar-footer">
-          <summary className="drawer-summary">
-            <span>后台</span>
-            <span className="drawer-meta">{currentUser?.role || 'guest'}</span>
-            <ChevronDown size={14} />
-          </summary>
-          <div className="drawer-body">
+          <section className="sidebar-section management-panel" aria-label="管理">
+            <div className="sidebar-section-head">
+              <span>管理</span>
+              <strong>{currentUser?.role || 'guest'}</strong>
+            </div>
             <div className="user-summary">
               <span>当前用户</span>
               <strong>
@@ -175,32 +193,37 @@ export function SessionSidebar({
               </strong>
             </div>
             <div className="sidebar-action-grid" aria-label="账号操作">
-              {isAdmin(currentUser) ? (
-                <button className="user-admin-btn" type="button" title="用户管理" onClick={onOpenUsers}>
-                  <Shield size={14} />
-                </button>
-              ) : null}
               <a className="dashboard-btn" href="/home" title="家庭事务">
                 <Home size={14} />
+                <span>家庭</span>
               </a>
               <a className="dashboard-btn" href="/dashboard" title="后台看板">
                 <BarChart3 size={14} />
+                <span>看板</span>
               </a>
+              {isAdmin(currentUser) ? (
+                <button className="user-admin-btn" type="button" title="用户管理" onClick={onOpenUsers}>
+                  <Shield size={14} />
+                  <span>用户</span>
+                </button>
+              ) : null}
               {isAdmin(currentUser) ? (
                 <button className="config-btn" type="button" title="模型设置" onClick={onOpenConfig}>
                   <Settings size={14} />
+                  <span>设置</span>
                 </button>
               ) : null}
               <button className="logout-btn" type="button" title="退出登录" onClick={() => void onLogout()}>
                 <LogOut size={14} />
+                <span>退出</span>
               </button>
             </div>
             <div className="sys-status">
               <div className="dot" />
               <span>System Online</span>
             </div>
-          </div>
-        </details>
+          </section>
+        </div>
       </aside>
       <div className={`sidebar-backdrop${open ? ' open' : ''}`} aria-hidden="true" onClick={onCloseMobile} />
     </>

@@ -429,9 +429,6 @@ export function DashboardPage() {
           ))}
         </nav>
         <div className="dash-sidebar-footer">
-          <a className="chat-link" href="/">
-            返回对话
-          </a>
           <div className="freshness">
             <span className="status-dot" />
             <span>{formatTime(summary?.generated_at) || '等待同步'}</span>
@@ -446,6 +443,12 @@ export function DashboardPage() {
             <p>{subtitle}</p>
           </div>
           <div className="topbar-actions">
+            <a className="dashboard-nav-link" href="/">
+              对话
+            </a>
+            <a className="dashboard-nav-link" href="/home">
+              家庭
+            </a>
             <div className="range-control" aria-label="时间范围">
               {(['all', '30d', '7d', 'today'] as DashboardRange[]).map((item) => (
                 <button key={item} type="button" data-range={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)}>

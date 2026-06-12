@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { Message } from '../../api/types';
 import { MessageRows, type BranchActionState } from './MessageRows';
@@ -45,8 +46,13 @@ export function MessageList({
     <div className="chat-window" ref={scrollRef} onScroll={handleScroll}>
       <div className="messages-wrap">
         <div className="empty-state" style={{ display: visibleMessages.length === 0 ? 'flex' : 'none' }}>
-          <div className="empty-icon">◈</div>
-          <div className="empty-text">// 开始输入以启动对话</div>
+          <div className="empty-icon" aria-hidden="true">
+            <Bot size={25} />
+          </div>
+          <div className="empty-copy">
+            <strong>Claw Agent</strong>
+            <span>输入任务，开始新的工作流。</span>
+          </div>
         </div>
         {visibleMessages.length ? (
           <MessageRows

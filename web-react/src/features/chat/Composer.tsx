@@ -82,7 +82,11 @@ export function Composer({
   return (
     <div className="composer-area">
       <div className="composer">
+        <label className="sr-only" htmlFor="composer-file-input">
+          添加文件或图片
+        </label>
         <input
+          id="composer-file-input"
           ref={fileInputRef}
           className="composer-file-input"
           type="file"
@@ -100,6 +104,7 @@ export function Composer({
         </button>
         <textarea
           ref={ref}
+          aria-label="输入指令或问题"
           className="composer-input"
           placeholder="输入指令或问题..."
           rows={1}

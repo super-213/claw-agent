@@ -19,7 +19,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   color: var(--text-secondary);
   display: flex;
   height: 36px;
@@ -39,17 +39,18 @@
 }
 
 .tree-panel {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(26px) saturate(1.24);
+  -webkit-backdrop-filter: blur(26px) saturate(1.24);
   border-left: 1px solid var(--separator-soft);
   display: none;
   flex-direction: column;
   flex-shrink: 0;
   max-width: 60vw;
-  min-width: 320px;
+  min-width: 340px;
   overflow: hidden;
   position: relative;
-  width: 420px;
+  width: 430px;
 }
 
 .tree-panel.open {
@@ -80,13 +81,13 @@
   display: flex;
   flex-shrink: 0;
   justify-content: space-between;
-  min-height: 50px;
-  padding: 10px 12px 10px 16px;
+  min-height: 58px;
+  padding: 12px 14px 12px 18px;
 }
 
 .tree-panel-title {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -124,7 +125,7 @@
 }
 
 .branch-tree-svg {
-  background-color: color-mix(in srgb, var(--surface-solid) 42%, transparent);
+  background-color: color-mix(in srgb, var(--surface-solid) 50%, transparent);
   background-image:
     linear-gradient(color-mix(in srgb, var(--text-tertiary) 13%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--text-tertiary) 13%, transparent) 1px, transparent 1px),

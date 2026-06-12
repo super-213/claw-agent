@@ -397,7 +397,7 @@ export function ChatWorkspace({
   };
 
   const topbarTitle = currentSession?.title || '新对话';
-  const tokenSummary = `Tokens ${formatTokens(currentSession?.token_usage?.total_tokens)} · Tool ${formatTokens(currentSession?.token_usage?.tool_tokens)}`;
+  const tokenSummary = `总计 ${formatTokens(currentSession?.token_usage?.total_tokens)} · 工具 ${formatTokens(currentSession?.token_usage?.tool_tokens)}`;
 
   return (
     <div className="app">
@@ -433,7 +433,10 @@ export function ChatWorkspace({
         <div className="topbar">
           <div className="topbar-left">
             <MobileMenuButton open={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(true)} />
-            <div className="topbar-title">{topbarTitle}</div>
+            <div className="topbar-heading">
+              <div className="topbar-eyebrow">当前会话</div>
+              <div className="topbar-title">{topbarTitle}</div>
+            </div>
           </div>
           <div className="topbar-meta">
             <div className="meta-badge">

@@ -2,13 +2,13 @@
 
 :root {
   color-scheme: light;
-  --app-bg: #f5f5f7;
-  --surface: rgba(255, 255, 255, 0.72);
+  --app-bg: #f4f4f6;
+  --surface: rgba(255, 255, 255, 0.76);
   --surface-solid: #ffffff;
-  --surface-elevated: rgba(255, 255, 255, 0.88);
-  --surface-muted: #f0f1f4;
+  --surface-elevated: rgba(255, 255, 255, 0.92);
+  --surface-muted: #eceef2;
   --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
+  --text-secondary: #515154;
   --text-tertiary: #86868b;
   --separator: rgba(0, 0, 0, 0.1);
   --separator-soft: rgba(0, 0, 0, 0.06);
@@ -18,8 +18,9 @@
   --danger: #ff3b30;
   --purple: #af52de;
   --focus-ring: rgba(0, 122, 255, 0.22);
-  --shadow-popover: 0 18px 50px rgba(0, 0, 0, 0.16);
-  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.1);
+  --shadow-popover: 0 24px 60px rgba(0, 0, 0, 0.18);
+  --shadow-float: 0 18px 42px rgba(29, 29, 31, 0.12);
+  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -52,10 +53,10 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --app-bg: #0f0f10;
-    --surface: rgba(28, 28, 30, 0.72);
+    --app-bg: #101012;
+    --surface: rgba(28, 28, 30, 0.76);
     --surface-solid: #1c1c1e;
-    --surface-elevated: rgba(44, 44, 46, 0.88);
+    --surface-elevated: rgba(44, 44, 46, 0.9);
     --surface-muted: #2c2c2e;
     --text-primary: #f5f5f7;
     --text-secondary: #a1a1a6;
@@ -69,7 +70,8 @@
     --purple: #bf5af2;
     --focus-ring: rgba(10, 132, 255, 0.28);
     --shadow-popover: 0 20px 54px rgba(0, 0, 0, 0.42);
-    --shadow-float: 0 14px 36px rgba(0, 0, 0, 0.3);
+    --shadow-float: 0 18px 46px rgba(0, 0, 0, 0.34);
+    --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     --bg-1: #151517;
     --ink-soft: #d1d1d6;
     --line-strong: rgba(255, 255, 255, 0.18);
@@ -89,7 +91,9 @@ html {
 }
 
 body {
-  background: var(--app-bg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 62%, var(--app-bg)) 0%, var(--app-bg) 42%),
+    var(--app-bg);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;
   height: 100%;
@@ -119,6 +123,18 @@ button {
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .sys-status {

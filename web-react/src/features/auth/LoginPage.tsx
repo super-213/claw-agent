@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/auth';
@@ -79,7 +80,9 @@ export function LoginPage() {
   return (
     <main className="auth-shell">
       <section className="auth-panel">
-        <div className="brand-icon">⚡</div>
+        <div className="brand-icon" aria-hidden="true">
+          <Bot size={19} />
+        </div>
         <div className="auth-title">
           <span>Claw</span> Agent
         </div>
