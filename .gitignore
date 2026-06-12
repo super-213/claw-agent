@@ -32,3 +32,5 @@ files/*
 .data/
 *.json
 .codex/
+docs/
+log/
