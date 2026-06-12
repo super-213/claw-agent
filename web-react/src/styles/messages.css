@@ -3,7 +3,7 @@
 .chat-window {
   flex: 1;
   overflow-y: auto;
-  padding: clamp(22px, 4vw, 42px) clamp(18px, 4vw, 42px);
+  padding: clamp(24px, 4vw, 46px) clamp(20px, 4vw, 46px);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--text-tertiary) 38%, transparent) transparent;
 }
@@ -11,9 +11,9 @@
 .messages-wrap {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
   margin: 0 auto;
-  max-width: 900px;
+  max-width: 940px;
 }
 
 .empty-state {
@@ -21,7 +21,7 @@
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 15px;
   height: 60vh;
   justify-content: center;
   text-align: center;
@@ -29,10 +29,10 @@
 
 .empty-icon {
   align-items: center;
-  background: var(--surface-elevated);
-  border: 1px solid var(--separator-soft);
-  border-radius: 18px;
-  box-shadow: var(--shadow-hairline), 0 18px 38px rgba(29, 29, 31, 0.08);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--separator-soft));
+  border-radius: 16px;
+  box-shadow: var(--shadow-hairline), 0 18px 38px rgba(15, 46, 41, 0.08);
   color: var(--accent);
   display: flex;
   height: 62px;
@@ -47,7 +47,7 @@
 
 .empty-copy strong {
   color: var(--text-primary);
-  font-size: clamp(24px, 4vw, 34px);
+  font-size: clamp(23px, 4vw, 32px);
   font-weight: 750;
   letter-spacing: 0;
   line-height: 1.08;
@@ -88,9 +88,10 @@
 .msg-label {
   color: var(--text-tertiary);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 720;
   margin-bottom: 7px;
   padding: 0 4px;
+  text-transform: uppercase;
 }
 
 .user-row .msg-label { color: var(--accent); }
@@ -106,7 +107,7 @@
 .message {
   font-size: 15px;
   line-height: 1.66;
-  max-width: min(78%, 720px);
+  max-width: min(80%, 760px);
   padding: 14px 17px;
   position: relative;
   white-space: pre-wrap;
@@ -316,24 +317,24 @@
 }
 
 .message.user {
-  background: var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 95%, #fff), var(--accent));
   border-radius: var(--radius-bubble) 9px var(--radius-bubble) var(--radius-bubble);
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--accent) 22%, transparent);
   color: #fff;
 }
 
 .message.assistant {
-  background: color-mix(in srgb, var(--surface-solid) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-solid) 95%, transparent);
   border: 1px solid var(--separator-soft);
-  border-radius: 9px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble);
-  box-shadow: var(--shadow-hairline);
+  border-radius: 10px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble);
+  box-shadow: var(--shadow-hairline), 0 10px 26px rgba(15, 46, 41, 0.05);
   color: var(--text-primary);
 }
 
 .message.final {
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface-solid));
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--separator));
-  border-radius: 9px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble);
+  background: color-mix(in srgb, var(--success) 7%, var(--surface-solid));
+  border: 1px solid color-mix(in srgb, var(--success) 20%, var(--separator));
+  border-radius: 10px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble);
   box-shadow: var(--shadow-hairline);
   color: var(--text-primary);
 }
@@ -349,16 +350,16 @@
 
 .message.protocol,
 .message.process {
-  background: color-mix(in srgb, var(--surface-muted) 74%, transparent);
+  background: color-mix(in srgb, var(--surface-muted) 68%, transparent);
   border: 1px solid var(--separator-soft);
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--text-secondary);
   font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
-  max-width: min(78%, 680px);
+  max-width: min(80%, 700px);
   padding: 9px 12px;
-  width: min(78%, 680px);
+  width: min(80%, 700px);
 }
 
 .message.streaming .message-text::after {

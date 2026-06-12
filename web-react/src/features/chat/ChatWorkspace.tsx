@@ -398,6 +398,7 @@ export function ChatWorkspace({
 
   const topbarTitle = currentSession?.title || '新对话';
   const tokenSummary = `总计 ${formatTokens(currentSession?.token_usage?.total_tokens)} · 工具 ${formatTokens(currentSession?.token_usage?.tool_tokens)}`;
+  const branchSummary = tree ? `${tree.nodes.length} 节点` : '未载入';
 
   return (
     <div className="app">
@@ -434,13 +435,17 @@ export function ChatWorkspace({
           <div className="topbar-left">
             <MobileMenuButton open={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(true)} />
             <div className="topbar-heading">
-              <div className="topbar-eyebrow">当前会话</div>
-              <div className="topbar-title">{topbarTitle}</div>
+              <div className="topbar-eyebrow">本地 Agent / 当前会话</div>
+              <h1 className="topbar-title">{topbarTitle}</h1>
             </div>
           </div>
           <div className="topbar-meta">
             <div className="meta-badge">
               <span>{tokenSummary}</span>
+            </div>
+            <div className="meta-badge branch-meta">
+              <GitFork size={14} />
+              <span>{branchSummary}</span>
             </div>
             <div className={`status-badge${currentBusy ? ' busy' : ''}`}>
               <div className="dot" />

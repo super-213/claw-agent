@@ -105,6 +105,20 @@
     margin-bottom: 10px;
   }
 
+  .brand-head {
+    margin-bottom: 10px;
+  }
+
+  .brand-menu-trigger {
+    margin-bottom: 0;
+  }
+
+  .account-popover {
+    left: 44px;
+    min-width: 224px;
+    max-width: calc(88vw - 70px);
+  }
+
   .sidebar-actions {
     padding: 14px 14px 0;
   }

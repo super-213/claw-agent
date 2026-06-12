@@ -2,24 +2,24 @@
 
 :root {
   color-scheme: light;
-  --app-bg: #f4f4f6;
-  --surface: rgba(255, 255, 255, 0.76);
+  --app-bg: #eef5f3;
+  --surface: rgba(255, 255, 255, 0.8);
   --surface-solid: #ffffff;
-  --surface-elevated: rgba(255, 255, 255, 0.92);
-  --surface-muted: #eceef2;
-  --text-primary: #1d1d1f;
-  --text-secondary: #515154;
-  --text-tertiary: #86868b;
-  --separator: rgba(0, 0, 0, 0.1);
-  --separator-soft: rgba(0, 0, 0, 0.06);
-  --accent: #007aff;
-  --success: #34c759;
-  --warning: #ff9500;
-  --danger: #ff3b30;
-  --purple: #af52de;
-  --focus-ring: rgba(0, 122, 255, 0.22);
-  --shadow-popover: 0 24px 60px rgba(0, 0, 0, 0.18);
-  --shadow-float: 0 18px 42px rgba(29, 29, 31, 0.12);
+  --surface-elevated: rgba(255, 255, 255, 0.94);
+  --surface-muted: #e4eeeb;
+  --text-primary: #10201d;
+  --text-secondary: #415c56;
+  --text-tertiary: #6d817c;
+  --separator: rgba(18, 82, 73, 0.14);
+  --separator-soft: rgba(18, 82, 73, 0.08);
+  --accent: #0d9488;
+  --success: #159061;
+  --warning: #f97316;
+  --danger: #dc2626;
+  --purple: #7c3aed;
+  --focus-ring: rgba(13, 148, 136, 0.24);
+  --shadow-popover: 0 24px 60px rgba(15, 46, 41, 0.2);
+  --shadow-float: 0 18px 42px rgba(15, 46, 41, 0.12);
   --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -53,22 +53,22 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --app-bg: #101012;
-    --surface: rgba(28, 28, 30, 0.76);
-    --surface-solid: #1c1c1e;
-    --surface-elevated: rgba(44, 44, 46, 0.9);
-    --surface-muted: #2c2c2e;
-    --text-primary: #f5f5f7;
-    --text-secondary: #a1a1a6;
-    --text-tertiary: #737377;
-    --separator: rgba(255, 255, 255, 0.12);
+    --app-bg: #0f1715;
+    --surface: rgba(24, 36, 33, 0.78);
+    --surface-solid: #182421;
+    --surface-elevated: rgba(31, 48, 44, 0.92);
+    --surface-muted: #253633;
+    --text-primary: #f2f7f5;
+    --text-secondary: #b4c5c0;
+    --text-tertiary: #819691;
+    --separator: rgba(255, 255, 255, 0.13);
     --separator-soft: rgba(255, 255, 255, 0.08);
-    --accent: #0a84ff;
-    --success: #30d158;
-    --warning: #ff9f0a;
+    --accent: #2dd4bf;
+    --success: #34d399;
+    --warning: #fb923c;
     --danger: #ff453a;
     --purple: #bf5af2;
-    --focus-ring: rgba(10, 132, 255, 0.28);
+    --focus-ring: rgba(45, 212, 191, 0.28);
     --shadow-popover: 0 20px 54px rgba(0, 0, 0, 0.42);
     --shadow-float: 0 18px 46px rgba(0, 0, 0, 0.34);
     --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -92,7 +92,7 @@ html {
 
 body {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 62%, var(--app-bg)) 0%, var(--app-bg) 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 68%, var(--app-bg)) 0%, var(--app-bg) 48%),
     var(--app-bg);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans SC", "PingFang SC", sans-serif;

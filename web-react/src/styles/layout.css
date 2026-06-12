@@ -2,7 +2,7 @@
 
 .app {
   display: grid;
-  grid-template-columns: 292px minmax(0, 1fr);
+  grid-template-columns: 304px minmax(0, 1fr);
   height: 100vh;
   height: 100svh;
   height: 100dvh;
@@ -13,7 +13,8 @@
 
 .main {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 86%, transparent), transparent 240px),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 78%, transparent), transparent 260px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 42%),
     var(--bg-1);
   display: flex;
   flex-direction: column;
@@ -27,15 +28,15 @@
 
 .topbar {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(26px) saturate(1.35);
   -webkit-backdrop-filter: blur(26px) saturate(1.35);
   border-bottom: 1px solid var(--separator-soft);
   display: flex;
   flex-shrink: 0;
   justify-content: space-between;
-  min-height: 72px;
-  padding: calc(14px + env(safe-area-inset-top)) clamp(18px, 2.5vw, 30px) 14px;
+  min-height: 78px;
+  padding: calc(16px + env(safe-area-inset-top)) clamp(18px, 2.5vw, 32px) 16px;
 }
 
 .topbar-left {
@@ -47,15 +48,16 @@
 
 .topbar-heading {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   min-width: 0;
 }
 
 .topbar-eyebrow {
-  color: var(--text-tertiary);
+  color: var(--accent);
   font-size: 11px;
   font-weight: 650;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .mobile-menu-btn {
@@ -84,8 +86,8 @@
 
 .topbar-title {
   color: var(--text-primary);
-  font-size: clamp(16px, 1.6vw, 18px);
-  font-weight: 700;
+  font-size: clamp(17px, 1.6vw, 20px);
+  font-weight: 760;
   line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -95,26 +97,31 @@
 .topbar-meta {
   align-items: center;
   display: flex;
-  gap: 8px;
+  gap: 9px;
   min-width: 0;
 }
 
 .meta-badge,
 .status-badge {
   align-items: center;
-  border-radius: 999px;
+  border-radius: 11px;
   color: var(--text-secondary);
   display: flex;
   font-size: 12px;
   gap: 6px;
-  min-height: 30px;
-  padding: 0 11px;
+  min-height: 34px;
+  padding: 0 12px;
   white-space: nowrap;
 }
 
 .meta-badge {
-  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-solid) 72%, transparent);
   border: 1px solid var(--separator-soft);
+}
+
+.branch-meta svg {
+  color: var(--accent);
+  flex: 0 0 auto;
 }
 
 .status-badge {
@@ -138,31 +145,31 @@
 }
 
 .composer-area {
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--bg-1) 86%, transparent) 18px, var(--bg-1));
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--bg-1) 88%, transparent) 18px, var(--bg-1));
   flex-shrink: 0;
-  padding: 14px clamp(16px, 3vw, 34px) calc(20px + env(safe-area-inset-bottom));
+  padding: 14px clamp(18px, 3vw, 38px) calc(20px + env(safe-area-inset-bottom));
 }
 
 .composer {
   align-items: end;
-  background: var(--surface-elevated);
+  background: color-mix(in srgb, var(--surface-elevated) 96%, var(--accent) 4%);
   backdrop-filter: blur(24px) saturate(1.25);
   -webkit-backdrop-filter: blur(24px) saturate(1.25);
   border: 1px solid var(--separator);
-  border-radius: 20px;
-  box-shadow: var(--shadow-hairline), var(--shadow-float);
+  border-radius: 18px;
+  box-shadow: var(--shadow-hairline), 0 16px 38px rgba(15, 46, 41, 0.11);
   display: grid;
   gap: 8px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   margin: 0 auto;
-  max-width: 900px;
+  max-width: 940px;
   padding: 9px;
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .composer:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--separator));
-  box-shadow: 0 0 0 4px var(--focus-ring), var(--shadow-float);
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--separator));
+  box-shadow: 0 0 0 4px var(--focus-ring), 0 18px 44px rgba(15, 46, 41, 0.14);
 }
 
 .composer-file-input {
@@ -212,7 +219,7 @@
 }
 
 .send-btn {
-  background: var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff), var(--accent));
   color: #fff;
 }
 

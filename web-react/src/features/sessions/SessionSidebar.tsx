@@ -1,5 +1,5 @@
-import { BarChart3, Bot, ChevronDown, Home, LogOut, Menu, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
-import { useState } from 'react';
+import { BarChart3, Bot, Home, LogOut, Menu, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type { SessionSummary, Skill, User } from '../../api/types';
 import { formatTime, formatTokens } from '../../utils/format';
 import { isAdmin } from '../../stores/appStore';
@@ -54,13 +54,34 @@ export function SessionSidebar({
   onOpenUsers,
   onLogout,
 }: SessionSidebarProps) {
-  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const orderedSessions = currentSessionId
     ? [
         ...sessions.filter((session) => session.id === currentSessionId),
         ...sessions.filter((session) => session.id !== currentSessionId),
       ]
     : sessions;
+  const busyCount = orderedSessions.filter((session) => busySessionIds.has(session.id)).length;
+  const currentSession = orderedSessions.find((session) => session.id === currentSessionId) || orderedSessions[0];
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   return (
     <>
@@ -69,13 +90,99 @@ export function SessionSidebar({
           <button className="sidebar-close" type="button" aria-label="关闭历史对话" onClick={onCloseMobile}>
             <X size={18} />
           </button>
-          <div className="brand-icon" aria-hidden="true">
-            <Bot size={19} />
+          <div className="brand-head" ref={accountMenuRef}>
+            <button
+              className="brand-icon brand-menu-trigger"
+              type="button"
+              aria-label="打开账号与管理菜单"
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="dialog"
+              onClick={() => setAccountMenuOpen((value) => !value)}
+            >
+              <Bot size={19} />
+            </button>
+            {accountMenuOpen ? (
+              <div className="account-popover" role="dialog" aria-label="账号与管理">
+                <div className="account-popover-head">
+                  <span>当前用户</span>
+                  <strong>{currentUser ? currentUser.display_name || currentUser.username : '未登录'}</strong>
+                  <small>{currentUser?.role || 'guest'}</small>
+                </div>
+                <div className="account-action-grid" aria-label="账号操作">
+                  <a className="dashboard-btn" href="/home" title="家庭事务" onClick={() => setAccountMenuOpen(false)}>
+                    <Home size={14} />
+                    <span>家庭</span>
+                  </a>
+                  <a className="dashboard-btn" href="/dashboard" title="后台看板" onClick={() => setAccountMenuOpen(false)}>
+                    <BarChart3 size={14} />
+                    <span>看板</span>
+                  </a>
+                  {isAdmin(currentUser) ? (
+                    <button
+                      className="user-admin-btn"
+                      type="button"
+                      title="用户管理"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        onOpenUsers();
+                      }}
+                    >
+                      <Shield size={14} />
+                      <span>用户</span>
+                    </button>
+                  ) : null}
+                  {isAdmin(currentUser) ? (
+                    <button
+                      className="config-btn"
+                      type="button"
+                      title="模型设置"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        onOpenConfig();
+                      }}
+                    >
+                      <Settings size={14} />
+                      <span>设置</span>
+                    </button>
+                  ) : null}
+                  <button
+                    className="logout-btn"
+                    type="button"
+                    title="退出登录"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      void onLogout();
+                    }}
+                  >
+                    <LogOut size={14} />
+                    <span>退出</span>
+                  </button>
+                </div>
+                <div className="sys-status">
+                  <div className="dot" />
+                  <span>System Online</span>
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="brand-name">
             <span>Claw</span> Agent
           </div>
           <div className="brand-tag">AI 工作台</div>
+          <div className="workspace-summary" aria-label="工作台概览">
+            <div>
+              <span>会话</span>
+              <strong>{sessions.length}</strong>
+            </div>
+            <div>
+              <span>运行</span>
+              <strong>{busyCount}</strong>
+            </div>
+            <div>
+              <span>技能</span>
+              <strong>{skills.length}</strong>
+            </div>
+          </div>
         </div>
         <div className="sidebar-actions">
           <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
@@ -83,18 +190,16 @@ export function SessionSidebar({
             新建对话
           </button>
         </div>
-        <div className={`history-panel${historyExpanded ? ' expanded' : ''}`}>
-          <button
-            className="history-toggle"
-            type="button"
-            aria-controls="session-history-list"
-            aria-expanded={historyExpanded}
-            onClick={() => setHistoryExpanded((value) => !value)}
-          >
-            <span>会话</span>
+        <div className="current-context" aria-label="当前上下文">
+          <span>当前会话</span>
+          <strong>{currentSession?.title || '新对话'}</strong>
+          <small>{currentSession ? `${formatTime(currentSession.updated_at || currentSession.created_at)} · ${formatTokens(currentSession.token_usage?.total_tokens)} tok` : '等待创建'}</small>
+        </div>
+        <div className="history-panel">
+          <div className="history-toggle" id="session-history-heading">
+            <span>会话历史</span>
             <strong>{sessions.length}</strong>
-            <ChevronDown size={14} />
-          </button>
+          </div>
           <div className="session-list" id="session-history-list">
             {orderedSessions.map((session) => {
               const busy = busySessionIds.has(session.id);
@@ -124,7 +229,6 @@ export function SessionSidebar({
                     aria-label="更多操作"
                     onClick={(event) => {
                       event.stopPropagation();
-                      setHistoryExpanded(true);
                       onToggleSessionMenu(menuOpen ? null : session.id);
                     }}
                   >
@@ -178,49 +282,6 @@ export function SessionSidebar({
               ) : (
                 <div className="skill-empty">暂无技能</div>
               )}
-            </div>
-          </section>
-
-          <section className="sidebar-section management-panel" aria-label="管理">
-            <div className="sidebar-section-head">
-              <span>管理</span>
-              <strong>{currentUser?.role || 'guest'}</strong>
-            </div>
-            <div className="user-summary">
-              <span>当前用户</span>
-              <strong>
-                {currentUser ? `${currentUser.display_name || currentUser.username} · ${currentUser.role}` : '-'}
-              </strong>
-            </div>
-            <div className="sidebar-action-grid" aria-label="账号操作">
-              <a className="dashboard-btn" href="/home" title="家庭事务">
-                <Home size={14} />
-                <span>家庭</span>
-              </a>
-              <a className="dashboard-btn" href="/dashboard" title="后台看板">
-                <BarChart3 size={14} />
-                <span>看板</span>
-              </a>
-              {isAdmin(currentUser) ? (
-                <button className="user-admin-btn" type="button" title="用户管理" onClick={onOpenUsers}>
-                  <Shield size={14} />
-                  <span>用户</span>
-                </button>
-              ) : null}
-              {isAdmin(currentUser) ? (
-                <button className="config-btn" type="button" title="模型设置" onClick={onOpenConfig}>
-                  <Settings size={14} />
-                  <span>设置</span>
-                </button>
-              ) : null}
-              <button className="logout-btn" type="button" title="退出登录" onClick={() => void onLogout()}>
-                <LogOut size={14} />
-                <span>退出</span>
-              </button>
-            </div>
-            <div className="sys-status">
-              <div className="dot" />
-              <span>System Online</span>
             </div>
           </section>
         </div>
