@@ -224,17 +224,37 @@ export function HomePage() {
         </nav>
       </header>
 
-      <section className="home-ops">
-        <Kpi icon={Clock3} label="今日提醒" value={todayReminders.length} />
-        <Kpi icon={Utensils} label="快过期" value={expiring.length} />
-        <Kpi icon={ShoppingBasket} label="低库存" value={lowStock.length} />
-        <Kpi icon={Bell} label="绑定设备" value={deviceCount} />
-      </section>
-
       {message ? <pre className="home-message">{message}</pre> : null}
 
-      <div className="home-grid">
-        <section className="home-section wide">
+      <section className="home-command-board" aria-label="家庭事务概览">
+        <article className="home-focus-card">
+          <div>
+            <span className="home-kicker">Today</span>
+            <h2>{todayReminders.length} 个提醒待关注</h2>
+            <p>{expiring.length} 项 3 天内到期，{lowStock.length} 项库存偏低。</p>
+          </div>
+          <div className="home-ops">
+            <Kpi icon={Clock3} label="今日提醒" value={todayReminders.length} />
+            <Kpi icon={Utensils} label="快过期" value={expiring.length} />
+            <Kpi icon={ShoppingBasket} label="低库存" value={lowStock.length} />
+            <Kpi icon={Bell} label="绑定设备" value={deviceCount} />
+          </div>
+        </article>
+
+        <aside className="home-command-side">
+          <div>
+            <span>推送权限</span>
+            <strong>{pushPermission}</strong>
+          </div>
+          <div>
+            <span>VAPID</span>
+            <strong>{pushConfigured ? '已配置' : '未配置'}</strong>
+          </div>
+        </aside>
+      </section>
+
+      <div className="home-workbench">
+        <section className="home-section home-primary-pane">
           <div className="home-section-head">
             <div>
               <h2>冰箱清单</h2>
@@ -243,14 +263,15 @@ export function HomePage() {
             <span>{expiring.length} 项 3 天内到期</span>
           </div>
           <form className="home-inline-form" onSubmit={(event) => void addItem(event)}>
-            <input value={itemDraft.name} placeholder="物品" onChange={(event) => setItemDraft({ ...itemDraft, name: event.target.value })} />
+            <input aria-label="物品" value={itemDraft.name} placeholder="物品" onChange={(event) => setItemDraft({ ...itemDraft, name: event.target.value })} />
             <input
+              aria-label="数量"
               value={itemDraft.quantity}
               placeholder="数量"
               inputMode="decimal"
               onChange={(event) => setItemDraft({ ...itemDraft, quantity: event.target.value })}
             />
-            <select value={itemDraft.unit} onChange={(event) => setItemDraft({ ...itemDraft, unit: event.target.value })}>
+            <select aria-label="单位" value={itemDraft.unit} onChange={(event) => setItemDraft({ ...itemDraft, unit: event.target.value })}>
               <option value="个">个</option>
               <option value="盒">盒</option>
               <option value="瓶">瓶</option>
@@ -258,7 +279,7 @@ export function HomePage() {
               <option value="kg">kg</option>
               <option value="片">片</option>
             </select>
-            <input type="date" value={itemDraft.expires_at} onChange={(event) => setItemDraft({ ...itemDraft, expires_at: event.target.value })} />
+            <input aria-label="到期日期" type="date" value={itemDraft.expires_at} onChange={(event) => setItemDraft({ ...itemDraft, expires_at: event.target.value })} />
             <button type="submit" disabled={busy} title="添加物品">
               <PackagePlus size={16} />
               添加
@@ -297,89 +318,93 @@ export function HomePage() {
           </div>
         </section>
 
-        <section className="home-section">
-          <div className="home-section-head">
-            <div>
-              <h2>提醒</h2>
-              <p>今日、未来和周期任务统一管理。</p>
+        <aside className="home-context-rail">
+          <section className="home-section">
+            <div className="home-section-head">
+              <div>
+                <h2>提醒</h2>
+                <p>今日、未来和周期任务统一管理。</p>
+              </div>
             </div>
-          </div>
-          <form className="home-stack-form" onSubmit={(event) => void addReminder(event)}>
-            <input
-              value={reminderDraft.title}
-              placeholder="事件标题"
-              onChange={(event) => setReminderDraft({ ...reminderDraft, title: event.target.value })}
-            />
-            <input
-              value={reminderDraft.raw_text}
-              placeholder="例如：明天早上 8 点提醒我倒垃圾"
-              onChange={(event) => setReminderDraft({ ...reminderDraft, raw_text: event.target.value })}
-            />
-            <button type="submit" disabled={busy}>
-              <Bell size={16} />
-              添加提醒
-            </button>
-          </form>
-          <div className="home-list">
-            {reminders.slice(0, 8).map((reminder) => (
-              <article className="home-list-item" key={reminder.id}>
-                <div>
-                  <strong>{reminder.title}</strong>
-                  <small>{relativeRunTime(reminder.next_run_at)} · {statusLabel[reminder.status || ''] || reminder.status}</small>
-                </div>
-                <div className="row-actions">
-                  <button type="button" title="完成" onClick={() => void homeApi.completeReminder(reminder.id).then(load)}>
-                    <Check size={15} />
-                  </button>
-                  <button type="button" title="延后 10 分钟" onClick={() => void homeApi.snoozeReminder(reminder.id, 10).then(load)}>
-                    <Clock3 size={15} />
-                  </button>
-                  <button type="button" title="取消" onClick={() => void homeApi.cancelReminder(reminder.id).then(load)}>
-                    <X size={15} />
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="home-section">
-          <div className="home-section-head">
-            <div>
-              <h2>推送设置</h2>
-              <p>权限、设备和测试通知。</p>
-            </div>
-          </div>
-          <div className="push-state">
-            <span>浏览器权限</span>
-            <strong>{pushPermission}</strong>
-            <span>VAPID</span>
-            <strong>{pushConfigured ? '已配置' : '未配置'}</strong>
-          </div>
-          <div className="home-button-row">
-            <button type="button" disabled={busy} onClick={() => void enablePush()}>
-              <Bell size={16} />
-              启用通知
-            </button>
-            <button type="button" disabled={busy} onClick={() => void sendTestPush()}>
-              <RefreshCw size={16} />
-              测试通知
-            </button>
-          </div>
-          <div className="home-list compact">
-            {notifications.slice(0, 6).map((notification) => (
-              <button className="home-notification" type="button" key={notification.id} onClick={() => void homeApi.readNotification(notification.id).then(load)}>
-                <span>{notification.title}</span>
-                <small>
-                  {notification.status}
-                  {notification.reason ? ` · ${notification.reason}` : ''} · {formatTime(notification.created_at)}
-                </small>
+            <form className="home-stack-form" onSubmit={(event) => void addReminder(event)}>
+              <input
+                aria-label="事件标题"
+                value={reminderDraft.title}
+                placeholder="事件标题"
+                onChange={(event) => setReminderDraft({ ...reminderDraft, title: event.target.value })}
+              />
+              <input
+                aria-label="提醒内容"
+                value={reminderDraft.raw_text}
+                placeholder="例如：明天早上 8 点提醒我倒垃圾"
+                onChange={(event) => setReminderDraft({ ...reminderDraft, raw_text: event.target.value })}
+              />
+              <button type="submit" disabled={busy}>
+                <Bell size={16} />
+                添加提醒
               </button>
-            ))}
-          </div>
-        </section>
+            </form>
+            <div className="home-list">
+              {reminders.slice(0, 8).map((reminder) => (
+                <article className="home-list-item" key={reminder.id}>
+                  <div>
+                    <strong>{reminder.title}</strong>
+                    <small>{relativeRunTime(reminder.next_run_at)} · {statusLabel[reminder.status || ''] || reminder.status}</small>
+                  </div>
+                  <div className="row-actions">
+                    <button type="button" title="完成" onClick={() => void homeApi.completeReminder(reminder.id).then(load)}>
+                      <Check size={15} />
+                    </button>
+                    <button type="button" title="延后 10 分钟" onClick={() => void homeApi.snoozeReminder(reminder.id, 10).then(load)}>
+                      <Clock3 size={15} />
+                    </button>
+                    <button type="button" title="取消" onClick={() => void homeApi.cancelReminder(reminder.id).then(load)}>
+                      <X size={15} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
 
-        <section className="home-section wide">
+          <section className="home-section">
+            <div className="home-section-head">
+              <div>
+                <h2>推送设置</h2>
+                <p>权限、设备和测试通知。</p>
+              </div>
+            </div>
+            <div className="push-state">
+              <span>浏览器权限</span>
+              <strong>{pushPermission}</strong>
+              <span>VAPID</span>
+              <strong>{pushConfigured ? '已配置' : '未配置'}</strong>
+            </div>
+            <div className="home-button-row">
+              <button type="button" disabled={busy} onClick={() => void enablePush()}>
+                <Bell size={16} />
+                启用通知
+              </button>
+              <button type="button" disabled={busy} onClick={() => void sendTestPush()}>
+                <RefreshCw size={16} />
+                测试通知
+              </button>
+            </div>
+            <div className="home-list compact">
+              {notifications.slice(0, 6).map((notification) => (
+                <button className="home-notification" type="button" key={notification.id} onClick={() => void homeApi.readNotification(notification.id).then(load)}>
+                  <span>{notification.title}</span>
+                  <small>
+                    {notification.status}
+                    {notification.reason ? ` · ${notification.reason}` : ''} · {formatTime(notification.created_at)}
+                  </small>
+                </button>
+              ))}
+            </div>
+          </section>
+        </aside>
+
+        <section className="home-section home-insights-pane">
           <div className="home-section-head">
             <div>
               <h2>任务统计</h2>

@@ -412,37 +412,22 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="dashboard-shell">
-      <aside className="dashboard-sidebar" aria-label="后台导航">
-        <div className="dash-brand">
-          <div className="dash-brand-mark">C</div>
-          <div>
-            <div className="dash-brand-name">Claw Agent</div>
-            <div className="dash-brand-sub">后台看板</div>
-          </div>
-        </div>
-        <nav className="dash-nav">
-          {['overview', 'home', 'tokens', 'sessions', 'tools', 'words'].map((id, index) => (
-            <a key={id} href={`#${id}`} className={`dash-nav-link${index === 0 ? ' active' : ''}`}>
-              {['总览', '家庭', 'Token', '会话', '工具', '词云'][index]}
-            </a>
-          ))}
-        </nav>
-        <div className="dash-sidebar-footer">
-          <div className="freshness">
-            <span className="status-dot" />
-            <span>{formatTime(summary?.generated_at) || '等待同步'}</span>
-          </div>
-        </div>
-      </aside>
-
+    <div className="dashboard-shell dashboard-shell-flat">
       <main className="dashboard-main">
         <header className="dashboard-topbar">
           <div>
+            <span className="dashboard-kicker">Claw Agent</span>
             <h1>后台看板</h1>
             <p>{subtitle}</p>
           </div>
           <div className="topbar-actions">
+            <nav className="dashboard-top-nav" aria-label="后台页面导航">
+              {['overview', 'tokens', 'tools', 'words', 'sessions'].map((id, index) => (
+                <a key={id} href={`#${id}`}>
+                  {['总览', 'Token', '工具', '主题', '会话'][index]}
+                </a>
+              ))}
+            </nav>
             <a className="dashboard-nav-link" href="/">
               对话
             </a>
@@ -462,67 +447,52 @@ export function DashboardPage() {
           </div>
         </header>
 
-        <section className="kpi-grid" id="overview" aria-label="核心指标">
-          <KpiTile label="总 Token" value={kpis.total_tokens || 0} hint={`平均 ${formatNumber(kpis.avg_tokens_per_session || 0)} / 会话`} />
-          <KpiTile label="会话" value={kpis.total_sessions || 0} hint={`${formatNumber(kpis.total_messages || 0)} 条消息`} />
-          <KpiTile label="工具调用" value={kpis.tool_calls || 0} hint={`${formatNumber(kpis.tool_failures || 0)} 次失败`} />
-          <KpiTile label="工具成功率" value={`${asNumber(kpis.tool_success_rate).toFixed(1)}%`} hint={`平均输出 ${formatNumber(toolSummary.avg_output_chars || 0)} 字符`} />
-        </section>
+        <section className="dashboard-cockpit" aria-label="后台工作台">
+          <article className="panel dashboard-priority-panel" id="overview">
+            <div className="dashboard-priority-head">
+              <div>
+                <span className="dashboard-kicker">Usage</span>
+                <h2>{formatNumber(kpis.total_tokens || 0)}</h2>
+                <p>总 Token · 平均 {formatNumber(kpis.avg_tokens_per_session || 0)} / 会话</p>
+              </div>
+              <span className="panel-stat">{asNumber(kpis.tool_success_rate).toFixed(1)}% 工具成功率</span>
+            </div>
+            <div className="kpi-grid compact-kpis" aria-label="核心指标">
+              <KpiTile label="会话" value={kpis.total_sessions || 0} hint={`${formatNumber(kpis.total_messages || 0)} 条消息`} />
+              <KpiTile label="工具调用" value={kpis.tool_calls || 0} hint={`${formatNumber(kpis.tool_failures || 0)} 次失败`} />
+              <KpiTile label="平均输出" value={toolSummary.avg_output_chars || 0} hint="字符 / 工具调用" />
+            </div>
+          </article>
 
-        <section className="dashboard-grid" id="home">
-          <article className="panel panel-wide">
+          <article className="panel dashboard-home-panel" id="home">
             <div className="panel-head">
               <div>
-                <h2>家庭任务总览</h2>
+                <h2>家庭任务</h2>
                 <p>提醒、周期任务和未触达通知</p>
               </div>
               <span className="panel-stat">{formatNumber(homeSummary?.kpis?.total_tasks || 0)}</span>
             </div>
             <div className="mini-kpis">
               <div className="mini-kpi">
-                <span>今日待执行</span>
+                <span>今日</span>
                 <strong>{formatNumber(homeSummary?.kpis?.due_today || 0)}</strong>
               </div>
               <div className="mini-kpi">
-                <span>未来 7 天</span>
+                <span>7 天</span>
                 <strong>{formatNumber(homeSummary?.kpis?.due_next_7_days || 0)}</strong>
               </div>
               <div className="mini-kpi">
-                <span>逾期未发送</span>
+                <span>逾期</span>
                 <strong>{formatNumber(homeSummary?.kpis?.overdue || 0)}</strong>
               </div>
               <div className="mini-kpi">
-                <span>通知成功率</span>
+                <span>通知</span>
                 <strong>{formatNumber(homeSummary?.kpis?.notification_success_rate || 0)}%</strong>
               </div>
             </div>
           </article>
-          <article className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>任务状态</h2>
-                <p>按提醒状态聚合</p>
-              </div>
-            </div>
-            <div className="bar-list compact">
-              <BarList rows={homeSummary?.status_distribution as Array<Record<string, any>>} valueKey="value" limit={8} emptyText="暂无家庭任务" />
-            </div>
-          </article>
-          <article className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>提醒渠道</h2>
-                <p>站内、浏览器推送与备用渠道</p>
-              </div>
-            </div>
-            <div className="bar-list compact">
-              <BarList rows={homeSummary?.channel_distribution as Array<Record<string, any>>} valueKey="value" limit={8} emptyText="暂无渠道数据" />
-            </div>
-          </article>
-        </section>
 
-        <section className="dashboard-grid" id="tokens">
-          <article className="panel panel-wide">
+          <article className="panel panel-wide token-focus" id="tokens">
             <div className="panel-head">
               <div>
                 <h2>Token 趋势</h2>
@@ -532,7 +502,8 @@ export function DashboardPage() {
             </div>
             <LineChart rows={(summary?.timeseries as Array<Record<string, any>>) || []} />
           </article>
-          <article className="panel">
+
+          <article className="panel dashboard-token-mix-panel">
             <div className="panel-head">
               <div>
                 <h2>Token 构成</h2>
@@ -541,54 +512,20 @@ export function DashboardPage() {
             </div>
             <Donut rows={(summary?.token_breakdown as Array<Record<string, any>>) || []} />
           </article>
-          <article className="panel panel-wide">
+
+          <article className="panel dashboard-rank-panel">
             <div className="panel-head">
               <div>
                 <h2>会话 Token 排行</h2>
                 <p>Top 会话</p>
               </div>
             </div>
-            <div className="bar-list">
-              <BarList rows={(summary?.top_sessions as Array<Record<string, any>>) || []} valueKey="token_usage.total_tokens" emptyText="暂无会话 token 数据" />
-            </div>
-          </article>
-          <article className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>角色占比</h2>
-                <p>系统、用户、助手、工具</p>
-              </div>
-            </div>
             <div className="bar-list compact">
-              <BarList rows={(summary?.role_tokens as Array<Record<string, any>>) || []} valueKey="tokens" limit={8} emptyText="暂无角色 token 数据" />
+              <BarList rows={(summary?.top_sessions as Array<Record<string, any>>) || []} valueKey="token_usage.total_tokens" limit={5} emptyText="暂无会话 token 数据" />
             </div>
           </article>
-        </section>
 
-        <section className="dashboard-grid" id="tools">
-          <article className="panel panel-wide">
-            <div className="panel-head">
-              <div>
-                <h2>工具调用分布</h2>
-                <p>按命令类型聚合</p>
-              </div>
-            </div>
-            <div className="stacked-area">
-              <BarList rows={(toolSummary.by_category as Array<Record<string, any>>) || []} valueKey="count" suffix=" 次" emptyText="暂无工具调用" />
-            </div>
-          </article>
-          <article className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>Top 命令</h2>
-                <p>按调用次数排序</p>
-              </div>
-            </div>
-            <div className="bar-list compact">
-              <BarList rows={(toolSummary.top_commands as Array<Record<string, any>>) || []} valueKey="count" limit={8} suffix=" 次" emptyText="暂无命令数据" />
-            </div>
-          </article>
-          <article className="panel panel-wide">
+          <article className="panel panel-wide tool-focus" id="tools">
             <div className="panel-head">
               <div>
                 <h2>最近工具调用</h2>
@@ -599,30 +536,15 @@ export function DashboardPage() {
               <ToolFeed rows={(summary?.recent_tool_calls as Array<Record<string, any>>) || []} />
             </div>
           </article>
-          <article className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>异常</h2>
-                <p>需要关注的会话与命令</p>
-              </div>
-            </div>
-            <div className="alert-list">
-              {((summary?.alerts as Array<Record<string, any>>) || []).length ? (
-                ((summary?.alerts as Array<Record<string, any>>) || []).map((item, index) => (
-                  <div className={`alert-item ${item.level || ''}`} key={index}>
-                    <div className="alert-title">{String(item.title || '提示')}</div>
-                    <div className="alert-message">{String(item.message || '')}</div>
-                  </div>
-                ))
-              ) : (
-                <EmptyNote text="暂无异常" />
-              )}
+
+          <article className="panel dashboard-tool-mix-panel">
+            <h2>工具分布</h2>
+            <div className="stacked-area">
+              <BarList rows={(toolSummary.by_category as Array<Record<string, any>>) || []} valueKey="count" suffix=" 次" emptyText="暂无工具调用" />
             </div>
           </article>
-        </section>
 
-        <section className="dashboard-grid" id="words">
-          <article className="panel panel-wide">
+          <article className="panel dashboard-topic-panel" id="words">
             <div className="panel-head">
               <div>
                 <h2>词云</h2>
@@ -640,75 +562,87 @@ export function DashboardPage() {
               <WordCloud rows={wordRows} />
             </div>
           </article>
-          <article className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>活跃热力</h2>
-                <p>星期与小时</p>
-              </div>
+
+          <article className="panel dashboard-alert-panel">
+            <h2>异常</h2>
+            <div className="alert-list">
+              {((summary?.alerts as Array<Record<string, any>>) || []).length ? (
+                ((summary?.alerts as Array<Record<string, any>>) || []).map((item, index) => (
+                  <div className={`alert-item ${item.level || ''}`} key={index}>
+                    <div className="alert-title">{String(item.title || '提示')}</div>
+                    <div className="alert-message">{String(item.message || '')}</div>
+                  </div>
+                ))
+              ) : (
+                <EmptyNote text="暂无异常" />
+              )}
             </div>
+          </article>
+
+          <article className="panel dashboard-heat-panel">
+            <h2>活跃热力</h2>
             <div className="heatmap">
               <Heatmap rows={(summary?.heatmap as Array<Record<string, any>>) || []} />
             </div>
           </article>
-        </section>
 
-        <section className="panel" id="sessions">
-          <div className="panel-head">
-            <div>
-              <h2>会话明细</h2>
-              <p>Token、工具调用、分支与健康度</p>
+          <section className="panel sessions-panel" id="sessions">
+            <div className="panel-head">
+              <div>
+                <h2>会话明细</h2>
+                <p>Token、工具调用、分支与健康度</p>
+              </div>
+              <label className="search-box">
+                <Search size={16} />
+                <input type="search" placeholder="搜索会话" autoComplete="off" value={search} onChange={(event) => setSearch(event.target.value)} />
+              </label>
             </div>
-            <label className="search-box">
-              <Search size={16} />
-              <input type="search" placeholder="搜索会话" autoComplete="off" value={search} onChange={(event) => setSearch(event.target.value)} />
-            </label>
-          </div>
-          <div className="session-table-wrap">
-            <table className="session-table">
-              <thead>
-                <tr>
-                  <th>会话</th>
-                  <th>Token</th>
-                  <th>消息</th>
-                  <th>工具</th>
-                  <th>分支</th>
-                  <th>健康度</th>
-                  <th>更新</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSessions.length ? (
-                  filteredSessions.map((item) => (
-                    <tr key={item.id} tabIndex={0} onClick={() => void openDetail(String(item.id))} onKeyDown={(event) => event.key === 'Enter' && void openDetail(String(item.id))}>
-                      <td className="session-title-cell">
-                        <div className="session-name">{String(item.title || '新对话')}</div>
-                        <div className="session-id">{String(item.id || '').slice(0, 12)}</div>
-                      </td>
-                      <td>{formatNumber(item.token_usage?.total_tokens || 0)}</td>
-                      <td>{formatNumber(item.message_count || 0)}</td>
-                      <td>
-                        {formatNumber(item.tool_calls || 0)} / {formatNumber(item.tool_failures || 0)}
-                      </td>
-                      <td>
-                        {formatNumber(item.branch?.branch_points || 0)} 点 · 深度 {formatNumber(item.branch?.max_depth || 0)}
-                      </td>
-                      <td>
-                        <span className={`health-pill ${healthClass(asNumber(item.health_score))}`}>{formatNumber(item.health_score)}</span>
-                      </td>
-                      <td>{formatTime(item.updated_at || item.created_at)}</td>
-                    </tr>
-                  ))
-                ) : (
+            <div className="session-table-wrap">
+              <table className="session-table">
+                <thead>
                   <tr>
-                    <td colSpan={7}>
-                      <EmptyNote text="暂无会话" />
-                    </td>
+                    <th>会话</th>
+                    <th>Token</th>
+                    <th>消息</th>
+                    <th>工具</th>
+                    <th>分支</th>
+                    <th>健康度</th>
+                    <th>更新</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredSessions.length ? (
+                    filteredSessions.map((item) => (
+                      <tr key={item.id} tabIndex={0} onClick={() => void openDetail(String(item.id))} onKeyDown={(event) => event.key === 'Enter' && void openDetail(String(item.id))}>
+                        <td className="session-title-cell">
+                          <div className="session-name">{String(item.title || '新对话')}</div>
+                          <div className="session-id">{String(item.id || '').slice(0, 12)}</div>
+                        </td>
+                        <td>{formatNumber(item.token_usage?.total_tokens || 0)}</td>
+                        <td>{formatNumber(item.message_count || 0)}</td>
+                        <td>
+                          {formatNumber(item.tool_calls || 0)} / {formatNumber(item.tool_failures || 0)}
+                        </td>
+                        <td>
+                          {formatNumber(item.branch?.branch_points || 0)} 点 · 深度 {formatNumber(item.branch?.max_depth || 0)}
+                        </td>
+                        <td>
+                          <span className={`health-pill ${healthClass(asNumber(item.health_score))}`}>{formatNumber(item.health_score)}</span>
+                        </td>
+                        <td>{formatTime(item.updated_at || item.created_at)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7}>
+                        <EmptyNote text="暂无会话" />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </main>
       <DetailDrawer detail={detail} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
