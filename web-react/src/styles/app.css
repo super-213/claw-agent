@@ -973,7 +973,8 @@ body.home-route .home-shell {
 .home-new-chat,
 .home-session-item,
 .home-object-strip button,
-.home-quick-actions button {
+.home-quick-actions button,
+.home-agent-prompts button {
   appearance: none;
   border: 0;
   color: inherit;
@@ -1090,7 +1091,7 @@ body.home-route .home-shell {
 }
 
 .home-dashboard-main .home-topbar {
-  align-items: center;
+  align-items: flex-start;
   background: color-mix(in srgb, var(--surface-solid) 78%, transparent);
   border: 1px solid var(--separator-soft);
   border-radius: var(--radius-lg);
@@ -1104,13 +1105,14 @@ body.home-route .home-shell {
 }
 
 .home-title-block {
-  flex: 1 0 min(100%, 430px);
-  min-width: min(100%, 430px);
+  flex: 1 1 420px;
+  min-width: 0;
 }
 
 .home-title-block h1 {
+  font-size: clamp(30px, 2.4vw, 42px);
   line-height: 1.06;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .home-title-block p {
@@ -1118,6 +1120,7 @@ body.home-route .home-shell {
   font-size: 13px;
   line-height: 1.45;
   margin-top: 6px;
+  max-width: 680px;
 }
 
 .home-global-command,
@@ -1180,56 +1183,237 @@ body.home-route .home-shell {
   justify-content: end;
 }
 
-.home-command-board {
-  grid-template-columns: minmax(0, 1fr);
-  margin: 0;
-  max-width: none;
+.home-nav-link.home-nav-chat,
+.home-agent-submit {
+  background: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 76%, var(--separator));
+  color: #111816;
 }
 
-.home-focus-card {
-  box-shadow: var(--shadow-hairline), 0 18px 50px rgba(15, 46, 41, .16);
+.home-nav-link.home-nav-chat:hover,
+.home-agent-submit:hover {
+  background: color-mix(in srgb, var(--warning) 88%, white);
+  border-color: color-mix(in srgb, var(--warning) 82%, var(--separator));
+  color: #111816;
 }
 
-.home-chat-entry {
-  background: color-mix(in srgb, var(--surface-solid) 88%, var(--app-bg));
-  border: 1px solid var(--separator-soft);
+.home-agent-stage {
+  background: color-mix(in srgb, var(--surface-solid) 94%, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--separator-soft));
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-hairline);
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 16px;
+  overflow: hidden;
+  padding: clamp(18px, 2.2vw, 28px);
+  position: relative;
 }
 
-.home-chat-entry form {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+.home-agent-heading {
+  max-width: 760px;
 }
 
-.home-quick-actions,
+.home-agent-heading h2 {
+  font-size: clamp(28px, 3.1vw, 48px);
+  line-height: 1.08;
+  margin: 0;
+  min-height: 1.12em;
+}
+
+.home-agent-heading p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.home-typewriter-caret {
+  animation: homeCaretBlink 920ms steps(2, end) infinite;
+  background: var(--warning);
+  display: inline-block;
+  height: .86em;
+  margin-left: 5px;
+  transform: translateY(.08em);
+  width: 2px;
+}
+
+.home-agent-copy {
+  min-height: 1.5em;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 360ms ease, transform 360ms ease;
+}
+
+.home-agent-copy.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes homeCaretBlink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.home-agent-command {
+  align-items: center;
+  background: var(--surface-solid);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--separator));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hairline), 0 14px 34px rgba(15, 46, 41, .1);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  min-height: 64px;
+  padding: 8px 9px 8px 16px;
+}
+
+.home-agent-command > svg {
+  color: var(--accent);
+}
+
+.home-agent-command input {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  min-width: 0;
+  outline: none;
+}
+
+.home-agent-command input::placeholder {
+  color: color-mix(in srgb, var(--text-tertiary) 88%, transparent);
+}
+
+.home-agent-mic,
+.home-agent-submit {
+  align-items: center;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  min-height: 46px;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.home-agent-mic {
+  background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  width: 46px;
+}
+
+.home-agent-mic:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-solid));
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+
+.home-agent-submit {
+  border: 1px solid;
+  min-width: 132px;
+  padding: 0 16px;
+}
+
+.home-agent-mic:hover,
+.home-agent-submit:hover {
+  transform: translateY(-1px);
+}
+
+.home-agent-prompts,
+.home-status-strip,
 .home-object-strip {
   display: grid;
   gap: 8px;
 }
 
-.home-quick-actions {
+.home-agent-prompts {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.home-quick-actions button {
+.home-agent-prompts button {
   align-items: center;
-  background: color-mix(in srgb, var(--surface-muted) 58%, transparent);
+  background: color-mix(in srgb, var(--surface-muted) 62%, transparent);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   display: flex;
   gap: 7px;
-  min-height: 34px;
+  min-height: 38px;
   justify-content: center;
   padding: 0 10px;
-  transition: background 160ms ease, color 160ms ease;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
-.home-quick-actions button:hover {
+.home-agent-prompts button:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent);
+}
+
+.home-status-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.home-status-strip button {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-solid) 88%, var(--app-bg));
+  border: 1px solid var(--separator-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hairline);
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 8px 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 88px;
+  padding: 14px;
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.home-status-strip button:hover {
+  background: var(--surface-solid);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--separator));
+  transform: translateY(-1px);
+}
+
+.home-status-strip svg {
+  color: var(--accent);
+}
+
+.home-status-strip span {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.home-status-strip strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.home-status-strip small {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.home-status-strip em {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: normal;
+  grid-column: 2;
+  line-height: 1.35;
 }
 
 .home-object-strip {
@@ -1439,8 +1623,9 @@ body.home-route .home-shell {
     position: static;
   }
 
-  .home-object-strip,
-  .home-quick-actions {
+  .home-agent-prompts,
+  .home-status-strip,
+  .home-object-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1507,12 +1692,9 @@ body.home-route .home-shell {
     justify-content: center;
   }
 
-  .home-focus-card {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .home-focus-card .home-ops {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .home-agent-heading h2 {
+    font-size: clamp(28px, 8vw, 40px);
+    min-height: 2.18em;
   }
 
   .home-chat-layer {
@@ -1532,21 +1714,46 @@ body.home-route .home-shell {
 }
 
 @media (max-width: 620px) {
+  .home-agent-prompts,
+  .home-status-strip,
   .home-object-strip,
-  .home-quick-actions,
-  .home-focus-card .home-ops {
+  .home-quick-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .home-global-command {
+  .home-agent-command {
     grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 58px;
   }
 
-  .home-global-command button[title="语音输入"] {
+  .home-agent-mic {
+    display: none;
+  }
+
+  .home-agent-submit {
+    min-width: 46px;
+    padding: 0;
+    width: 46px;
+  }
+
+  .home-agent-submit span {
     display: none;
   }
 
   .home-object-strip button {
     min-height: 68px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-typewriter-caret {
+    animation: none;
+    opacity: 1;
+  }
+
+  .home-agent-copy {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }

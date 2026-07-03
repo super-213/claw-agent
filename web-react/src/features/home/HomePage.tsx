@@ -15,7 +15,6 @@ import {
   PackagePlus,
   Pill,
   RefreshCw,
-  Search,
   Settings,
   ShoppingBasket,
   Trash2,
@@ -74,22 +73,34 @@ const quickActions: Array<{ label: string; icon: LucideIcon; draft: string }> = 
   { label: '处理未读通知', icon: Inbox, draft: '帮我处理家庭通知收件箱里的待确认事项。' },
 ];
 
+const agentHeadingPhrases = [
+  '先告诉 Agent 要处理什么',
+  '把家庭琐事直接交给 Agent',
+  '说出需求，Agent 会接着处理',
+  '从一句话开始安排家里的事',
+  '让 Agent 帮你整理今天的家务',
+];
+
+const agentSubtitlePhrases = [
+  '记录物品、创建提醒、查库存或处理通知，都从这里开始。',
+  '可以直接说“明早提醒我倒垃圾”，也可以让 Agent 整理购物清单。',
+  '不用先找功能入口，把要做的事用自然语言说出来。',
+  'Agent 会把对话转成提醒、库存、通知和家庭记录。',
+  '从一句话进入任务，再回到家庭工作台查看结果。',
+];
+
+const randomDifferentIndex = (length: number, currentIndex: number) => {
+  if (length <= 1) return 0;
+  const next = Math.floor(Math.random() * (length - 1));
+  return next >= currentIndex ? next + 1 : next;
+};
+
 const urlBase64ToUint8Array = (base64String: string) => {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 };
-
-function Kpi({ label, value, icon: Icon }: { label: string; value: number | string; icon: LucideIcon }) {
-  return (
-    <div className="home-kpi">
-      <Icon size={18} />
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
 
 function relativeRunTime(value?: string | null) {
   if (!value) return '未设置';
@@ -119,6 +130,11 @@ export function HomePage() {
   const [now, setNow] = useState(() => new Date());
   const [commandDraft, setCommandDraft] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [headingPhraseIndex, setHeadingPhraseIndex] = useState(() => Math.floor(Math.random() * agentHeadingPhrases.length));
+  const [headingText, setHeadingText] = useState('');
+  const [subtitleIndex, setSubtitleIndex] = useState(() => Math.floor(Math.random() * agentSubtitlePhrases.length));
+  const [subtitleVisible, setSubtitleVisible] = useState(true);
 
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMounted, setChatMounted] = useState(false);
@@ -149,6 +165,88 @@ export function HomePage() {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateMotionPreference = () => setReducedMotion(motionQuery.matches);
+    updateMotionPreference();
+    motionQuery.addEventListener('change', updateMotionPreference);
+    return () => motionQuery.removeEventListener('change', updateMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setHeadingText(agentHeadingPhrases[headingPhraseIndex]);
+      return undefined;
+    }
+
+    const phrase = agentHeadingPhrases[headingPhraseIndex];
+    let charIndex = 0;
+    let timer = 0;
+    let cancelled = false;
+    setHeadingText('');
+
+    const schedule = (callback: () => void, delay: number) => {
+      timer = window.setTimeout(callback, delay);
+    };
+
+    const deletePreviousCharacter = () => {
+      if (cancelled) return;
+      charIndex -= 1;
+      setHeadingText(phrase.slice(0, Math.max(0, charIndex)));
+      if (charIndex > 0) {
+        schedule(deletePreviousCharacter, 38);
+        return;
+      }
+      schedule(() => {
+        setHeadingPhraseIndex((current) => randomDifferentIndex(agentHeadingPhrases.length, current));
+      }, 260);
+    };
+
+    const typeNextCharacter = () => {
+      if (cancelled) return;
+      charIndex += 1;
+      setHeadingText(phrase.slice(0, charIndex));
+      if (charIndex < phrase.length) {
+        schedule(typeNextCharacter, 72);
+        return;
+      }
+      schedule(deletePreviousCharacter, 2200);
+    };
+
+    schedule(typeNextCharacter, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [headingPhraseIndex, reducedMotion]);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setSubtitleVisible(true);
+      return undefined;
+    }
+
+    const fadeOutTimer = window.setTimeout(() => setSubtitleVisible(false), 3600);
+    const swapTimer = window.setTimeout(() => {
+      setSubtitleIndex((current) => randomDifferentIndex(agentSubtitlePhrases.length, current));
+      setSubtitleVisible(true);
+    }, 4100);
+
+    return () => {
+      window.clearTimeout(fadeOutTimer);
+      window.clearTimeout(swapTimer);
+    };
+  }, [subtitleIndex, reducedMotion]);
+
+  useEffect(() => {
+    if (!reducedMotion) return undefined;
+    const timer = window.setInterval(() => {
+      setHeadingPhraseIndex((current) => randomDifferentIndex(agentHeadingPhrases.length, current));
+      setSubtitleIndex((current) => randomDifferentIndex(agentSubtitlePhrases.length, current));
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [reducedMotion]);
 
   const loadRecentSessions = useCallback(async () => {
     const data = await sessionsApi.list();
@@ -272,6 +370,40 @@ export function HomePage() {
         minute: '2-digit',
       }).format(now),
     [now],
+  );
+
+  const statusCards = useMemo(
+    () => [
+      {
+        label: '今日提醒',
+        value: todayReminders.length,
+        detail: pendingReminders.length ? `${pendingReminders.length} 个待处理` : '今天没有待处理提醒',
+        icon: Clock3,
+        draft: '查看今天要处理的家庭提醒。',
+      },
+      {
+        label: '快过期',
+        value: expiring.length,
+        detail: expiring.length ? '3 天内需要处理' : '暂无临期物品',
+        icon: Utensils,
+        draft: '查看 3 天内快过期的家庭物品。',
+      },
+      {
+        label: '低库存',
+        value: lowStock.length,
+        detail: lowStock.length ? '可生成购物清单' : '库存状态正常',
+        icon: ShoppingBasket,
+        draft: '根据低库存生成一份购物清单。',
+      },
+      {
+        label: '未读通知',
+        value: unreadNotifications,
+        detail: unreadNotifications ? '有事项待确认' : '通知已处理完',
+        icon: Inbox,
+        draft: '帮我处理家庭通知收件箱里的待确认事项。',
+      },
+    ],
+    [expiring.length, lowStock.length, pendingReminders.length, todayReminders.length, unreadNotifications],
   );
 
   const addItem = async (event: FormEvent) => {
@@ -418,7 +550,7 @@ export function HomePage() {
           </div>
           <button className="home-new-chat" type="button" disabled={busy} onClick={() => void startNewConversation()}>
             <MessageCircle size={15} />
-            新建对话
+            新建 Agent 对话
           </button>
           <div className="home-session-list">
             {recentSessions.length ? (
@@ -447,28 +579,13 @@ export function HomePage() {
           <div className="home-title-block">
             <span className="home-kicker">主工作台</span>
             <h1>家庭工作台</h1>
-            <p>今日提醒、物品状态、通知和最近协作集中在这里。</p>
+            <p>{todayLabel} · 今日提醒、物品状态、通知和最近协作集中在这里。</p>
           </div>
-          <form className="home-global-command" onSubmit={submitCommand}>
-            <Search size={17} />
-            <input
-              aria-label="搜索或输入家庭需求"
-              value={commandDraft}
-              placeholder="搜索家庭事务，或直接说需求..."
-              onChange={(event) => setCommandDraft(event.target.value)}
-            />
-            <button type="button" title="语音输入" onClick={() => openConversation({ draft: '语音记录：' })}>
-              <Mic size={17} />
-            </button>
-            <button type="submit" title="打开对话覆盖层">
-              <ArrowRight size={17} />
-            </button>
-          </form>
           <nav className="home-nav" aria-label="家庭页面操作">
             <button className="icon-button" type="button" title="刷新" disabled={busy} onClick={() => void load()}>
               <RefreshCw size={18} />
             </button>
-            <Link to="/chat" className="home-nav-link">
+            <Link to="/chat" className="home-nav-link home-nav-chat">
               <MessageCircle size={15} />
               对话
             </Link>
@@ -484,45 +601,52 @@ export function HomePage() {
 
         {message ? <pre className="home-message">{message}</pre> : null}
 
-        <section className="home-command-board" aria-label="家庭事务概览">
-          <article className="home-focus-card">
-            <div>
-              <span className="home-kicker">Today</span>
-              <h2>{pendingReminders.length} 个事项待处理</h2>
-              <p>
-                {todayReminders.length} 个今日提醒，{expiring.length} 项 3 天内到期，{unreadNotifications} 条未读通知。
-              </p>
-            </div>
-            <div className="home-ops">
-              <Kpi icon={Clock3} label="今日提醒" value={todayReminders.length} />
-              <Kpi icon={Utensils} label="快过期" value={expiring.length} />
-              <Kpi icon={ShoppingBasket} label="低库存" value={lowStock.length} />
-              <Kpi icon={Inbox} label="未读通知" value={unreadNotifications} />
-            </div>
-          </article>
-
-          <section className="home-chat-entry" aria-label="情境化对话入口">
-            <form onSubmit={submitCommand}>
-              <MessageCircle size={18} />
-              <input
-                aria-label="对话入口"
-                value={commandDraft}
-                placeholder="说点什么，或输入 / 创建提醒..."
-                onChange={(event) => setCommandDraft(event.target.value)}
-              />
-              <button type="submit" title="进入对话">
-                <ArrowRight size={17} />
+        <section className="home-agent-stage" aria-labelledby="home-agent-title">
+          <div className="home-agent-heading">
+            <span className="home-kicker">Agent 对话</span>
+            <h2 id="home-agent-title" aria-label={agentHeadingPhrases[headingPhraseIndex]}>
+              <span>{headingText}</span>
+              <span className="home-typewriter-caret" aria-hidden="true" />
+            </h2>
+            <p className={`home-agent-copy${subtitleVisible ? ' visible' : ''}`}>{agentSubtitlePhrases[subtitleIndex]}</p>
+          </div>
+          <form className="home-agent-command" onSubmit={submitCommand}>
+            <MessageCircle size={20} />
+            <input
+              aria-label="和家庭 Agent 对话"
+              value={commandDraft}
+              placeholder="例如：明天早上 8 点提醒我倒垃圾"
+              onChange={(event) => setCommandDraft(event.target.value)}
+            />
+            <button className="home-agent-mic" type="button" title="语音输入" onClick={() => openConversation({ draft: '语音记录：' })}>
+              <Mic size={18} />
+            </button>
+            <button className="home-agent-submit" type="submit">
+              <span>开始对话</span>
+              <ArrowRight size={17} />
+            </button>
+          </form>
+          <div className="home-agent-prompts" aria-label="常用 Agent 指令">
+            {quickActions.map((action) => (
+              <button type="button" key={action.label} onClick={() => openConversation({ draft: action.draft })}>
+                <action.icon size={16} />
+                <span>{action.label}</span>
               </button>
-            </form>
-            <div className="home-quick-actions">
-              {quickActions.map((action) => (
-                <button type="button" key={action.label} onClick={() => openConversation({ draft: action.draft })}>
-                  <action.icon size={15} />
-                  <span>{action.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+            ))}
+          </div>
+        </section>
+
+        <section className="home-status-strip" aria-label="今日家庭状态">
+          {statusCards.map((card) => (
+            <button type="button" key={card.label} onClick={() => openConversation({ draft: card.draft })}>
+              <card.icon size={17} />
+              <span>
+                <strong>{card.value}</strong>
+                <small>{card.label}</small>
+              </span>
+              <em>{card.detail}</em>
+            </button>
+          ))}
         </section>
 
         <section className="home-object-strip" aria-label="常用对象">
