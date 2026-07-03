@@ -428,7 +428,7 @@ export function DashboardPage() {
                 </a>
               ))}
             </nav>
-            <a className="dashboard-nav-link" href="/">
+            <a className="dashboard-nav-link" href="/chat">
               对话
             </a>
             <a className="dashboard-nav-link" href="/home">

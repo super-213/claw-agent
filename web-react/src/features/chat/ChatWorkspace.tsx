@@ -1,4 +1,4 @@
-import { GitFork } from 'lucide-react';
+import { ArrowLeft, GitFork } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
@@ -26,12 +26,29 @@ interface BranchNotice {
   sourceNodeId: string;
 }
 
+interface DraftSeed {
+  id: number;
+  text: string;
+}
+
 export function ChatWorkspace({
   initialTreeOpen = false,
   initialModal = null,
+  mode = 'standalone',
+  active = true,
+  requestedSessionId = null,
+  draftSeed = null,
+  onClose,
+  onSessionChange,
 }: {
   initialTreeOpen?: boolean;
   initialModal?: ModalKind;
+  mode?: 'standalone' | 'overlay';
+  active?: boolean;
+  requestedSessionId?: string | null;
+  draftSeed?: DraftSeed | null;
+  onClose?: () => void;
+  onSessionChange?: (sessionId: string) => void;
 }) {
   const navigate = useNavigate();
   const params = useParams();
@@ -74,15 +91,18 @@ export function ChatWorkspace({
   );
   const pendingBranchNodeId = activeTreeNode?.is_placeholder ? activeTreeNode.node_id : null;
   const branchCreationLocked = Boolean(pendingBranchNodeId || branchNotice);
+  const standalone = mode === 'standalone';
 
   useEffect(() => {
+    if (!standalone || !active) return;
     document.body.classList.add('chat-route');
     return () => {
       document.body.classList.remove('chat-route');
     };
-  }, []);
+  }, [active, standalone]);
 
   useEffect(() => {
+    if (!active) return;
     if (typeof window === 'undefined' || !window.visualViewport || !window.matchMedia('(max-width: 860px)').matches) return;
     const resetPageOffset = () => {
       const active = document.activeElement;
@@ -104,7 +124,7 @@ export function ChatWorkspace({
       window.visualViewport?.removeEventListener('scroll', scheduleReset);
       window.removeEventListener('focusout', scheduleReset);
     };
-  }, []);
+  }, [active]);
 
   const loadConfig = useCallback(async () => {
     if (!isAdmin(currentUser)) return;
@@ -135,8 +155,9 @@ export function ChatWorkspace({
   const openSession = useCallback(
     async (sessionId: string, options: { pushRoute?: boolean } = {}) => {
       setCurrentSessionId(sessionId);
+      onSessionChange?.(sessionId);
       setMenuSessionId(null);
-      if (options.pushRoute !== false && params.sessionId !== sessionId) {
+      if (standalone && options.pushRoute !== false && params.sessionId !== sessionId) {
         navigate(`/sessions/${sessionId}`);
       }
       const detail = await sessionsApi.get(sessionId);
@@ -149,7 +170,7 @@ export function ChatWorkspace({
       void loadTree(sessionId).catch(() => undefined);
       setMobileSidebarOpen(false);
     },
-    [loadTree, navigate, params.sessionId, setCurrentSessionId, setStatusText],
+    [loadTree, navigate, onSessionChange, params.sessionId, setCurrentSessionId, setStatusText, standalone],
   );
 
   const createSession = useCallback(async () => {
@@ -159,12 +180,13 @@ export function ChatWorkspace({
   }, [loadSessions, openSession]);
 
   useEffect(() => {
+    if (!active) return;
     let mounted = true;
     const boot = async () => {
       await Promise.all([loadSkills(), loadConfig()]);
       const loadedSessions = await loadSessions();
       if (!mounted) return;
-      const target = params.sessionId || loadedSessions[0]?.id;
+      const target = requestedSessionId || params.sessionId || useAppStore.getState().currentSessionId || loadedSessions[0]?.id;
       if (target) {
         await openSession(target, { pushRoute: false });
       } else {
@@ -177,7 +199,7 @@ export function ChatWorkspace({
     return () => {
       mounted = false;
     };
-  }, [createSession, loadConfig, loadSessions, loadSkills, openSession, params.sessionId]);
+  }, [active, createSession, loadConfig, loadSessions, loadSkills, openSession, params.sessionId, requestedSessionId]);
 
   useEffect(() => {
     setTreeOpen(initialTreeOpen);
@@ -186,6 +208,11 @@ export function ChatWorkspace({
   useEffect(() => {
     setModal(initialModal);
   }, [initialModal]);
+
+  useEffect(() => {
+    if (!draftSeed) return;
+    setDraft(draftSeed.text);
+  }, [draftSeed]);
 
   useEffect(() => {
     setBranchActionStates({});
@@ -244,6 +271,7 @@ export function ChatWorkspace({
       targetSessionId = created.id;
       await loadSessions();
       setCurrentSessionId(targetSessionId);
+      onSessionChange?.(targetSessionId);
     }
     if (!targetSessionId || streams[targetSessionId]) return;
 
@@ -401,41 +429,50 @@ export function ChatWorkspace({
   const branchSummary = tree ? `${tree.nodes.length} 节点` : '未载入';
 
   return (
-    <div className="app">
-      <SessionSidebar
-        open={mobileSidebarOpen}
-        sessions={sessions}
-        skills={skills}
-        currentSessionId={currentSessionId}
-        currentUser={currentUser}
-        busySessionIds={busySessionIds}
-        menuSessionId={menuSessionId}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
-        onCreateSession={createSession}
-        onOpenSession={openSession}
-        onToggleSessionMenu={setMenuSessionId}
-        onCopySession={copySession}
-        onDeleteSession={deleteSession}
-        onShareSession={(sessionId) => setShareSessionId(sessionId)}
-        onInsertSkill={(skill) => insertSkill(skill.name)}
-        onOpenSkillModal={() => setModal('plugins')}
-        onReloadSkills={async () => {
-          const data = await skillsApi.reload();
-          setSkills(data.skills || []);
-          setStatusText(`技能 ${data.skills?.length || 0}`);
-          setTimeout(() => setStatusText('就绪'), 1200);
-        }}
-        onOpenConfig={() => setModal('settings')}
-        onOpenUsers={() => setModal('users')}
-        onLogout={logout}
-      />
+    <div className={`app${standalone ? '' : ' chat-overlay-app'}`}>
+      {standalone ? (
+        <SessionSidebar
+          open={mobileSidebarOpen}
+          sessions={sessions}
+          skills={skills}
+          currentSessionId={currentSessionId}
+          currentUser={currentUser}
+          busySessionIds={busySessionIds}
+          menuSessionId={menuSessionId}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+          onCreateSession={createSession}
+          onOpenSession={openSession}
+          onToggleSessionMenu={setMenuSessionId}
+          onCopySession={copySession}
+          onDeleteSession={deleteSession}
+          onShareSession={(sessionId) => setShareSessionId(sessionId)}
+          onInsertSkill={(skill) => insertSkill(skill.name)}
+          onOpenSkillModal={() => setModal('plugins')}
+          onReloadSkills={async () => {
+            const data = await skillsApi.reload();
+            setSkills(data.skills || []);
+            setStatusText(`技能 ${data.skills?.length || 0}`);
+            setTimeout(() => setStatusText('就绪'), 1200);
+          }}
+          onOpenConfig={() => setModal('settings')}
+          onOpenUsers={() => setModal('users')}
+          onLogout={logout}
+        />
+      ) : null}
 
       <main className="main">
         <div className="topbar">
           <div className="topbar-left">
-            <MobileMenuButton open={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(true)} />
+            {standalone ? (
+              <MobileMenuButton open={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(true)} />
+            ) : (
+              <button className="chat-overlay-back" type="button" onClick={onClose} aria-label="返回家庭工作台">
+                <ArrowLeft size={18} />
+                <span>工作台</span>
+              </button>
+            )}
             <div className="topbar-heading">
-              <div className="topbar-eyebrow">本地 Agent / 当前会话</div>
+              <div className="topbar-eyebrow">{standalone ? '本地 Agent / 当前会话' : '家庭工作台 / 对话覆盖层'}</div>
               <h1 className="topbar-title">{topbarTitle}</h1>
             </div>
           </div>

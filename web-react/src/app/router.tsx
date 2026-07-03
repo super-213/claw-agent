@@ -10,7 +10,8 @@ export const routes: RouteObject[] = [
   {
     element: <ProtectedRoute />,
     children: [
-      { path: '/', element: <ChatWorkspace /> },
+      { path: '/', element: <HomePage /> },
+      { path: '/chat', element: <ChatWorkspace /> },
       { path: '/sessions/:sessionId', element: <ChatWorkspace /> },
       { path: '/sessions/:sessionId/tree', element: <ChatWorkspace initialTreeOpen /> },
       { path: '/home', element: <HomePage /> },

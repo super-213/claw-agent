@@ -2,8 +2,8 @@
   "id": "42c2c0eb75db433f9c85bddcd366a19b",
   "title": "2+3等于几",
   "created_at": "2026-05-10T07:12:13.540653+00:00",
-  "updated_at": "2026-06-12T08:27:51.160980+00:00",
-  "active_node_id": "dbe47099-b8ca-4637-ba9e-012c2f39c02b",
+  "updated_at": "2026-07-03T07:42:04.347331+00:00",
+  "active_node_id": "7f78b67b-0e6b-4c40-81cc-46850125f793",
   "messages": [
     {
       "role": "system",
