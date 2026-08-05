@@ -53,7 +53,7 @@ from services.chat_runner import (
 from services.dashboard_metrics import DashboardMetrics
 from services.message_media import normalize_attachments, normalize_images
 from skills import SkillRegistry
-from agent_runtime import RunStore
+from agent_runtime import ArtifactStore, MemoryStore, RunStore
 from agent_runtime.builtin_tools import build_tool_registry
 
 
@@ -110,6 +110,27 @@ class ChatRequest(BaseModel):
 class RunApprovalRequest(BaseModel):
     approval_token: str | None = None
     approved: bool = True
+
+
+class MemoryWriteRequest(BaseModel):
+    content: str | None = None
+    scope: str = "session"
+    session_id: str | None = None
+    source: str | None = None
+    confidence: float = 1.0
+
+
+class MemoryCorrectRequest(BaseModel):
+    content: str | None = None
+    scope: str = "session"
+    session_id: str | None = None
+    source: str | None = None
+
+
+class RunRecoveryRequest(BaseModel):
+    call_id: str | None = None
+    action: str | None = None
+    output: Any = None
 
 
 class BootstrapAdminRequest(BaseModel):
@@ -382,12 +403,19 @@ executor = CommandExecutor(
     timeout=config["timeout"],
     cwd=GENERATED_DIR,
     generated_files_dir=GENERATED_DIR,
+    sandbox_backend=config["shell_sandbox_backend"],
+    require_sandbox=config["shell_require_sandbox"],
 )
 tool_registry = build_tool_registry(
     project_root=PROJECT_ROOT,
     generated_files_dir=GENERATED_DIR,
     executor=executor,
     home_assistant_service=home_assistant_service,
+    skill_registry=skill_registry,
+    allowed_http_domains=tuple(
+        item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
+        if item.strip()
+    ),
 )
 
 
@@ -595,7 +623,11 @@ def _skill_payload(skill_name: str) -> dict:
     return payload
 
 
-def _build_orchestrator() -> AgentOrchestrator:
+artifact_store = ArtifactStore(run_root / "artifacts")
+memory_store = MemoryStore(run_root.parent / "memory")
+
+
+def _build_orchestrator(user_id: str | None = None) -> AgentOrchestrator:
     llm_client = _new_llm_client()
     conversation = ConversationManager(agent_prompt)
     context_compressor = ContextCompressor(
@@ -604,6 +636,11 @@ def _build_orchestrator() -> AgentOrchestrator:
         recent_messages=config["context_recent_messages"],
         summary_target_chars=config["summary_target_chars"],
         summary_input_chars=config["summary_input_chars"],
+        max_context_tokens=min(
+            config["context_max_tokens"],
+            int(config["model_context_window"] or getattr(llm_client, "context_window", 32768)) * 4 // 5,
+        ),
+        token_estimator=token_estimator,
     )
     return AgentOrchestrator(
         llm_client=llm_client,
@@ -615,6 +652,16 @@ def _build_orchestrator() -> AgentOrchestrator:
         max_steps=config["agent_max_steps"],
         max_runtime_seconds=config["agent_max_runtime_seconds"],
         max_tool_output_chars=config["tool_output_max_chars"],
+        max_tokens=config["agent_max_tokens"],
+        max_cost=config["agent_max_cost"],
+        input_cost_per_million=config["model_input_cost_per_million"],
+        output_cost_per_million=config["model_output_cost_per_million"],
+        max_repeated_calls=config["agent_max_repeated_calls"],
+        max_empty_turns=config["agent_max_empty_turns"],
+        approval_ttl_seconds=config["approval_ttl_seconds"],
+        artifact_store=artifact_store,
+        memory_store=memory_store,
+        user_id=user_id,
     )
 
 
@@ -1461,6 +1508,11 @@ def update_config(
                 generated_files_dir=GENERATED_DIR,
                 executor=executor,
                 home_assistant_service=home_assistant_service,
+                skill_registry=skill_registry,
+                allowed_http_domains=tuple(
+                    item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
+                    if item.strip()
+                ),
             )
     except ValueError as e:
         return _json({"error": "invalid_config", "message": str(e)}, 400)
@@ -1789,7 +1841,7 @@ async def chat(
                 auto_skills = route.skills
         return await run_chat(
             store=store,
-            build_orchestrator=_build_orchestrator,
+            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or "")),
             session_run_locks=session_run_locks,
             session_id=session_id,
             user_message=user_message,
@@ -1832,6 +1884,10 @@ async def runtime_tools(user: dict[str, Any] = Depends(require_user)):
         "tools": [
             {
                 "name": tool.name,
+                "canonical_names": [
+                    alias for alias, target in tool_registry.aliases().items()
+                    if target == tool.name
+                ],
                 "description": tool.description,
                 "input_schema": tool.input_schema,
                 "risk_level": tool.risk_level,
@@ -1873,7 +1929,7 @@ async def approve_run(
     return StreamingResponse(
         stream_run_approval_events(
             store=store,
-            build_orchestrator=_build_orchestrator,
+            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or "")),
             session_run_locks=session_run_locks,
             session_id=session_id,
             run_id=run_id,
@@ -1920,7 +1976,7 @@ async def resume_run(
     return StreamingResponse(
         stream_run_resume_events(
             store=store,
-            build_orchestrator=_build_orchestrator,
+            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or "")),
             session_run_locks=session_run_locks,
             session_id=session_id,
             run_id=run_id,
@@ -1928,6 +1984,135 @@ async def resume_run(
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/runs/{run_id}/cancel", tags=["runtime"])
+async def cancel_run(run_id: str, user: dict[str, Any] = Depends(require_user)):
+    try:
+        run = await asyncio.to_thread(run_store.load, run_id)
+        session_id = str(run.get("session_id") or "")
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+        updated = await asyncio.to_thread(run_store.request_cancel, run_id)
+    except KeyError:
+        return _json({"error": "run_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    return {"run_id": run_id, "status": updated.get("status"), "cancel_requested": True}
+
+
+@app.post("/api/runs/{run_id}/resolve-tool", tags=["runtime"])
+async def resolve_uncertain_tool(
+    run_id: str,
+    payload: RunRecoveryRequest,
+    user: dict[str, Any] = Depends(require_user),
+):
+    data = _payload(payload)
+    try:
+        run = await asyncio.to_thread(run_store.load, run_id)
+        await asyncio.to_thread(
+            _load_authorized_session, str(run.get("session_id") or ""), user, write=True
+        )
+        updated = await asyncio.to_thread(
+            run_store.resolve_tool_uncertainty,
+            run_id,
+            call_id=str(data.get("call_id") or ""),
+            action=str(data.get("action") or ""),
+            output=data.get("output"),
+        )
+    except KeyError:
+        return _json({"error": "run_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    except ValueError as exc:
+        return _json({"error": str(exc)}, 409)
+    return {"run_id": run_id, "status": updated.get("status")}
+
+
+def _memory_owner(scope: str, session_id: str | None, user: dict[str, Any], *, write: bool) -> str:
+    if scope == "user":
+        return str(user.get("id") or "")
+    if scope != "session" or not session_id:
+        raise ValueError("invalid_memory_scope")
+    _load_authorized_session(session_id, user, write=write)
+    return session_id
+
+
+@app.get("/api/memories", tags=["runtime"])
+async def search_memories(
+    query: str = "",
+    session_id: str | None = None,
+    user: dict[str, Any] = Depends(require_user),
+):
+    scopes = [("user", str(user.get("id") or ""))]
+    if session_id:
+        try:
+            await asyncio.to_thread(_load_authorized_session, session_id, user, write=False)
+        except KeyError:
+            return _json({"error": "session_not_found"}, 404)
+        except PermissionError:
+            return _json({"error": "forbidden"}, 403)
+        scopes.insert(0, ("session", session_id))
+    return {"memories": await asyncio.to_thread(memory_store.search, query, scopes=scopes, limit=50)}
+
+
+@app.post("/api/memories", tags=["runtime"], status_code=201)
+async def save_memory(
+    payload: MemoryWriteRequest,
+    user: dict[str, Any] = Depends(require_user),
+):
+    data = _payload(payload)
+    try:
+        owner = await asyncio.to_thread(
+            _memory_owner, str(data.get("scope") or "session"), data.get("session_id"), user, write=True
+        )
+        record = await asyncio.to_thread(
+            memory_store.save,
+            content=str(data.get("content") or ""),
+            scope=str(data.get("scope") or "session"),
+            owner_id=owner,
+            source=str(data.get("source") or "user_api"),
+            confidence=float(data.get("confidence") or 1.0),
+            user_authorized=True,
+        )
+    except (ValueError, PermissionError) as exc:
+        return _json({"error": str(exc)}, 400 if isinstance(exc, ValueError) else 403)
+    return _json({"memory": record}, 201)
+
+
+@app.patch("/api/memories/{memory_id}", tags=["runtime"])
+async def correct_memory(
+    memory_id: str,
+    payload: MemoryCorrectRequest,
+    user: dict[str, Any] = Depends(require_user),
+):
+    data = _payload(payload)
+    try:
+        scope = str(data.get("scope") or "session")
+        owner = await asyncio.to_thread(_memory_owner, scope, data.get("session_id"), user, write=True)
+        record = await asyncio.to_thread(
+            memory_store.correct, memory_id, scope=scope, owner_id=owner,
+            content=str(data.get("content") or ""), source=str(data.get("source") or "user_correction"),
+        )
+    except KeyError:
+        return _json({"error": "memory_not_found"}, 404)
+    except (ValueError, PermissionError) as exc:
+        return _json({"error": str(exc)}, 400 if isinstance(exc, ValueError) else 403)
+    return {"memory": record}
+
+
+@app.delete("/api/memories/{memory_id}", tags=["runtime"])
+async def delete_memory(
+    memory_id: str,
+    scope: str = "session",
+    session_id: str | None = None,
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        owner = await asyncio.to_thread(_memory_owner, scope, session_id, user, write=True)
+        deleted = await asyncio.to_thread(memory_store.delete, memory_id, scope=scope, owner_id=owner)
+    except (ValueError, PermissionError) as exc:
+        return _json({"error": str(exc)}, 400 if isinstance(exc, ValueError) else 403)
+    return {"deleted": deleted}
 
 
 @app.post("/api/chat/stream", tags=["chat"])
@@ -2010,7 +2195,7 @@ async def chat_stream(
     return StreamingResponse(
         stream_chat_events(
             store=store,
-            build_orchestrator=_build_orchestrator,
+            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or "")),
             session_run_locks=session_run_locks,
             session_id=session_id,
             user_message=user_message,

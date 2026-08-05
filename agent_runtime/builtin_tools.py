@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import shlex
 import socket
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -18,6 +18,11 @@ from services.home_assistant_service import HomeAssistantService, POWER_DOMAINS
 
 from .models import ToolDefinition
 from .registry import ToolRegistry
+
+try:
+    from skills.registry import SkillRegistry
+except ImportError:  # pragma: no cover - optional embedding boundary
+    SkillRegistry = Any
 
 
 READ_ONLY_SHELL_COMMANDS = {
@@ -32,6 +37,10 @@ def build_tool_registry(
     generated_files_dir: str | Path,
     executor: CommandExecutor,
     home_assistant_service: HomeAssistantService | None = None,
+    skill_registry: SkillRegistry | None = None,
+    browser_handler: Callable[[dict[str, Any]], Any] | None = None,
+    app_handler: Callable[[dict[str, Any]], Any] | None = None,
+    allowed_http_domains: tuple[str, ...] = (),
 ) -> ToolRegistry:
     project = Path(project_root).resolve()
     generated = Path(generated_files_dir).resolve()
@@ -49,6 +58,68 @@ def build_tool_registry(
         idempotent=True,
         max_retries=1,
     ))
+
+    if skill_registry is not None:
+        names = [row["name"] for row in skill_registry.catalog(auto_only=True)]
+        if names:
+            registry.register(ToolDefinition(
+                name="skill_load",
+                description=(
+                    "Load the full instructions for one capability package after selecting it "
+                    "from the compact skill catalog."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"name": {"type": "string", "enum": names}},
+                    "required": ["name"],
+                    "additionalProperties": False,
+                },
+                handler=lambda args: skill_registry.load_for_runtime(
+                    str(args["name"]),
+                    available_tools=(
+                        {tool.name for tool in registry.list()} | set(registry.aliases())
+                    ),
+                    automatic=True,
+                ),
+                idempotent=True,
+                max_retries=1,
+                capabilities=("skill:read",),
+            ))
+
+    if browser_handler is not None:
+        registry.register(ToolDefinition(
+            name="browser_open",
+            description="Open a public URL in an attached browser capability.",
+            input_schema={
+                "type": "object",
+                "properties": {"url": {"type": "string", "minLength": 1, "maxLength": 4096}},
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            handler=browser_handler,
+            risk_level="medium",
+            requires_confirmation=True,
+            capabilities=("browser:open", "network:external"),
+        ))
+
+    if app_handler is not None:
+        registry.register(ToolDefinition(
+            name="app_control",
+            description="Control an explicitly attached application capability.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "app": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "action": {"type": "string", "enum": ["open", "focus", "close"]},
+                },
+                "required": ["app", "action"],
+                "additionalProperties": False,
+            },
+            handler=app_handler,
+            risk_level="critical",
+            requires_confirmation=True,
+            capabilities=("system:application-control",),
+        ))
     registry.register(ToolDefinition(
         name="file_read",
         description="Read a UTF-8 text file from the project or generated-files directory.",
@@ -96,10 +167,12 @@ def build_tool_registry(
             "required": ["url"],
             "additionalProperties": False,
         },
-        handler=_http_request,
+        handler=lambda args: _http_request(args, allowed_http_domains),
         timeout=20,
         idempotent=True,
         max_retries=2,
+        capabilities=("network:public-read",),
+        allowed_domains=allowed_http_domains,
     ))
     registry.register(ToolDefinition(
         name="shell_execute",
@@ -125,6 +198,23 @@ def build_tool_registry(
         and home_assistant_service.rules
     ):
         _register_home_assistant(registry, home_assistant_service)
+    aliases = {
+        "datetime.now": "datetime_now",
+        "file.read": "file_read",
+        "file.write": "file_write",
+        "http.request": "http_request",
+        "shell.execute": "shell_execute",
+        "skill.load": "skill_load",
+        "browser.open": "browser_open",
+        "app.control": "app_control",
+        "home_assistant.list_devices": "home_assistant_list_devices",
+        "home_assistant.get_state": "home_assistant_get_state",
+        "home_assistant.turn_on": "home_assistant_turn_on",
+        "home_assistant.turn_off": "home_assistant_turn_off",
+    }
+    for alias, target in aliases.items():
+        if registry.get(target) is not None:
+            registry.register_alias(alias, target)
     return registry
 
 
@@ -189,11 +279,19 @@ def _file_write(args: dict[str, Any], root: Path) -> dict[str, Any]:
     return {"path": str(path), "bytes": path.stat().st_size, "mode": mode}
 
 
-def _http_request(args: dict[str, Any]) -> dict[str, Any]:
+def _http_request(
+    args: dict[str, Any],
+    allowed_domains: tuple[str, ...] = (),
+) -> dict[str, Any]:
     url = str(args["url"])
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("only_http_https_urls_are_allowed")
+    if allowed_domains and not any(
+        parsed.hostname == domain or parsed.hostname.endswith(f".{domain}")
+        for domain in allowed_domains
+    ):
+        raise PermissionError("http_domain_not_allowed")
     _reject_private_host(parsed.hostname)
     method = str(args.get("method") or "GET").upper()
     headers = {str(k): str(v) for k, v in dict(args.get("headers") or {}).items()}

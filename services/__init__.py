@@ -7,6 +7,12 @@ from .home_service import HomeDataService
 from .intent_router import HybridIntentRouter, IntentRouteResult
 from .token_usage import TokenUsageEstimator
 from .user_store import UserStore
+from .model_providers import (
+    DashScopeAdapter,
+    ModelProvider,
+    OpenAIAdapter,
+    OtherCompatibleAdapter,
+)
 
 __all__ = [
     'LLMClient',
@@ -20,4 +26,8 @@ __all__ = [
     'IntentRouteResult',
     'TokenUsageEstimator',
     'UserStore',
+    'ModelProvider',
+    'OpenAIAdapter',
+    'DashScopeAdapter',
+    'OtherCompatibleAdapter',
 ]

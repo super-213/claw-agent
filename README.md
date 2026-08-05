@@ -112,6 +112,13 @@ export MODEL_NAME="qwen-plus"
 | `MAX_RETRIES` | `3` | 模型请求最大重试次数 |
 | `AGENT_MAX_STEPS` | `12` | 单次 Agent Run 最大模型/工具步骤数 |
 | `AGENT_MAX_RUNTIME_SECONDS` | `180` | 单次连续执行最长秒数 |
+| `AGENT_MAX_TOKENS` | `100000` | Run 累计 token 上限（优先使用服务端 usage，缺失时本地估算） |
+| `AGENT_MAX_COST` | `0` | Run 费用上限；`0` 表示不限制 |
+| `MODEL_INPUT_COST_PER_MILLION` | `0` | 每百万输入 token 费用，用于本地成本预算 |
+| `MODEL_OUTPUT_COST_PER_MILLION` | `0` | 每百万输出 token 费用，用于本地成本预算 |
+| `HTTP_ALLOWED_DOMAINS` | 空 | 公网 HTTP 工具域名白名单，逗号分隔；空表示允许任意公网域名 |
+| `SHELL_SANDBOX_BACKEND` | `auto` | `sandbox-exec`、`bwrap` 或 `restricted-process` |
+| `SHELL_REQUIRE_SANDBOX` | `false` | 为 `true` 时没有可用 OS 沙箱就拒绝启动 |
 | `TOOL_OUTPUT_MAX_CHARS` | `12000` | 写回模型的单次工具结果字符上限 |
 | `TOKEN_ENCODING` | `cl100k_base` | token 估算编码 |
 
@@ -120,6 +127,8 @@ export MODEL_NAME="qwen-plus"
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `CONTEXT_MAX_CHARS` | `60000` | 模型请求上下文字符预算 |
+| `CONTEXT_MAX_TOKENS` | `16000` | 模型请求 token 预算；同时受 provider 模型窗口限制 |
+| `MODEL_CONTEXT_WINDOW` | 自动 | 显式覆盖 provider 报告的模型上下文窗口 |
 | `CONTEXT_RECENT_MESSAGES` | `12` | 始终保留的最近消息数 |
 | `SUMMARY_TARGET_CHARS` | `6000` | 历史摘要目标长度 |
 | `SUMMARY_INPUT_CHARS` | `30000` | 单次摘要输入字符上限 |
@@ -412,6 +421,9 @@ curl -N -X POST http://localhost:8000/api/runs/<run_id>/approval \
 curl -N -X POST http://localhost:8000/api/runs/<run_id>/resume
 ```
 
+运行中的任务可通过 `POST /api/runs/<run_id>/cancel` 请求取消。非幂等工具在执行后、结果落盘前中断时，Run 会进入 `waiting_user`；调用
+`POST /api/runs/<run_id>/resolve-tool` 并选择 `retry`、`assume_succeeded`、`assume_failed` 或 `cancel` 后再恢复，避免静默重复外部副作用。
+
 内置结构化工具包括 `datetime_now`、`file_read`、`file_write`、`http_request`、`shell_execute` 以及 Home Assistant 工具。模型适配器必须支持原生 Function Calling；不满足该能力时 Run 会以 `failed` 状态结束并返回明确错误。
 
 ### Token 与看板 API
@@ -463,6 +475,19 @@ curl -X DELETE http://localhost:8000/api/sessions/<session_id>/branch/<node_id>
 
 ## 技能扩展
 
+新格式技能是渐进加载的能力包：
+
+```text
+skills/<name>/
+├── SKILL.md
+├── manifest.json
+├── tools.json
+├── references/
+└── scripts/
+```
+
+模型上下文中只保留 manifest 摘要；模型选择后通过 `skill_load` 获取完整说明。`manifest.json` 可声明 `triggers`、`required_tools`、`allowed_tools`、`permissions`、`resources`、`version` 与 `allow_auto`。旧的 `<name>.md`/`.skill` 仍兼容。
+
 添加技能有三种方式：
 
 1. 在 `skills/<skill_name>/` 下创建 `<skill_name>.md` 或 `<skill_name>.skill`。
@@ -474,6 +499,17 @@ curl -X DELETE http://localhost:8000/api/sessions/<session_id>/branch/<node_id>
 ## 原生工具协议
 
 Runtime 只接受 OpenAI-compatible `tools/tool_calls`：模型发起 Function Calling，注册表验证名称和 JSON Schema 参数，执行器返回标准 `tool` 消息，模型根据观察结果继续规划或给出最终回答。Shell 也只是注册表中的 `shell_execute` 工具，遵循同一审批、安全、超时和结果回灌流程。
+
+内部协议分为 `ToolRegistry → ToolRouter → ToolExecutor`。逻辑别名支持 `shell.execute`、`file.read`、`file.write`、`http.request`、`datetime.now`、`browser.open` 和 `app.control`；发给 OpenAI-compatible provider 的 Schema 使用其允许的下划线名称。浏览器与应用控制只有在宿主显式注入 handler 时才会注册，并始终要求审批。
+
+模型层通过 `ModelProvider` 归一化，内置 `OpenAIAdapter`、`DashScopeAdapter` 与 `OtherCompatibleAdapter`。
+
+## 记忆与产物
+
+- 完成的 Run 会提取一条仅限当前会话的工作记忆，并带来源、时间与可信度。
+- 用户长期记忆只能通过已认证的 `/api/memories` 写入；支持搜索、纠错和删除。
+- 记忆按查询检索注入，不会把全部历史长期塞进上下文。
+- 大型工具输出写入 artifact store，Run 和模型上下文只保留预览、哈希和引用。
 
 ## 测试
 
@@ -504,6 +540,8 @@ npm --prefix web-react run test
 - `/generated/{filename}` 和 `/files/{filename}` 会拒绝目录穿越。
 - 静态资源缓存默认关闭，适合开发环境；生产部署时可按需调整缓存策略。
 - Token 统计为本地估算，不等同于模型服务返回的真实计费 usage。
+- Shell 在可用时使用 macOS `sandbox-exec` 或 Linux `bwrap`，仅允许生成目录写入并禁止网络；不可用时降级为 `shell=False` 的受限进程，并保留路径、审批和命令策略。
+- 审批绑定 `run_id`、`tool_call_id`、规范化参数哈希和过期时间，令牌使用后立即失效。
 
 ## 后续方向
 

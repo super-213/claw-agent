@@ -6,9 +6,9 @@ from pathlib import Path
 
 from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
-from services import LLMClient, CommandExecutor
+from services import LLMClient, CommandExecutor, TokenUsageEstimator
 from skills import SkillRegistry
-from agent_runtime import RunStore
+from agent_runtime import ArtifactStore, MemoryStore, RunStore
 from agent_runtime.builtin_tools import build_tool_registry
 
 
@@ -221,6 +221,11 @@ def main():
             recent_messages=config["context_recent_messages"],
             summary_target_chars=config["summary_target_chars"],
             summary_input_chars=config["summary_input_chars"],
+            max_context_tokens=min(
+                config["context_max_tokens"],
+                int(config["model_context_window"] or getattr(llm_client, "context_window", 32768)) * 4 // 5,
+            ),
+            token_estimator=TokenUsageEstimator(config["token_encoding"]),
         )
         skills_dir = _resolve_project_path(project_root, config["skills_dir"])
         skill_registry = SkillRegistry(str(skills_dir))
@@ -228,14 +233,23 @@ def main():
             timeout=config["timeout"],
             cwd=generated_dir,
             generated_files_dir=generated_dir,
+            sandbox_backend=config["shell_sandbox_backend"],
+            require_sandbox=config["shell_require_sandbox"],
         )
         tool_registry = build_tool_registry(
             project_root=project_root,
             generated_files_dir=generated_dir,
             executor=executor,
+            skill_registry=skill_registry,
+            allowed_http_domains=tuple(
+                item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
+                if item.strip()
+            ),
         )
         run_dir = _resolve_project_path(project_root, config["run_dir"])
         run_store = RunStore(run_dir)
+        artifact_store = ArtifactStore(run_dir / "artifacts")
+        memory_store = MemoryStore(run_dir.parent / "memory")
         
         # 创建编排器
         orchestrator = AgentOrchestrator(
@@ -248,6 +262,15 @@ def main():
             max_steps=config["agent_max_steps"],
             max_runtime_seconds=config["agent_max_runtime_seconds"],
             max_tool_output_chars=config["tool_output_max_chars"],
+            max_tokens=config["agent_max_tokens"],
+            max_cost=config["agent_max_cost"],
+            input_cost_per_million=config["model_input_cost_per_million"],
+            output_cost_per_million=config["model_output_cost_per_million"],
+            max_repeated_calls=config["agent_max_repeated_calls"],
+            max_empty_turns=config["agent_max_empty_turns"],
+            approval_ttl_seconds=config["approval_ttl_seconds"],
+            artifact_store=artifact_store,
+            memory_store=memory_store,
         )
         
         print("Agent 已启动，输入 Ctrl+C 退出；输入 /skill-help 或 /config-help 查看命令\n")

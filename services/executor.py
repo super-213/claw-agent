@@ -3,7 +3,9 @@ import os
 import subprocess
 import re
 import shlex
+import shutil
 import threading
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -64,12 +66,15 @@ class CommandExecutor:
     SINGLE_DEST_COMMANDS = {"cp", "mv"}
     MULTI_PATH_WRITE_COMMANDS = {"touch", "mkdir"}
     REDIRECT_OPERATORS = {">", ">>", "1>", "1>>", "2>", "2>>", "&>", "&>>"}
+    _sandbox_probe_cache: dict[str, bool] = {}
     
     def __init__(
         self,
         timeout: int = 30,
         cwd: str | Path | None = None,
         generated_files_dir: str | Path | None = None,
+        sandbox_backend: str = "auto",
+        require_sandbox: bool = False,
     ):
         self.timeout = timeout
         self.cwd = Path(cwd).resolve() if cwd else None
@@ -78,6 +83,9 @@ class CommandExecutor:
             if generated_files_dir
             else self.cwd
         )
+        self.sandbox_backend = self._resolve_sandbox_backend(sandbox_backend)
+        if require_sandbox and self.sandbox_backend == "restricted-process":
+            raise RuntimeError("no_supported_os_sandbox_available")
         if self.cwd:
             self.cwd.mkdir(parents=True, exist_ok=True)
         if self.generated_files_dir:
@@ -101,9 +109,10 @@ class CommandExecutor:
             # 若后续需要更高并发，可以改成按 generated_files_dir 分桶的多把锁。
             with self._snapshot_lock:
                 before_files = self._file_snapshot()
+                argv = self._sandbox_command(command)
                 result = subprocess.run(
-                    command,
-                    shell=True,
+                    argv,
+                    shell=False,
                     capture_output=True,
                     text=True,
                     timeout=self.timeout,
@@ -397,3 +406,63 @@ class CommandExecutor:
         project_root = Path(__file__).resolve().parents[1]
         env["PROJECT_ROOT"] = str(project_root)
         return env
+
+    @staticmethod
+    def _resolve_sandbox_backend(requested: str) -> str:
+        value = (requested or "auto").lower()
+        if value == "auto":
+            if (platform.system() == "Darwin" and shutil.which("sandbox-exec")
+                    and CommandExecutor._sandbox_works("sandbox-exec")):
+                return "sandbox-exec"
+            if shutil.which("bwrap") and CommandExecutor._sandbox_works("bwrap"):
+                return "bwrap"
+            return "restricted-process"
+        if value not in {"sandbox-exec", "bwrap", "restricted-process"}:
+            raise ValueError(f"unknown_sandbox_backend:{value}")
+        return value
+
+    @classmethod
+    def _sandbox_works(cls, backend: str) -> bool:
+        cached = cls._sandbox_probe_cache.get(backend)
+        if cached is not None:
+            return cached
+        try:
+            if backend == "sandbox-exec":
+                command = ["/usr/bin/sandbox-exec", "-p", "(version 1)(allow default)", "/usr/bin/true"]
+            else:
+                command = ["bwrap", "--ro-bind", "/", "/", "/usr/bin/true"]
+            result = subprocess.run(command, capture_output=True, timeout=2)
+            works = result.returncode == 0
+        except Exception:
+            works = False
+        cls._sandbox_probe_cache[backend] = works
+        return works
+
+    def _sandbox_command(self, command: str) -> list[str]:
+        shell = "/bin/zsh" if Path("/bin/zsh").exists() else "/bin/sh"
+        if self.sandbox_backend == "sandbox-exec":
+            generated = str(self.generated_files_dir or self.cwd or Path.cwd())
+            profile = (
+                '(version 1)\n'
+                '(deny default)\n'
+                '(import "system.sb")\n'
+                '(allow process*)\n'
+                '(allow file-read*)\n'
+                f'(allow file-write* (subpath "{self._sandbox_escape(generated)}"))\n'
+                '(deny network*)\n'
+            )
+            return ["/usr/bin/sandbox-exec", "-p", profile, shell, "-c", command]
+        if self.sandbox_backend == "bwrap":
+            generated = str(self.generated_files_dir or self.cwd or Path.cwd())
+            return [
+                "bwrap", "--die-with-parent", "--unshare-net", "--ro-bind", "/", "/",
+                "--bind", generated, generated, "--chdir", str(self.cwd or generated),
+                shell, "-c", command,
+            ]
+        # Portable fallback: still avoids `shell=True`; path and approval policy
+        # remain active, but callers can reject this backend in production.
+        return [shell, "-c", command]
+
+    @staticmethod
+    def _sandbox_escape(value: str) -> str:
+        return value.replace('\\', '\\\\').replace('"', '\\"')

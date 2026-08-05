@@ -1,6 +1,6 @@
 """Agent 编排器"""
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
@@ -9,7 +9,19 @@ import secrets
 from threading import Thread
 import time
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional
-from agent_runtime import AgentModelResponse, RunStore, ToolApprovalRequired, ToolCall, ToolRegistry
+from agent_runtime import (
+    AgentModelResponse,
+    ArtifactStore,
+    CancellationToken,
+    LoopGuard,
+    MemoryStore,
+    RunStore,
+    ToolApprovalRequired,
+    ToolCall,
+    ToolRegistry,
+    ToolResult,
+    argument_hash,
+)
 from .conversation import ConversationManager
 from .context import ExecutionContext
 from .context_compressor import ContextCompressor
@@ -32,6 +44,17 @@ class AgentOrchestrator:
         max_steps: int = 12,
         max_runtime_seconds: int = 180,
         max_tool_output_chars: int = 12000,
+        max_tokens: int = 100_000,
+        max_cost: float = 0.0,
+        input_cost_per_million: float = 0.0,
+        output_cost_per_million: float = 0.0,
+        max_repeated_calls: int = 3,
+        max_empty_turns: int = 2,
+        approval_ttl_seconds: int = 600,
+        cancellation_token: CancellationToken | None = None,
+        artifact_store: ArtifactStore | None = None,
+        memory_store: MemoryStore | None = None,
+        user_id: str | None = None,
         checkpoint_callback: Callable[[], Any] | None = None,
     ):
         self.llm_client = llm_client
@@ -43,10 +66,25 @@ class AgentOrchestrator:
         self.max_steps = max(1, max_steps)
         self.max_runtime_seconds = max(1, max_runtime_seconds)
         self.max_tool_output_chars = max(1000, max_tool_output_chars)
+        self.max_tokens = max(0, int(max_tokens))
+        self.max_cost = max(0.0, float(max_cost))
+        self.input_cost_per_million = max(0.0, float(input_cost_per_million))
+        self.output_cost_per_million = max(0.0, float(output_cost_per_million))
+        self.approval_ttl_seconds = max(30, int(approval_ttl_seconds))
+        self.cancellation_token = cancellation_token or CancellationToken()
+        self.artifact_store = artifact_store
+        self.memory_store = memory_store
+        self.user_id = user_id
+        self.loop_guard = LoopGuard(
+            max_repeated_calls=max(2, max_repeated_calls),
+            max_empty_turns=max(1, max_empty_turns),
+        )
+        self.active_skill_allowed_tools: set[str] | None = None
         self.checkpoint_callback = checkpoint_callback
         self.run: Dict[str, Any] | None = None
         self.pending_approval_token: str | None = None
         self._run_started_monotonic = 0.0
+        self._run_elapsed_before_start = 0.0
         self.context = ExecutionContext()
     
     def process_user_input(
@@ -292,6 +330,7 @@ class AgentOrchestrator:
         skill_content = skill.load_context()
         self.conversation.inject_skill_context(skill_name, skill_content)
         self.context.activate_skill(skill_name)
+        self.active_skill_allowed_tools = skill.allowed_tools()
         print(f"[加载技能]: {skill_name}")
         return True
     
@@ -312,10 +351,12 @@ class AgentOrchestrator:
             yield event
 
     def _structured_tools_available(self) -> bool:
+        provider = getattr(self.llm_client, "provider", None)
         return bool(
             self.tool_registry
             and self.tool_registry.list()
             and callable(getattr(self.llm_client, "achat_with_tools", None))
+            and (provider is None or getattr(provider, "supports_function_calling", False))
         )
 
     async def _structured_ai_loop_events(
@@ -326,9 +367,11 @@ class AgentOrchestrator:
         """Native function-calling loop with budgets, approvals and checkpoints."""
         iteration = 0
         while True:
-            if self._budget_exceeded(iteration):
-                message = self._stop_for_budget()
-                yield {"type": "step", "stage": "budget_exceeded", "message": message}
+            budget_reason = self._budget_reason(iteration)
+            if budget_reason:
+                message = self._stop_for_budget(budget_reason)
+                stage = "cancelled" if budget_reason == "cancelled" else "budget_exceeded"
+                yield {"type": "step", "stage": stage, "message": message}
                 break
             iteration += 1
             yield {
@@ -338,7 +381,7 @@ class AgentOrchestrator:
                 "iteration": iteration,
             }
             messages, context_node_ids = await self._build_model_context()
-            schemas = self.tool_registry.schemas() if self.tool_registry else []
+            schemas = self._tool_schemas()
             yield {
                 "type": "model_start",
                 "stage": "model",
@@ -349,21 +392,67 @@ class AgentOrchestrator:
                 "tool_count": len(schemas),
             }
 
+            self._append_run_event({
+                "type": "model_request",
+                "phase": "start",
+                "iteration": iteration,
+                "model": self.llm_client.model,
+                "message_count": len(messages),
+                "tool_count": len(schemas),
+            })
             response: AgentModelResponse
-            if stream_model and hasattr(self.llm_client, "astream_with_tools"):
-                response = AgentModelResponse()
-                async for item in self.llm_client.astream_with_tools(messages, schemas):
-                    if item.get("type") == "content_delta":
-                        yield {
-                            "type": "model_delta",
-                            "stage": "model",
-                            "iteration": iteration,
-                            "delta": item.get("delta") or "",
-                        }
-                    elif item.get("type") == "done":
-                        response = item["response"]
-            else:
-                response = await self.llm_client.achat_with_tools(messages, schemas)
+            try:
+                remaining_runtime = self._remaining_runtime()
+                if stream_model and hasattr(self.llm_client, "astream_with_tools"):
+                    response = AgentModelResponse()
+                    async with asyncio.timeout(remaining_runtime):
+                        async for item in self.llm_client.astream_with_tools(messages, schemas):
+                            if item.get("type") == "content_delta":
+                                yield {
+                                    "type": "model_delta",
+                                    "stage": "model",
+                                    "iteration": iteration,
+                                    "delta": item.get("delta") or "",
+                                }
+                            elif item.get("type") == "done":
+                                response = item["response"]
+                else:
+                    response = await asyncio.wait_for(
+                        self.llm_client.achat_with_tools(messages, schemas),
+                        timeout=remaining_runtime,
+                    )
+            except TimeoutError:
+                message = self._stop_for_budget("runtime")
+                yield {"type": "step", "stage": "budget_exceeded", "message": message}
+                break
+            except Exception as exc:
+                self._append_run_event({
+                    "type": "model_request",
+                    "phase": "error",
+                    "iteration": iteration,
+                    "model": self.llm_client.model,
+                    "error": str(exc),
+                    "metrics": dict(getattr(self.llm_client, "last_request_metrics", {}) or {}),
+                })
+                self.context.stop()
+                self._record_runtime_elapsed()
+                self._update_run(status="failed", error=str(exc))
+                yield {"type": "error", "stage": "model", "message": str(exc)}
+                break
+
+            self._apply_model_usage(messages, response)
+            self._append_run_event({
+                "type": "model_request",
+                "phase": "finish",
+                "iteration": iteration,
+                "model": self.llm_client.model,
+                "provider": response.provider,
+                "request_id": response.request_id,
+                "latency_ms": response.latency_ms,
+                "retry_count": response.retry_count,
+                "usage": response.usage,
+                "finish_reason": response.finish_reason,
+            })
 
             tool_payloads = [call.as_openai() for call in response.tool_calls]
             self.conversation.add_assistant_message(
@@ -376,8 +465,12 @@ class AgentOrchestrator:
                 "kind": "model",
                 "iteration": iteration,
                 "content": response.content,
+                "reasoning_summary": response.content[:1000],
                 "tool_calls": [call.as_dict() for call in response.tool_calls],
                 "finish_reason": response.finish_reason,
+                "usage": response.usage,
+                "latency_ms": response.latency_ms,
+                "retry_count": response.retry_count,
             })
             yield {
                 "type": "model_done",
@@ -389,14 +482,33 @@ class AgentOrchestrator:
             }
 
             if not response.tool_calls:
+                if not response.content.strip():
+                    if self.loop_guard.observe_empty():
+                        message = "模型连续返回空响应，运行已停止。"
+                        self.context.stop()
+                        self._update_run(status="failed", error="empty_model_response")
+                        yield {"type": "error", "stage": "idle_detected", "message": message}
+                        break
+                    yield {"type": "step", "stage": "model_retry", "message": "模型返回空响应，正在重试"}
+                    continue
+                self.loop_guard.observe_final()
                 self.context.stop()
                 self._update_run(status="completed", pending_approval=None)
+                self._persist_working_memory(response.content)
+                self._record_runtime_elapsed()
                 yield {
                     "type": "step",
                     "stage": "complete",
                     "message": "任务完成",
                     "iteration": iteration,
                 }
+                break
+
+            if self.loop_guard.observe_calls(response.tool_calls):
+                message = "检测到模型重复调用相同工具和参数，运行已停止。"
+                self.context.stop()
+                self._update_run(status="failed", error="repeated_tool_call")
+                yield {"type": "error", "stage": "repeat_detected", "message": message}
                 break
 
             paused, tool_events = await self._execute_tool_calls(response.tool_calls)
@@ -413,43 +525,177 @@ class AgentOrchestrator:
     ) -> tuple[bool, List[Dict[str, Any]]]:
         events: List[Dict[str, Any]] = []
         for index, call in enumerate(calls):
+            result: ToolResult | None = None
+            budget_reason = self._budget_reason(index)
+            if budget_reason:
+                self._stop_for_budget(budget_reason)
+                return True, events
             events.append({
                 "type": "tool_start",
                 "stage": "tool",
                 "message": f"调用工具：{call.name}",
                 "tool_call": call.as_dict(),
             })
-            try:
-                result = await self.tool_registry.invoke(
-                    call,
-                    approved=first_call_approved and index == 0,
+            definition = self.tool_registry.get(call.name) if self.tool_registry else None
+            _routed, validation_errors = self.tool_registry.router.route(call)
+            if validation_errors:
+                result = ToolResult(
+                    call.id, call.name, "error", error="; ".join(validation_errors)
                 )
-            except ToolApprovalRequired as approval:
-                token = secrets.token_urlsafe(24)
-                self.pending_approval_token = token
-                pending = {
-                    "tool_call": approval.call.as_dict(),
-                    "remaining_tool_calls": [item.as_dict() for item in calls[index + 1:]],
-                    "token_hash": self._token_hash(token),
-                    "risk_level": approval.definition.risk_level,
-                    "requested_at": datetime.now(timezone.utc).isoformat(),
-                }
-                self._update_run(status="waiting_approval", pending_approval=pending)
+                content = result.model_content(self.max_tool_output_chars)
+                self.conversation.add_tool_message(call.id, call.name, content)
+                await self._checkpoint()
+                self._append_run_step({
+                    "kind": "tool", "tool_result": result.as_dict(),
+                    "observations": [result.as_dict()], "status": "failed",
+                })
                 events.append({
-                    "type": "approval_required",
-                    "stage": "approval",
-                    "message": f"工具 {call.name} 需要确认后才能执行",
-                    "run_id": self.run.get("id") if self.run else None,
-                    "approval_token": token,
-                    "risk_level": approval.definition.risk_level,
+                    "type": "tool_result", "stage": "tool",
+                    "message": "工具参数校验失败", "tool_call": call.as_dict(),
+                    "tool_result": result.as_dict(), "success": False, "output": content,
+                })
+                continue
+            if (
+                definition
+                and self.active_skill_allowed_tools is not None
+                and definition.name != "skill_load"
+                and definition.name not in {
+                    self.tool_registry.resolve_name(name)
+                    for name in self.active_skill_allowed_tools
+                }
+            ):
+                result = ToolResult(
+                    call.id, call.name, "error",
+                    error="tool_not_allowed_by_active_skill",
+                )
+                content = result.model_content(self.max_tool_output_chars)
+                self.conversation.add_tool_message(call.id, call.name, content)
+                await self._checkpoint()
+                self._append_run_step({
+                    "kind": "tool", "tool_result": result.as_dict(),
+                    "observations": [result.as_dict()], "status": "failed",
+                })
+                events.append({
+                    "type": "tool_result", "stage": "tool",
+                    "message": "技能权限拒绝工具调用", "tool_call": call.as_dict(),
+                    "tool_result": result.as_dict(), "success": False, "output": content,
+                })
+                continue
+            fingerprint = argument_hash(call.name, call.arguments)
+            ledger = dict(((self.run or {}).get("tool_ledger") or {}).get(call.id) or {})
+            if ledger.get("fingerprint") and ledger.get("fingerprint") != fingerprint:
+                result = ToolResult(call.id, call.name, "error", error="tool_call_id_reused_with_different_arguments")
+            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict):
+                cached = ledger["result"]
+                result = ToolResult(
+                    call_id=str(cached.get("call_id") or call.id),
+                    name=str(cached.get("name") or call.name),
+                    status=str(cached.get("status") or "error"),
+                    output=cached.get("output"),
+                    error=cached.get("error"),
+                    artifacts=list(cached.get("artifacts") or []),
+                    attempts=int(cached.get("attempts") or 1),
+                    duration_ms=int(cached.get("duration_ms") or 0),
+                    metadata={**dict(cached.get("metadata") or {}), "replayed": True},
+                )
+            elif ledger.get("status") == "executing" and not ledger.get("idempotent"):
+                message = (
+                    f"工具 {call.name} 在中断前可能已经产生副作用，"
+                    "为避免重复执行，运行已转为 waiting_user。"
+                )
+                self._update_run(status="waiting_user", error="uncertain_non_idempotent_tool_result")
+                events.append({
+                    "type": "user_input_required",
+                    "stage": "recovery",
+                    "message": message,
                     "tool_call": call.as_dict(),
                 })
                 return True, events
+            else:
+                if (definition and definition.needs_approval(call.arguments)
+                        and not (first_call_approved and index == 0)):
+                    approval = ToolApprovalRequired(call, definition)
+                    token = secrets.token_urlsafe(24)
+                    self.pending_approval_token = token
+                    now = datetime.now(timezone.utc)
+                    pending = {
+                        "tool_call": approval.call.as_dict(),
+                        "remaining_tool_calls": [item.as_dict() for item in calls[index + 1:]],
+                        "token_hash": self._token_hash(token),
+                        "call_id": approval.call.id,
+                        "parameter_hash": argument_hash(approval.call.name, approval.call.arguments),
+                        "risk_level": approval.definition.risk_level,
+                        "requested_at": now.isoformat(),
+                        "expires_at": (now + timedelta(seconds=self.approval_ttl_seconds)).isoformat(),
+                    }
+                    self._update_run(status="waiting_approval", pending_approval=pending)
+                    self._append_run_event({
+                        "type": "approval", "decision": "requested",
+                        "tool_call_id": call.id, "parameter_hash": pending["parameter_hash"],
+                        "risk_level": approval.definition.risk_level,
+                        "expires_at": pending["expires_at"],
+                    })
+                    self._record_runtime_elapsed()
+                    events.append({
+                        "type": "approval_required", "stage": "approval",
+                        "message": f"工具 {call.name} 需要确认后才能执行",
+                        "run_id": self.run.get("id") if self.run else None,
+                        "approval_token": token,
+                        "risk_level": approval.definition.risk_level,
+                        "tool_call": call.as_dict(),
+                    })
+                    return True, events
+                if self.run_store and self.run and self.run.get("id"):
+                    self.run = self.run_store.record_tool_started(
+                        self.run,
+                        call_id=call.id,
+                        fingerprint=fingerprint,
+                        idempotent=bool(definition and definition.idempotent),
+                    )
+            if result is None:
+                result = await self.tool_registry.executor.execute(
+                    call,
+                    approved=first_call_approved and index == 0,
+                    timeout_override=self._remaining_runtime(),
+                )
 
+            assert result is not None
+            if self.artifact_store:
+                result = self.artifact_store.externalize(result, max_chars=self.max_tool_output_chars)
+            if self.run_store and self.run and self.run.get("id"):
+                self.run = self.run_store.record_tool_finished(
+                    self.run, call_id=call.id, result=result.as_dict()
+                )
+            if definition and definition.name == "skill_load" and result.success and isinstance(result.output, dict):
+                skill_name = str(result.output.get("name") or "")
+                skill = self.skill_registry.get(skill_name)
+                if skill:
+                    self.context.activate_skill(skill_name)
+                    self.active_skill_allowed_tools = skill.allowed_tools()
+                    self._update_run(
+                        active_skill=skill_name,
+                        active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
+                        if self.active_skill_allowed_tools is not None else None,
+                    )
             content = result.model_content(self.max_tool_output_chars)
             self.conversation.add_tool_message(call.id, call.name, content)
             await self._checkpoint()
-            self._append_run_step({"kind": "tool", "tool_result": result.as_dict()})
+            self._append_run_step({
+                "kind": "tool",
+                "tool_result": result.as_dict(),
+                "observations": [result.as_dict()],
+                "status": "completed" if result.success else "failed",
+                "retry_count": max(0, result.attempts - 1),
+            })
+            self._append_run_event({
+                "type": "tool_execution",
+                "tool_call_id": call.id,
+                "name": call.name,
+                "status": result.status,
+                "attempts": result.attempts,
+                "duration_ms": result.duration_ms,
+                "error": result.error,
+            })
             events.append({
                 "type": "tool_result",
                 "stage": "tool",
@@ -472,6 +718,7 @@ class AgentOrchestrator:
         if not self.run_store:
             raise RuntimeError("run_store_not_configured")
         self.run = self.run_store.load(run_id)
+        self._restore_skill_state()
         pending = self.run.get("pending_approval") or {}
         if self.run.get("status") != "waiting_approval" or not pending:
             raise ValueError("run_is_not_waiting_for_approval")
@@ -480,10 +727,25 @@ class AgentOrchestrator:
             raise PermissionError("invalid_approval_token")
         self.pending_approval_token = None
         self._run_started_monotonic = time.monotonic()
+        self._run_elapsed_before_start = float(self.run.get("runtime_elapsed_ms") or 0) / 1000
 
         call = ToolCall.from_dict(pending["tool_call"])
+        expires_at = self._parse_datetime(pending.get("expires_at"))
+        if expires_at and datetime.now(timezone.utc) > expires_at:
+            self._update_run(status="cancelled", pending_approval=None, error="approval_expired")
+            raise PermissionError("approval_expired")
+        expected_arguments = str(pending.get("parameter_hash") or "")
+        if expected_arguments and not hmac.compare_digest(
+            expected_arguments, argument_hash(call.name, call.arguments)
+        ):
+            self._update_run(status="failed", pending_approval=None, error="approval_parameter_mismatch")
+            raise PermissionError("approval_parameter_mismatch")
         remaining = [ToolCall.from_dict(item) for item in pending.get("remaining_tool_calls") or []]
         if not approved:
+            self._append_run_event({
+                "type": "approval", "decision": "rejected", "tool_call_id": call.id,
+                "parameter_hash": argument_hash(call.name, call.arguments),
+            })
             self._update_run(status="cancelled", pending_approval=None)
             self.conversation.add_tool_message(
                 call.id,
@@ -501,6 +763,10 @@ class AgentOrchestrator:
             }
             return
 
+        self._append_run_event({
+            "type": "approval", "decision": "approved", "tool_call_id": call.id,
+            "parameter_hash": argument_hash(call.name, call.arguments),
+        })
         self._update_run(status="running", pending_approval=None)
         paused, events = await self._execute_tool_calls(
             [call, *remaining],
@@ -532,7 +798,9 @@ class AgentOrchestrator:
         if not self._structured_tools_available():
             raise RuntimeError("structured_tools_not_available")
         self._run_started_monotonic = time.monotonic()
+        self._run_elapsed_before_start = float(self.run.get("runtime_elapsed_ms") or 0) / 1000
         self.context = ExecutionContext()
+        self._restore_skill_state()
         self._update_run(status="running", interrupted_reason=None)
 
         steps = list(self.run.get("steps") or [])
@@ -652,12 +920,26 @@ class AgentOrchestrator:
         active_skill = self.context.active_skill
         self.context = ExecutionContext(active_skill=active_skill)
         self._run_started_monotonic = time.monotonic()
+        self._run_elapsed_before_start = 0.0
+        self.loop_guard = LoopGuard(
+            max_repeated_calls=self.loop_guard.max_repeated_calls,
+            max_empty_turns=self.loop_guard.max_empty_turns,
+        )
         if self.run_store:
             self.run = self.run_store.create(
                 session_id=session_id,
                 goal=goal,
                 max_steps=self.max_steps,
                 max_runtime_seconds=self.max_runtime_seconds,
+                token_budget=self.max_tokens,
+                cost_budget=self.max_cost,
+                max_tool_output_chars=self.max_tool_output_chars,
+            )
+            self.run = self.run_store.update(
+                self.run,
+                active_skill=active_skill,
+                active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
+                if self.active_skill_allowed_tools is not None else None,
             )
         else:
             self.run = {
@@ -667,6 +949,9 @@ class AgentOrchestrator:
                 "status": "running",
                 "steps": [],
                 "step_count": 0,
+                "tokens_used": 0,
+                "cost_used": 0.0,
+                "cancel_requested": False,
             }
 
     def _append_run_step(self, step: Dict[str, Any]) -> None:
@@ -686,6 +971,16 @@ class AgentOrchestrator:
         else:
             self.run.update(changes)
 
+    def _append_run_event(self, event: Dict[str, Any]) -> None:
+        if not self.run:
+            return
+        if self.run_store and self.run.get("id"):
+            self.run = self.run_store.append_event(self.run, event)
+        else:
+            self.run.setdefault("events", []).append({
+                **event, "at": datetime.now(timezone.utc).isoformat()
+            })
+
     async def _checkpoint(self) -> None:
         if not self.checkpoint_callback:
             return
@@ -694,19 +989,131 @@ class AgentOrchestrator:
             await value
 
     def _budget_exceeded(self, iteration: int) -> bool:
-        step_count = int((self.run or {}).get("step_count") or iteration)
-        elapsed = time.monotonic() - self._run_started_monotonic
-        return step_count >= self.max_steps or elapsed >= self.max_runtime_seconds
+        return bool(self._budget_reason(iteration))
 
-    def _stop_for_budget(self) -> str:
-        message = (
-            f"Agent 执行预算已用尽：最多 {self.max_steps} 步、"
-            f"最长 {self.max_runtime_seconds} 秒。"
-        )
+    def _budget_reason(self, iteration: int) -> str | None:
+        if self.cancellation_token.cancelled:
+            return "cancelled"
+        if self.run_store and self.run and self.run.get("id"):
+            try:
+                durable = self.run_store.load(str(self.run["id"]))
+            except KeyError:
+                durable = self.run
+            if durable.get("cancel_requested"):
+                self.run = durable
+                return "cancelled"
+        step_count = int((self.run or {}).get("step_count") or iteration)
+        if step_count >= self.max_steps:
+            return "steps"
+        if self._elapsed_runtime() >= self.max_runtime_seconds:
+            return "runtime"
+        if self.max_tokens and int((self.run or {}).get("tokens_used") or 0) >= self.max_tokens:
+            return "tokens"
+        if self.max_cost and float((self.run or {}).get("cost_used") or 0) >= self.max_cost:
+            return "cost"
+        return None
+
+    def _stop_for_budget(self, reason: str = "budget") -> str:
+        if reason == "cancelled":
+            message = "Agent 运行已收到取消信号。"
+            status = "cancelled"
+        else:
+            message = (
+                f"Agent 执行预算已用尽（{reason}）：最多 {self.max_steps} 步、"
+                f"最长 {self.max_runtime_seconds} 秒、最多 {self.max_tokens} tokens、"
+                f"费用上限 {self.max_cost or '未设置'}。"
+            )
+            status = "budget_exceeded"
         self.conversation.add_assistant_message(message)
         self.context.stop()
-        self._update_run(status="budget_exceeded", pending_approval=None, error=message)
+        self._record_runtime_elapsed()
+        self._update_run(status=status, pending_approval=None, error=message)
         return message
+
+    def _elapsed_runtime(self) -> float:
+        current = max(0.0, time.monotonic() - self._run_started_monotonic)
+        return self._run_elapsed_before_start + current
+
+    def _remaining_runtime(self) -> float:
+        return max(0.05, self.max_runtime_seconds - self._elapsed_runtime())
+
+    def _record_runtime_elapsed(self) -> None:
+        if self.run:
+            self._update_run(runtime_elapsed_ms=int(self._elapsed_runtime() * 1000))
+
+    def _apply_model_usage(
+        self,
+        messages: List[Dict[str, Any]],
+        response: AgentModelResponse,
+    ) -> None:
+        usage = dict(response.usage or {})
+        if not int(usage.get("total_tokens") or 0):
+            prompt_tokens = max(1, len(json.dumps(messages, ensure_ascii=False, default=str)) // 4)
+            completion_tokens = max(1, len(response.content or "") // 4)
+            completion_tokens += sum(
+                max(1, len(json.dumps(call.as_dict(), ensure_ascii=False)) // 4)
+                for call in response.tool_calls
+            )
+            usage = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+                "estimated": True,
+            }
+            response.usage = usage
+        previous_tokens = int((self.run or {}).get("tokens_used") or 0)
+        previous_cost = float((self.run or {}).get("cost_used") or 0)
+        cost = (
+            int(usage.get("prompt_tokens") or 0) * self.input_cost_per_million
+            + int(usage.get("completion_tokens") or 0) * self.output_cost_per_million
+        ) / 1_000_000
+        self._update_run(
+            tokens_used=previous_tokens + int(usage.get("total_tokens") or 0),
+            cost_used=round(previous_cost + cost, 10),
+        )
+
+    def _tool_schemas(self) -> List[Dict[str, Any]]:
+        if not self.tool_registry:
+            return []
+        allowed = self.active_skill_allowed_tools
+        if allowed is not None:
+            allowed = set(allowed) | {"skill_load"}
+        return self.tool_registry.schemas(allowed_tools=allowed)
+
+    def _persist_working_memory(self, final_content: str) -> None:
+        if not self.memory_store or not self.run or not final_content.strip():
+            return
+        goal = str(self.run.get("goal") or "").strip()
+        content = f"目标：{goal[:1000]}\n结果：{final_content.strip()[:3000]}"
+        try:
+            self.memory_store.save(
+                content=content,
+                scope="session",
+                owner_id=str(self.run.get("session_id") or ""),
+                source=f"agent_run:{self.run.get('id')}",
+                confidence=0.75,
+            )
+        except Exception as exc:
+            self._append_run_event({"type": "memory_error", "error": str(exc)})
+
+    def _restore_skill_state(self) -> None:
+        if not self.run:
+            return
+        skill_name = str(self.run.get("active_skill") or "")
+        if skill_name:
+            self.context.activate_skill(skill_name)
+        stored = self.run.get("active_skill_allowed_tools")
+        self.active_skill_allowed_tools = set(stored) if isinstance(stored, list) else None
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
     @staticmethod
     def _token_hash(token: str) -> str:
@@ -731,6 +1138,36 @@ class AgentOrchestrator:
             messages = await self.context_compressor.build_messages_async(self.conversation)
         else:
             messages = self.conversation.get_messages()
+        dynamic_system: List[Dict[str, Any]] = []
+        catalog = self.skill_registry.catalog(auto_only=True)
+        if catalog:
+            dynamic_system.append({
+                "role": "system",
+                "content": (
+                    "## 可按需加载的技能摘要\n"
+                    "先根据以下摘要判断是否需要技能；需要时调用 skill_load，"
+                    "不要在未加载时假设完整说明。\n"
+                    + "\n".join(f"- {row['summary']}" for row in catalog)
+                ),
+            })
+        if self.memory_store and self.run:
+            session_id = str(self.run.get("session_id") or "")
+            scopes = [("session", session_id)]
+            if self.user_id:
+                scopes.append(("user", self.user_id))
+            memories = self.memory_store.search(
+                str(self.run.get("goal") or ""), scopes=scopes, limit=8
+            )
+            if memories:
+                dynamic_system.append({
+                    "role": "system",
+                    "content": "## 检索到的授权记忆\n" + "\n".join(
+                        f"- [{row.get('source')}; confidence={row.get('confidence')}] "
+                        f"{row.get('content')}" for row in memories
+                    ),
+                })
+        if dynamic_system:
+            messages = [messages[0], *dynamic_system, *messages[1:]] if messages else dynamic_system
         return messages, context_node_ids
 
     def _record_context_nodes(self, context_node_ids: List[str]) -> None:

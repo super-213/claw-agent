@@ -6,6 +6,7 @@ from openai import AsyncOpenAI, OpenAI
 from typing import Any, AsyncIterator, Dict, Iterator, List
 
 from agent_runtime.models import AgentModelResponse, ToolCall
+from services.model_providers import ModelProvider, provider_for
 
 
 class LLMClient:
@@ -18,14 +19,21 @@ class LLMClient:
         model: str,
         timeout: int = 30,
         max_retries: int = 2,
+        provider: str | ModelProvider | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
         self.timeout = timeout
         self.max_retries = max(0, max_retries)
+        self.provider = provider if isinstance(provider, ModelProvider) else provider_for(base_url, provider)
+        self.last_request_metrics: Dict[str, Any] = {}
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self._async_client: AsyncOpenAI | None = None
+
+    @property
+    def context_window(self) -> int:
+        return self.provider.context_window(self.model)
 
     @property
     def async_client(self) -> AsyncOpenAI:
@@ -73,14 +81,22 @@ class LLMClient:
         tools: List[Dict[str, Any]],
     ) -> AgentModelResponse:
         """Request one structured Agent turn using native function calling."""
+        started = time.monotonic()
         response = self._retry_sync(lambda: self.client.chat.completions.create(
             model=self.model,
             messages=self._chat_messages(messages),
-            tools=tools,
+            tools=self.provider.prepare_tools(tools),
             tool_choice="auto",
             timeout=self.timeout,
+            **self.provider.extra_request_options(streaming=False),
         ))
-        return self._agent_response(response.choices[0])
+        parsed = self.provider.parse_choice(
+            response.choices[0], usage=getattr(response, "usage", None),
+            request_id=getattr(response, "id", None),
+        )
+        parsed.latency_ms = int((time.monotonic() - started) * 1000)
+        parsed.retry_count = int(self.last_request_metrics.get("retry_count") or 0)
+        return parsed
 
     async def achat_with_tools(
         self,
@@ -88,14 +104,22 @@ class LLMClient:
         tools: List[Dict[str, Any]],
     ) -> AgentModelResponse:
         """Async structured Agent turn using native function calling."""
+        started = time.monotonic()
         response = await self._retry_async(lambda: self.async_client.chat.completions.create(
             model=self.model,
             messages=self._chat_messages(messages),
-            tools=tools,
+            tools=self.provider.prepare_tools(tools),
             tool_choice="auto",
             timeout=self.timeout,
+            **self.provider.extra_request_options(streaming=False),
         ))
-        return self._agent_response(response.choices[0])
+        parsed = self.provider.parse_choice(
+            response.choices[0], usage=getattr(response, "usage", None),
+            request_id=getattr(response, "id", None),
+        )
+        parsed.latency_ms = int((time.monotonic() - started) * 1000)
+        parsed.retry_count = int(self.last_request_metrics.get("retry_count") or 0)
+        return parsed
 
     async def astream_with_tools(
         self,
@@ -103,13 +127,15 @@ class LLMClient:
         tools: List[Dict[str, Any]],
     ) -> AsyncIterator[Dict[str, Any]]:
         """Yield content deltas followed by a final structured Agent response."""
+        started = time.monotonic()
         stream = await self._retry_async(lambda: self.async_client.chat.completions.create(
             model=self.model,
             messages=self._chat_messages(messages),
-            tools=tools,
+            tools=self.provider.prepare_tools(tools),
             tool_choice="auto",
             timeout=self.timeout,
             stream=True,
+            **self.provider.extra_request_options(streaming=True),
         ))
         content_parts: List[str] = []
         calls: dict[int, dict[str, str]] = {}
@@ -147,6 +173,9 @@ class LLMClient:
                 content="".join(content_parts),
                 tool_calls=tool_calls,
                 finish_reason=finish_reason,
+                provider=self.provider.name,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                retry_count=int(self.last_request_metrics.get("retry_count") or 0),
             ),
         }
 
@@ -186,44 +215,50 @@ class LLMClient:
 
     @classmethod
     def _agent_response(cls, choice: Any) -> AgentModelResponse:
-        message = choice.message
-        calls: list[ToolCall] = []
-        for index, raw_call in enumerate(getattr(message, "tool_calls", None) or []):
-            function = raw_call.function
-            calls.append(ToolCall(
-                id=str(getattr(raw_call, "id", None) or f"call_{index}"),
-                name=str(getattr(function, "name", None) or ""),
-                arguments=cls._parse_arguments(getattr(function, "arguments", None) or ""),
-            ))
-        return AgentModelResponse(
-            content=getattr(message, "content", None) or "",
-            tool_calls=calls,
-            finish_reason=getattr(choice, "finish_reason", None),
-        )
+        from services.model_providers import OtherCompatibleAdapter
+        return OtherCompatibleAdapter().parse_choice(choice)
 
     @staticmethod
     def _parse_arguments(raw: str) -> Dict[str, Any]:
-        try:
-            value = json.loads(raw or "{}")
-        except json.JSONDecodeError:
-            return {"__invalid_json__": raw}
-        return value if isinstance(value, dict) else {"__invalid_arguments__": value}
+        return ModelProvider.parse_arguments(raw)
 
     def _retry_sync(self, operation):
+        started = time.monotonic()
         for attempt in range(self.max_retries + 1):
             try:
-                return operation()
-            except Exception:
+                value = operation()
+                self.last_request_metrics = {
+                    "retry_count": attempt,
+                    "latency_ms": int((time.monotonic() - started) * 1000),
+                }
+                return value
+            except Exception as exc:
                 if attempt >= self.max_retries:
+                    self.last_request_metrics = {
+                        "retry_count": attempt,
+                        "latency_ms": int((time.monotonic() - started) * 1000),
+                        "error": str(exc),
+                    }
                     raise
                 time.sleep(min(0.5 * (2 ** attempt), 4.0))
 
     async def _retry_async(self, operation):
+        started = time.monotonic()
         for attempt in range(self.max_retries + 1):
             try:
-                return await operation()
-            except Exception:
+                value = await operation()
+                self.last_request_metrics = {
+                    "retry_count": attempt,
+                    "latency_ms": int((time.monotonic() - started) * 1000),
+                }
+                return value
+            except Exception as exc:
                 if attempt >= self.max_retries:
+                    self.last_request_metrics = {
+                        "retry_count": attempt,
+                        "latency_ms": int((time.monotonic() - started) * 1000),
+                        "error": str(exc),
+                    }
                     raise
                 await asyncio.sleep(min(0.5 * (2 ** attempt), 4.0))
 

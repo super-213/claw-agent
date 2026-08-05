@@ -35,8 +35,20 @@ class ConfigManager:
         "max_retries": 3,
         "agent_max_steps": 12,
         "agent_max_runtime_seconds": 180,
+        "agent_max_tokens": 100000,
+        "agent_max_cost": 0.0,
+        "model_input_cost_per_million": 0.0,
+        "model_output_cost_per_million": 0.0,
+        "agent_max_repeated_calls": 3,
+        "agent_max_empty_turns": 2,
+        "approval_ttl_seconds": 600,
         "tool_output_max_chars": 12000,
+        "http_allowed_domains": "",
+        "shell_sandbox_backend": "auto",
+        "shell_require_sandbox": False,
         "context_max_chars": 60000,
+        "context_max_tokens": 16000,
+        "model_context_window": 0,
         "context_recent_messages": 12,
         "summary_target_chars": 6000,
         "summary_input_chars": 30000,
@@ -111,6 +123,16 @@ class ConfigManager:
         if token_encoding := os.getenv("TOKEN_ENCODING"):
             config["token_encoding"] = token_encoding
 
+        if http_allowed_domains := os.getenv("HTTP_ALLOWED_DOMAINS"):
+            config["http_allowed_domains"] = http_allowed_domains
+
+        if shell_sandbox_backend := os.getenv("SHELL_SANDBOX_BACKEND"):
+            config["shell_sandbox_backend"] = shell_sandbox_backend
+        if shell_require_sandbox := os.getenv("SHELL_REQUIRE_SANDBOX"):
+            config["shell_require_sandbox"] = shell_require_sandbox.strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+
         if home_data_dir := os.getenv("HOME_DATA_DIR"):
             config["home_data_dir"] = home_data_dir
 
@@ -155,12 +177,30 @@ class ConfigManager:
             "LOG_RETENTION_DAYS": "log_retention_days",
             "AGENT_MAX_STEPS": "agent_max_steps",
             "AGENT_MAX_RUNTIME_SECONDS": "agent_max_runtime_seconds",
+            "AGENT_MAX_TOKENS": "agent_max_tokens",
+            "AGENT_MAX_REPEATED_CALLS": "agent_max_repeated_calls",
+            "AGENT_MAX_EMPTY_TURNS": "agent_max_empty_turns",
+            "APPROVAL_TTL_SECONDS": "approval_ttl_seconds",
             "TOOL_OUTPUT_MAX_CHARS": "tool_output_max_chars",
+            "CONTEXT_MAX_TOKENS": "context_max_tokens",
+            "MODEL_CONTEXT_WINDOW": "model_context_window",
         }
         for env_name, config_key in int_envs.items():
             if value := os.getenv(env_name):
                 try:
                     config[config_key] = int(value)
+                except ValueError:
+                    pass
+
+        float_envs = {
+            "AGENT_MAX_COST": "agent_max_cost",
+            "MODEL_INPUT_COST_PER_MILLION": "model_input_cost_per_million",
+            "MODEL_OUTPUT_COST_PER_MILLION": "model_output_cost_per_million",
+        }
+        for env_name, config_key in float_envs.items():
+            if value := os.getenv(env_name):
+                try:
+                    config[config_key] = float(value)
                 except ValueError:
                     pass
         

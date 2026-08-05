@@ -2,12 +2,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 import json
 from typing import Any, Callable
 
 
 ToolHandler = Callable[[dict[str, Any]], Any]
 ApprovalPolicy = Callable[[dict[str, Any]], bool]
+
+
+class RunStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
+    WAITING_USER = "waiting_user"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
+    BUDGET_EXCEEDED = "budget_exceeded"
 
 
 @dataclass(frozen=True)
@@ -22,6 +35,8 @@ class ToolDefinition:
     timeout: float = 30.0
     max_retries: int = 0
     idempotent: bool = False
+    capabilities: tuple[str, ...] = ()
+    allowed_domains: tuple[str, ...] = ()
 
     def openai_schema(self) -> dict[str, Any]:
         return {
@@ -77,6 +92,7 @@ class ToolResult:
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     attempts: int = 1
     duration_ms: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def success(self) -> bool:
@@ -92,6 +108,7 @@ class ToolResult:
             "artifacts": self.artifacts,
             "attempts": self.attempts,
             "duration_ms": self.duration_ms,
+            "metadata": self.metadata,
         }
 
     def model_content(self, max_chars: int = 12000) -> str:
@@ -107,7 +124,16 @@ class AgentModelResponse:
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str | None = None
+    usage: dict[str, int] = field(default_factory=dict)
+    provider: str | None = None
+    request_id: str | None = None
+    latency_ms: int = 0
+    retry_count: int = 0
 
     @property
     def has_tool_calls(self) -> bool:
         return bool(self.tool_calls)
+
+    @property
+    def total_tokens(self) -> int:
+        return int(self.usage.get("total_tokens") or 0)

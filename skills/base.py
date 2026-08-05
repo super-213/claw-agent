@@ -21,3 +21,11 @@ class BaseSkill(ABC):
     def get_marker(self) -> Optional[str]:
         """获取技能标记（如 [计算]、[天气]）"""
         return None
+
+    def summary(self) -> str:
+        """Short catalog entry safe to keep in the model context."""
+        return self.name
+
+    def allowed_tools(self) -> Optional[set[str]]:
+        """None means no additional restriction beyond global policy."""
+        return None

@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict, Iterable, List
 
 from services.llm_client import LLMClient
+from services.token_usage import TokenUsageEstimator
 
 
 class ContextCompressor:
@@ -17,12 +18,16 @@ class ContextCompressor:
         recent_messages: int = 12,
         summary_target_chars: int = 6000,
         summary_input_chars: int = 30000,
+        max_context_tokens: int = 16000,
+        token_estimator: TokenUsageEstimator | None = None,
     ):
         self.llm_client = llm_client
         self.max_context_chars = max_context_chars
         self.recent_messages = max(2, recent_messages)
         self.summary_target_chars = summary_target_chars
         self.summary_input_chars = summary_input_chars
+        self.max_context_tokens = max(256, int(max_context_tokens))
+        self.token_estimator = token_estimator or TokenUsageEstimator()
 
     def build_messages(self, conversation) -> List[Dict[str, str]]:
         """返回发给模型的消息列表，必要时先增量压缩旧历史"""
@@ -39,7 +44,7 @@ class ContextCompressor:
             conversation.get_summary(),
             summarized_until,
         )
-        if self._count_chars(prompt_messages) <= self.max_context_chars:
+        if self._within_budget(prompt_messages):
             return prompt_messages
 
         self._compress_old_messages(conversation, messages, summarized_until)
@@ -54,7 +59,7 @@ class ContextCompressor:
             conversation.get_summary(),
             updated_until,
         )
-        if self._count_chars(prompt_messages) <= self.max_context_chars:
+        if self._within_budget(prompt_messages):
             return prompt_messages
 
         return self._trim_recent_overflow(prompt_messages)
@@ -74,7 +79,7 @@ class ContextCompressor:
             conversation.get_summary(),
             summarized_until,
         )
-        if self._count_chars(prompt_messages) <= self.max_context_chars:
+        if self._within_budget(prompt_messages):
             return prompt_messages
 
         await self._compress_old_messages_async(conversation, messages, summarized_until)
@@ -89,7 +94,7 @@ class ContextCompressor:
             conversation.get_summary(),
             updated_until,
         )
-        if self._count_chars(prompt_messages) <= self.max_context_chars:
+        if self._within_budget(prompt_messages):
             return prompt_messages
 
         return self._trim_recent_overflow(prompt_messages)
@@ -216,7 +221,7 @@ class ContextCompressor:
         messages: List[Dict[str, str]],
     ) -> List[Dict[str, str]]:
         """最近消息本身过大时的兜底：保留 system/summary 和能放下的最新消息"""
-        if self._count_chars(messages) <= self.max_context_chars:
+        if self._within_budget(messages):
             return messages
 
         head: List[Dict[str, str]] = []
@@ -227,18 +232,37 @@ class ContextCompressor:
             else:
                 tail.append(msg)
 
-        budget = max(0, self.max_context_chars - self._count_chars(head))
+        char_budget = max(0, self.max_context_chars - self._count_chars(head))
+        token_budget = max(0, self.max_context_tokens - self._count_tokens(head))
         selected: List[Dict[str, str]] = []
-        used = 0
+        used_chars = 0
+        used_tokens = 0
         for msg in reversed(tail):
             msg_chars = self._count_chars([msg])
-            if selected and used + msg_chars > budget:
+            msg_tokens = self._count_tokens([msg])
+            if selected and (
+                used_chars + msg_chars > char_budget
+                or used_tokens + msg_tokens > token_budget
+            ):
                 break
             selected.append(msg)
-            used += msg_chars
+            used_chars += msg_chars
+            used_tokens += msg_tokens
 
         selected.reverse()
         return head + selected
+
+    def _within_budget(self, messages: List[Dict[str, Any]]) -> bool:
+        return (
+            self._count_chars(messages) <= self.max_context_chars
+            and self._count_tokens(messages) <= self.max_context_tokens
+        )
+
+    def _count_tokens(self, messages: List[Dict[str, Any]]) -> int:
+        return sum(
+            int(self.token_estimator.estimate_message(message).get("total_tokens") or 0)
+            for message in messages
+        )
 
     def _message_batches(
         self,
