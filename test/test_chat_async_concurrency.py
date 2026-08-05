@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import httpx
 
+from agent_runtime import AgentModelResponse
 from services import ConversationStore
 from web_app import app
 
@@ -20,7 +21,7 @@ class ConcurrentFakeLLM:
     def __init__(self, api_key: str, base_url: str, model: str, timeout: int = 30):
         self.model = model
 
-    async def astream_chat(self, messages):
+    async def astream_with_tools(self, messages, tools):
         user_message = next(
             (
                 msg.get("content", "")
@@ -33,24 +34,24 @@ class ConcurrentFakeLLM:
             type(self).active += 1
             type(self).max_active = max(type(self).max_active, type(self).active)
         try:
-            for part in ["[完成] ", user_message, " ok"]:
+            parts = [user_message, " ok"]
+            for part in parts:
                 await asyncio.sleep(0.05)
-                yield part
+                yield {"type": "content_delta", "delta": part}
+            yield {
+                "type": "done",
+                "response": AgentModelResponse(content="".join(parts)),
+            }
         finally:
             with self.lock:
                 type(self).active -= 1
 
-    async def achat(self, messages):
-        parts = []
-        async for part in self.astream_chat(messages):
-            parts.append(part)
-        return "".join(parts)
-
-    def stream_chat(self, messages):
-        yield "[完成] sync ok"
-
-    def chat(self, messages):
-        return "[完成] sync ok"
+    async def achat_with_tools(self, messages, tools):
+        user_message = next(
+            (msg.get("content", "") for msg in reversed(messages) if msg.get("role") == "user"),
+            "",
+        )
+        return AgentModelResponse(content=f"{user_message} ok")
 
     async def __aenter__(self):
         return self
@@ -109,7 +110,7 @@ def test_stream_chat_runs_different_sessions_concurrently(tmp_path):
         done_b = next(event for event in events_b if event.get("type") == "done")
         assert done_a["session_id"] == session_a
         assert done_b["session_id"] == session_b
-        assert any("[完成] alpha ok" == msg.get("content") for msg in done_a["messages"])
-        assert any("[完成] beta ok" == msg.get("content") for msg in done_b["messages"])
+        assert any("alpha ok" == msg.get("content") for msg in done_a["messages"])
+        assert any("beta ok" == msg.get("content") for msg in done_b["messages"])
 
     asyncio.run(run())

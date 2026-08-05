@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
@@ -28,6 +29,8 @@ class TokenUsageEstimator:
     def estimate_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         role = message.get("role", "")
         content = message.get("content", "")
+        if message.get("tool_calls"):
+            content = f"{content}\n{json.dumps(message['tool_calls'], ensure_ascii=False)}"
         role_tokens = self.count_text(role)
         content_tokens = self.count_text(content)
         total_tokens = role_tokens + content_tokens + MESSAGE_OVERHEAD_TOKENS
@@ -157,9 +160,9 @@ class TokenUsageEstimator:
 
         if role == "system":
             return "skill" if content.startswith("## 激活技能：") else "system_prompt"
-        if content.startswith("[命令]") or content.startswith("［命令］"):
+        if message.get("tool_calls"):
             return "tool_call"
-        if content.startswith("[执行完成]") or content.startswith("［执行完成］"):
+        if role == "tool":
             return "tool_result"
         return role or "message"
 

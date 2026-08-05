@@ -42,10 +42,19 @@ from services.branch_service import (
     get_session_tree as get_session_tree_payload,
     switch_session_branch,
 )
-from services.chat_runner import SessionRunLocks, run_chat, stream_chat_events, stream_event
+from services.chat_runner import (
+    SessionRunLocks,
+    run_chat,
+    stream_chat_events,
+    stream_event,
+    stream_run_approval_events,
+    stream_run_resume_events,
+)
 from services.dashboard_metrics import DashboardMetrics
 from services.message_media import normalize_attachments, normalize_images
 from skills import SkillRegistry
+from agent_runtime import RunStore
+from agent_runtime.builtin_tools import build_tool_registry
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -96,6 +105,11 @@ class ChatRequest(BaseModel):
     message: str | None = None
     images: Any = None
     attachments: Any = None
+
+
+class RunApprovalRequest(BaseModel):
+    approval_token: str | None = None
+    approved: bool = True
 
 
 class BootstrapAdminRequest(BaseModel):
@@ -339,6 +353,10 @@ agent_prompt += (
     "或 $FILES_DIR/文件名；不要写入项目根目录、用户主目录、/tmp 或其他目录。\n"
     f"- 如需读取或检查项目源码，使用 PROJECT_ROOT 环境变量：{PROJECT_ROOT}\n"
     "- 完成时请给出生成文件相对该目录的文件名或 /generated/<文件名>，不要返回本地绝对路径。\n"
+    "\n## 结构化工具协议\n"
+    "- 本运行时只支持原生 function calling；需要行动时必须调用结构化工具。\n"
+    "- 工具结果会以 tool 消息返回；根据观察结果继续调用工具或直接给出最终回答。\n"
+    "- 不能用普通文本模拟工具调用；不需要工具时直接回答。\n"
 )
 
 conversation_root = Path(config["conversation_dir"])
@@ -346,6 +364,10 @@ if not conversation_root.is_absolute():
     conversation_root = PROJECT_ROOT / conversation_root
 token_estimator = TokenUsageEstimator(config["token_encoding"])
 store = ConversationStore(conversation_root, token_estimator=token_estimator)
+run_root = Path(config["run_dir"])
+if not run_root.is_absolute():
+    run_root = PROJECT_ROOT / run_root
+run_store = RunStore(run_root)
 user_file = Path(config["user_file"])
 if not user_file.is_absolute():
     user_file = PROJECT_ROOT / user_file
@@ -361,15 +383,28 @@ executor = CommandExecutor(
     cwd=GENERATED_DIR,
     generated_files_dir=GENERATED_DIR,
 )
+tool_registry = build_tool_registry(
+    project_root=PROJECT_ROOT,
+    generated_files_dir=GENERATED_DIR,
+    executor=executor,
+    home_assistant_service=home_assistant_service,
+)
 
 
 def _new_llm_client() -> LLMClient:
-    return LLMClient(
-        api_key=config["api_key"],
-        base_url=config["base_url"],
-        model=config["model"],
-        timeout=config["timeout"],
-    )
+    kwargs = {
+        "api_key": config["api_key"],
+        "base_url": config["base_url"],
+        "model": config["model"],
+        "timeout": config["timeout"],
+    }
+    try:
+        return LLMClient(**kwargs, max_retries=config["max_retries"])
+    except TypeError as exc:
+        # Keep simple third-party/test adapters compatible with the old constructor.
+        if "max_retries" not in str(exc):
+            raise
+        return LLMClient(**kwargs)
 
 
 intent_router = HybridIntentRouter(
@@ -574,8 +609,12 @@ def _build_orchestrator() -> AgentOrchestrator:
         llm_client=llm_client,
         conversation=conversation,
         skill_registry=skill_registry,
-        executor=executor,
         context_compressor=context_compressor,
+        tool_registry=tool_registry,
+        run_store=run_store,
+        max_steps=config["agent_max_steps"],
+        max_runtime_seconds=config["agent_max_runtime_seconds"],
+        max_tool_output_chars=config["tool_output_max_chars"],
     )
 
 
@@ -1393,6 +1432,7 @@ def update_config(
     payload: ConfigUpdateRequest | None = Body(default=None),
     _admin: dict[str, Any] = Depends(require_admin),
 ):
+    global tool_registry
     payload_data = _payload(payload)
     try:
         config.update_llm_config(
@@ -1413,6 +1453,14 @@ def update_config(
                 token=config["home_assistant_token"],
                 allowed_entities=config["home_assistant_allowed_entities"],
                 request_timeout=config["home_assistant_request_timeout"],
+            )
+            # Tool schemas contain the current Home Assistant entity whitelist,
+            # so refresh the registry whenever that runtime config changes.
+            tool_registry = build_tool_registry(
+                project_root=PROJECT_ROOT,
+                generated_files_dir=GENERATED_DIR,
+                executor=executor,
+                home_assistant_service=home_assistant_service,
             )
     except ValueError as e:
         return _json({"error": "invalid_config", "message": str(e)}, 400)
@@ -1753,6 +1801,133 @@ async def chat(
         return _json({"error": "session_not_found"}, 404)
     except PermissionError:
         return _json({"error": "forbidden"}, 403)
+
+
+@app.get("/api/sessions/{session_id}/runs", tags=["runtime"])
+async def session_runs(
+    session_id: str,
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=False)
+    except KeyError:
+        return _json({"error": "session_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    rows = await asyncio.to_thread(run_store.list_for_session, session_id)
+    public_rows = []
+    for row in rows:
+        public = dict(row)
+        if isinstance(public.get("pending_approval"), dict):
+            pending = dict(public["pending_approval"])
+            pending.pop("token_hash", None)
+            public["pending_approval"] = pending
+        public_rows.append(public)
+    return {"runs": public_rows}
+
+
+@app.get("/api/runtime/tools", tags=["runtime"])
+async def runtime_tools(user: dict[str, Any] = Depends(require_user)):
+    return {
+        "tools": [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.input_schema,
+                "risk_level": tool.risk_level,
+                "requires_confirmation": bool(
+                    tool.requires_confirmation or tool.approval_policy is not None
+                ),
+                "approval_mode": (
+                    "dynamic" if tool.approval_policy is not None
+                    else "always" if tool.requires_confirmation
+                    else "none"
+                ),
+                "timeout": tool.timeout,
+                "max_retries": tool.max_retries,
+                "idempotent": tool.idempotent,
+            }
+            for tool in tool_registry.list()
+        ]
+    }
+
+
+@app.post("/api/runs/{run_id}/approval", tags=["runtime"])
+async def approve_run(
+    run_id: str,
+    payload: RunApprovalRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_user),
+):
+    payload_data = _payload(payload)
+    token = str(payload_data.get("approval_token") or "")
+    if not token:
+        return _json({"error": "missing_approval_token"}, 400)
+    try:
+        run = await asyncio.to_thread(run_store.load, run_id)
+        session_id = str(run.get("session_id") or "")
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+    except KeyError:
+        return _json({"error": "run_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    return StreamingResponse(
+        stream_run_approval_events(
+            store=store,
+            build_orchestrator=_build_orchestrator,
+            session_run_locks=session_run_locks,
+            session_id=session_id,
+            run_id=run_id,
+            approval_token=token,
+            approved=bool(payload_data.get("approved", True)),
+        ),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/runs/{run_id}/approval-token", tags=["runtime"])
+async def rotate_run_approval_token(
+    run_id: str,
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        run = await asyncio.to_thread(run_store.load, run_id)
+        session_id = str(run.get("session_id") or "")
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+        token = await asyncio.to_thread(run_store.rotate_approval_token, run_id)
+    except KeyError:
+        return _json({"error": "run_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    except ValueError as exc:
+        return _json({"error": str(exc)}, 409)
+    return {"run_id": run_id, "approval_token": token}
+
+
+@app.post("/api/runs/{run_id}/resume", tags=["runtime"])
+async def resume_run(
+    run_id: str,
+    user: dict[str, Any] = Depends(require_user),
+):
+    try:
+        run = await asyncio.to_thread(run_store.load, run_id)
+        session_id = str(run.get("session_id") or "")
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+    except KeyError:
+        return _json({"error": "run_not_found"}, 404)
+    except PermissionError:
+        return _json({"error": "forbidden"}, 403)
+    return StreamingResponse(
+        stream_run_resume_events(
+            store=store,
+            build_orchestrator=_build_orchestrator,
+            session_run_locks=session_run_locks,
+            session_id=session_id,
+            run_id=run_id,
+        ),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/chat/stream", tags=["chat"])

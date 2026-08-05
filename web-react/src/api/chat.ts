@@ -9,6 +9,13 @@ export interface ChatPayload {
   signal?: AbortSignal;
 }
 
+export interface RunApprovalPayload {
+  runId: string;
+  approvalToken: string;
+  approved: boolean;
+  signal?: AbortSignal;
+}
+
 interface UploadResponse {
   media: MessageMedia[];
 }
@@ -37,6 +44,19 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify(toWirePayload(payload)),
       signal: payload.signal,
+      onEvent,
+    }),
+  approveRun: (payload: RunApprovalPayload, onEvent: (event: ChatStreamEvent) => void) =>
+    streamRequest(`/api/runs/${payload.runId}/approval`, {
+      method: 'POST',
+      body: JSON.stringify({ approval_token: payload.approvalToken, approved: payload.approved }),
+      signal: payload.signal,
+      onEvent,
+    }),
+  resumeRun: (runId: string, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) =>
+    streamRequest(`/api/runs/${runId}/resume`, {
+      method: 'POST',
+      signal,
       onEvent,
     }),
 };

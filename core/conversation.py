@@ -40,9 +40,22 @@ class ConversationManager:
         content: str,
         attachments: List[Dict[str, Any]] | None = None,
         images: List[Dict[str, Any]] | None = None,
+        tool_calls: List[Dict[str, Any]] | None = None,
     ):
         """添加助手消息"""
         msg = self._build_message("assistant", content, attachments, images)
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+        if self.branch_engine is not None and self.active_node_id is not None:
+            new_node_id = self.branch_engine.append_message(self.active_node_id, msg)
+            self.active_node_id = new_node_id
+        self._messages.append(msg)
+
+    def add_tool_message(self, tool_call_id: str, name: str, content: str):
+        """Add a native function-calling tool result to the active branch."""
+        msg = self._build_message("tool", content)
+        msg["tool_call_id"] = tool_call_id
+        msg["name"] = name
         if self.branch_engine is not None and self.active_node_id is not None:
             new_node_id = self.branch_engine.append_message(self.active_node_id, msg)
             self.active_node_id = new_node_id
@@ -178,6 +191,9 @@ class ConversationManager:
                 built["parent_id"] = msg["parent_id"]
             if "context_nodes" in msg:
                 built["context_nodes"] = msg["context_nodes"]
+            for key in ("tool_calls", "tool_call_id", "name"):
+                if key in msg:
+                    built[key] = msg[key]
             cleaned.append(built)
         self._messages = cleaned
         self._summarized_until = max(1, min(self._summarized_until, len(self._messages)))

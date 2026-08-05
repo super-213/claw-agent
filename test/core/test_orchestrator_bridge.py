@@ -1,29 +1,36 @@
 """Tests for orchestrator sync wrappers over the async implementation."""
 from core.conversation import ConversationManager
 from core.orchestrator import AgentOrchestrator
-from services.executor import CommandExecutor
+from agent_runtime import AgentModelResponse, ToolDefinition, ToolRegistry
 from skills.registry import SkillRegistry
 
 
 class FakeAsyncLLM:
     model = "fake-model"
 
-    async def achat(self, messages):
-        return "[完成] sync bridge ok"
+    async def achat_with_tools(self, messages, tools):
+        return AgentModelResponse(content="sync bridge ok")
 
-    async def astream_chat(self, messages):
-        yield "[完成] "
-        yield "stream bridge ok"
+    async def astream_with_tools(self, messages, tools):
+        response = AgentModelResponse(content="stream bridge ok")
+        yield {"type": "content_delta", "delta": response.content}
+        yield {"type": "done", "response": response}
 
 
 def _orchestrator(tmp_path):
-    files_dir = tmp_path / "files"
     skills_dir = tmp_path / "skills"
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        name="noop",
+        description="noop",
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=lambda args: None,
+    ))
     return AgentOrchestrator(
         llm_client=FakeAsyncLLM(),
         conversation=ConversationManager("System prompt"),
         skill_registry=SkillRegistry(str(skills_dir)),
-        executor=CommandExecutor(cwd=files_dir, generated_files_dir=files_dir),
+        tool_registry=registry,
     )
 
 
@@ -35,7 +42,7 @@ def test_sync_process_user_input_uses_async_main_flow(tmp_path):
     messages = orchestrator.conversation.get_messages()
     assert should_continue is False
     assert messages[-1]["role"] == "assistant"
-    assert messages[-1]["content"] == "[完成] sync bridge ok"
+    assert messages[-1]["content"] == "sync bridge ok"
 
 
 def test_sync_stream_process_user_input_uses_async_main_flow(tmp_path):

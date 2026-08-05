@@ -52,28 +52,43 @@ async def run_chat(
     images: list[dict[str, Any]],
     auto_skills: list[str] | None = None,
 ) -> dict[str, Any]:
-    async with session_run_locks.locked(session_id):
-        session = await asyncio.to_thread(store.load_session, session_id)
-        orchestrator = build_orchestrator()
-        conversation = orchestrator.conversation
-        load_session_conversation(session, "", conversation)
-
-        before_len = len(conversation.get_messages())
-
-        async with orchestrator.llm_client:
-            await orchestrator.process_user_input_async(
-                user_message,
-                attachments=attachments,
-                images=images,
-                auto_skills=auto_skills,
+    orchestrator = None
+    conversation = None
+    try:
+        async with session_run_locks.locked(session_id):
+            session = await asyncio.to_thread(store.load_session, session_id)
+            orchestrator = build_orchestrator()
+            conversation = orchestrator.conversation
+            load_session_conversation(session, "", conversation)
+            orchestrator.checkpoint_callback = lambda: _save_conversation(
+                store, session_id, conversation
             )
 
-        messages = conversation.get_messages()
-        await _save_conversation(store, session_id, conversation)
+            before_len = len(conversation.get_messages())
+
+            async with orchestrator.llm_client:
+                await orchestrator.process_user_input_async(
+                    user_message,
+                    attachments=attachments,
+                    images=images,
+                    auto_skills=auto_skills,
+                    session_id=session_id,
+                )
+
+            messages = conversation.get_messages()
+            await _save_conversation(store, session_id, conversation)
+    except BaseException as exc:
+        if orchestrator is not None:
+            orchestrator.mark_interrupted(str(exc))
+        if conversation is not None:
+            await _save_conversation(store, session_id, conversation)
+        raise
 
     return {
         "messages": messages[before_len:],
         "session_id": session_id,
+        "run_id": orchestrator.run.get("id") if orchestrator.run else None,
+        "run_status": orchestrator.run.get("status") if orchestrator.run else None,
     }
 
 
@@ -88,6 +103,8 @@ async def stream_chat_events(
     images: list[dict[str, Any]],
     auto_skills: list[str] | None = None,
 ) -> AsyncIterator[str]:
+    orchestrator = None
+    conversation = None
     try:
         yield stream_event({
             "type": "step",
@@ -100,6 +117,9 @@ async def stream_chat_events(
             orchestrator = build_orchestrator()
             conversation = orchestrator.conversation
             load_session_conversation(session, "", conversation)
+            orchestrator.checkpoint_callback = lambda: _save_conversation(
+                store, session_id, conversation
+            )
 
             before_len = len(conversation.get_messages())
 
@@ -109,6 +129,7 @@ async def stream_chat_events(
                     attachments=attachments,
                     images=images,
                     auto_skills=auto_skills,
+                    session_id=session_id,
                 ):
                     if event.get("type") != "done":
                         yield stream_event(event)
@@ -128,6 +149,8 @@ async def stream_chat_events(
                 "message": "响应完成",
                 "messages": new_messages,
                 "session_id": session_id,
+                "run_id": orchestrator.run.get("id") if orchestrator.run else None,
+                "run_status": orchestrator.run.get("status") if orchestrator.run else None,
             }
             context_nodes = last_context_nodes(new_messages)
             if context_nodes is not None:
@@ -135,12 +158,120 @@ async def stream_chat_events(
             if conversation.active_node_id is not None:
                 done_event["active_node_id"] = conversation.active_node_id
             yield stream_event(done_event)
+    except asyncio.CancelledError:
+        if orchestrator is not None:
+            orchestrator.mark_interrupted("client_disconnected")
+        if conversation is not None:
+            await _save_conversation(store, session_id, conversation)
+        raise
     except Exception as e:
+        if orchestrator is not None:
+            orchestrator.mark_interrupted(str(e))
         yield stream_event({
             "type": "error",
             "stage": "error",
             "message": str(e),
         })
+
+
+async def stream_run_approval_events(
+    *,
+    store: Any,
+    build_orchestrator: Callable[[], Any],
+    session_run_locks: SessionRunLocks,
+    session_id: str,
+    run_id: str,
+    approval_token: str,
+    approved: bool,
+) -> AsyncIterator[str]:
+    """Resume a persisted run after an approval decision."""
+    try:
+        async with session_run_locks.locked(session_id):
+            session = await asyncio.to_thread(store.load_session, session_id)
+            orchestrator = build_orchestrator()
+            conversation = orchestrator.conversation
+            load_session_conversation(session, "", conversation)
+            orchestrator.checkpoint_callback = lambda: _save_conversation(
+                store, session_id, conversation
+            )
+            before_len = len(conversation.get_messages())
+            runtime_done: dict[str, Any] = {}
+            async with orchestrator.llm_client:
+                async for event in orchestrator.resume_after_approval_stream_async(
+                    run_id,
+                    approval_token,
+                    approved=approved,
+                ):
+                    if event.get("type") == "done":
+                        runtime_done = event
+                    else:
+                        yield stream_event(event)
+            await _save_conversation(store, session_id, conversation)
+            messages = conversation.get_messages()
+            yield stream_event({
+                "type": "done",
+                "stage": runtime_done.get("stage", "done"),
+                "message": runtime_done.get("message", "响应完成"),
+                "messages": messages[before_len:],
+                "session_id": session_id,
+                "run_id": run_id,
+                "run_status": orchestrator.run.get("status") if orchestrator.run else None,
+                "active_node_id": conversation.active_node_id,
+            })
+    except Exception as exc:
+        yield stream_event({"type": "error", "stage": "error", "message": str(exc)})
+
+
+async def stream_run_resume_events(
+    *,
+    store: Any,
+    build_orchestrator: Callable[[], Any],
+    session_run_locks: SessionRunLocks,
+    session_id: str,
+    run_id: str,
+) -> AsyncIterator[str]:
+    """Resume an interrupted run from its durable conversation and run checkpoints."""
+    orchestrator = None
+    conversation = None
+    try:
+        async with session_run_locks.locked(session_id):
+            session = await asyncio.to_thread(store.load_session, session_id)
+            orchestrator = build_orchestrator()
+            conversation = orchestrator.conversation
+            load_session_conversation(session, "", conversation)
+            orchestrator.checkpoint_callback = lambda: _save_conversation(
+                store, session_id, conversation
+            )
+            before_len = len(conversation.get_messages())
+            runtime_done: dict[str, Any] = {}
+            async with orchestrator.llm_client:
+                async for event in orchestrator.resume_run_stream_async(run_id):
+                    if event.get("type") == "done":
+                        runtime_done = event
+                    else:
+                        yield stream_event(event)
+            await _save_conversation(store, session_id, conversation)
+            messages = conversation.get_messages()
+            yield stream_event({
+                "type": "done",
+                "stage": runtime_done.get("stage", "done"),
+                "message": runtime_done.get("message", "恢复执行完成"),
+                "messages": messages[before_len:],
+                "session_id": session_id,
+                "run_id": run_id,
+                "run_status": orchestrator.run.get("status") if orchestrator.run else None,
+                "active_node_id": conversation.active_node_id,
+            })
+    except asyncio.CancelledError:
+        if orchestrator is not None:
+            orchestrator.mark_interrupted("client_disconnected")
+        if conversation is not None:
+            await _save_conversation(store, session_id, conversation)
+        raise
+    except Exception as exc:
+        if orchestrator is not None:
+            orchestrator.mark_interrupted(str(exc))
+        yield stream_event({"type": "error", "stage": "error", "message": str(exc)})
 
 
 async def _save_conversation(

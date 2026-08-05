@@ -28,10 +28,14 @@ class ConfigManager:
         "agent_file": "Agent.md",
         "skills_dir": "skills",
         "conversation_dir": ".data/conversations",
+        "run_dir": ".data/runs",
         "user_file": ".data/users.json",
         "generated_files_dir": "files",
         "timeout": 30,
         "max_retries": 3,
+        "agent_max_steps": 12,
+        "agent_max_runtime_seconds": 180,
+        "tool_output_max_chars": 12000,
         "context_max_chars": 60000,
         "context_recent_messages": 12,
         "summary_target_chars": 6000,
@@ -95,6 +99,9 @@ class ConfigManager:
         if conversation_dir := os.getenv("CONVERSATION_DIR"):
             config["conversation_dir"] = conversation_dir
 
+        if run_dir := os.getenv("RUN_DIR"):
+            config["run_dir"] = run_dir
+
         if user_file := os.getenv("USER_FILE"):
             config["user_file"] = user_file
 
@@ -146,6 +153,9 @@ class ConfigManager:
             "HOME_BACKUP_RETENTION_DAYS": "home_backup_retention_days",
             "HOME_ASSISTANT_REQUEST_TIMEOUT": "home_assistant_request_timeout",
             "LOG_RETENTION_DAYS": "log_retention_days",
+            "AGENT_MAX_STEPS": "agent_max_steps",
+            "AGENT_MAX_RUNTIME_SECONDS": "agent_max_runtime_seconds",
+            "TOOL_OUTPUT_MAX_CHARS": "tool_output_max_chars",
         }
         for env_name, config_key in int_envs.items():
             if value := os.getenv(env_name):

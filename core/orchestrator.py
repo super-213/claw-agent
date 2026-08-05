@@ -1,15 +1,20 @@
 """Agent 编排器"""
 import asyncio
+from datetime import datetime, timezone
+import hashlib
+import hmac
+import json
 from queue import Queue
+import secrets
 from threading import Thread
+import time
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional
+from agent_runtime import AgentModelResponse, RunStore, ToolApprovalRequired, ToolCall, ToolRegistry
 from .conversation import ConversationManager
 from .context import ExecutionContext
 from .context_compressor import ContextCompressor
 from services.llm_client import LLMClient
-from services.executor import CommandExecutor
 from skills.registry import SkillRegistry
-from handlers import CommandHandler, CompletionHandler, SkillOutputHandler, HandlerResult
 from utils.parser import InputParser
 
 
@@ -21,26 +26,28 @@ class AgentOrchestrator:
         llm_client: LLMClient,
         conversation: ConversationManager,
         skill_registry: SkillRegistry,
-        executor: CommandExecutor,
         context_compressor: Optional[ContextCompressor] = None,
-        max_command_failures: int = 3,
+        tool_registry: ToolRegistry | None = None,
+        run_store: RunStore | None = None,
+        max_steps: int = 12,
+        max_runtime_seconds: int = 180,
+        max_tool_output_chars: int = 12000,
+        checkpoint_callback: Callable[[], Any] | None = None,
     ):
         self.llm_client = llm_client
         self.conversation = conversation
         self.skill_registry = skill_registry
-        self.executor = executor
         self.context_compressor = context_compressor
-        self.max_command_failures = max_command_failures
+        self.tool_registry = tool_registry
+        self.run_store = run_store
+        self.max_steps = max(1, max_steps)
+        self.max_runtime_seconds = max(1, max_runtime_seconds)
+        self.max_tool_output_chars = max(1000, max_tool_output_chars)
+        self.checkpoint_callback = checkpoint_callback
+        self.run: Dict[str, Any] | None = None
+        self.pending_approval_token: str | None = None
+        self._run_started_monotonic = 0.0
         self.context = ExecutionContext()
-        
-        # 命令优先于完成标记，避免模型在同一回复里输出 [完成] 和 [命令]
-        # 时跳过真实执行。
-        self.handler_chain = CommandHandler(
-            executor,
-            CompletionHandler(
-                SkillOutputHandler()
-            )
-        )
     
     def process_user_input(
         self,
@@ -63,6 +70,7 @@ class AgentOrchestrator:
         attachments: List[Dict[str, Any]] | None = None,
         images: List[Dict[str, Any]] | None = None,
         auto_skills: List[str] | None = None,
+        session_id: str | None = None,
     ) -> bool:
         """异步处理用户输入，返回是否继续。"""
         accepted, _events = self._prepare_user_input(
@@ -75,6 +83,8 @@ class AgentOrchestrator:
         if not accepted:
             return True
 
+        self._start_run(session_id=session_id or "cli", goal=user_input)
+        await self._checkpoint()
         await self._consume_ai_loop()
 
         return self.context.should_continue
@@ -100,6 +110,7 @@ class AgentOrchestrator:
         attachments: List[Dict[str, Any]] | None = None,
         images: List[Dict[str, Any]] | None = None,
         auto_skills: List[str] | None = None,
+        session_id: str | None = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """异步处理用户输入，并逐步产出前端可展示的过程事件。"""
         accepted, events = self._prepare_user_input(
@@ -116,9 +127,16 @@ class AgentOrchestrator:
         for event in events:
             yield event
 
+        self._start_run(session_id=session_id or "cli", goal=user_input)
+        await self._checkpoint()
         async for event in self._ai_loop_events(stream_model=True):
             yield event
-        yield {"type": "done", "should_continue": self.context.should_continue}
+        yield {
+            "type": "done",
+            "should_continue": self.context.should_continue,
+            "run_id": self.run.get("id") if self.run else None,
+            "run_status": self.run.get("status") if self.run else None,
+        }
 
     def _prepare_user_input(
         self,
@@ -218,7 +236,9 @@ class AgentOrchestrator:
             self.conversation.add_system_message(
                 "## 提醒：用户的问题涉及实时信息\n"
                 "你的训练数据有截止日期，不具备实时信息。"
-                "请先使用 [命令] curl 等方式获取最新数据，"
+                "请调用 http_request 等原生结构化工具获取最新数据。"
+                "普通城市天气属于公网实时查询；除非用户明确询问已配置的智能家居实体，"
+                "否则不要调用 Home Assistant 工具。"
                 "优先使用已加载的 search 技能说明选择稳定来源。"
                 "如果某个搜索源或 API 无法访问，必须切换到同类备用来源重试，"
                 "然后基于成功获取的结果回答。禁止凭记忆编造实时数据。"
@@ -229,6 +249,13 @@ class AgentOrchestrator:
                     "stage": "realtime_hint",
                     "message": "检测到实时查询意图，已注入搜索提醒",
                 })
+
+        self.conversation.add_system_message(
+            "## 当前运行时协议（最高优先级）\n"
+            "本运行时只支持原生 function calling。需要行动时必须通过 tool_calls 调用"
+            "已提供的工具，不能把工具调用写成普通回复。工具结果返回后继续行动或给出"
+            "最终答案。技能内容仅提供选源、知识和操作步骤。"
+        )
 
         self.conversation.add_user_message(
             user_input,
@@ -274,136 +301,416 @@ class AgentOrchestrator:
             pass
 
     async def _ai_loop_events(self, *, stream_model: bool) -> AsyncIterator[Dict[str, Any]]:
-        """处理 AI 回复循环；需要流式展示时产出过程事件。"""
+        """Run the native function-calling loop without text-protocol fallback."""
+        if not self._structured_tools_available():
+            message = "当前模型适配器不支持原生 function calling，无法启动 Agent Runtime。"
+            self.context.stop()
+            self._update_run(status="failed", pending_approval=None, error=message)
+            yield {"type": "error", "stage": "capability", "message": message}
+            return
+        async for event in self._structured_ai_loop_events(stream_model=stream_model):
+            yield event
+
+    def _structured_tools_available(self) -> bool:
+        return bool(
+            self.tool_registry
+            and self.tool_registry.list()
+            and callable(getattr(self.llm_client, "achat_with_tools", None))
+        )
+
+    async def _structured_ai_loop_events(
+        self,
+        *,
+        stream_model: bool,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Native function-calling loop with budgets, approvals and checkpoints."""
         iteration = 0
         while True:
-            iteration += 1
-            if stream_model:
-                yield {
-                    "type": "step",
-                    "stage": "context",
-                    "message": "构建模型上下文",
-                    "iteration": iteration,
-                }
-
-            messages, context_node_ids = await self._build_model_context()
-
-            if stream_model:
-                reply = ""
-                yield {
-                    "type": "model_start",
-                    "stage": "model",
-                    "message": "发送模型请求",
-                    "iteration": iteration,
-                    "model": self.llm_client.model,
-                    "message_count": len(messages),
-                }
-                reply_parts: List[str] = []
-                async for delta in self.llm_client.astream_chat(messages):
-                    reply_parts.append(delta)
-                    yield {
-                        "type": "model_delta",
-                        "stage": "model",
-                        "iteration": iteration,
-                        "delta": delta,
-                    }
-
-                reply = "".join(reply_parts)
-                yield {
-                    "type": "model_done",
-                    "stage": "model",
-                    "message": "模型输出完成",
-                    "iteration": iteration,
-                    "content": reply,
-                }
-            else:
-                reply = await self.llm_client.achat(messages)
-
-            print(f"\n[AI 回复]:\n{reply}\n")
-            self.conversation.add_assistant_message(reply)
-
-            self._record_context_nodes(context_node_ids)
-
-            if stream_model:
-                yield {
-                    "type": "step",
-                    "stage": "handler",
-                    "message": "解析模型回复",
-                    "iteration": iteration,
-                }
-            commands = self._extract_commands(reply)
-            command = "\n\n".join(commands)
-            if stream_model and commands:
-                yield {
-                    "type": "command_start",
-                    "stage": "command",
-                    "message": f"执行命令：{command}",
-                    "iteration": iteration,
-                    "command": command,
-                }
-
-            result = await asyncio.to_thread(
-                self.handler_chain.handle,
-                reply,
-                self.context,
-            )
-
-            if stream_model and commands:
-                exec_result = self.context.metadata.get("execution_result")
-                if exec_result:
-                    yield {
-                        "type": "command_result",
-                        "stage": "command",
-                        "message": "命令执行完成" if exec_result.success else "命令执行失败",
-                        "iteration": iteration,
-                        "command": command,
-                        "success": exec_result.success,
-                        "return_code": exec_result.return_code,
-                        "output": exec_result.feedback,
-                    }
-
-            if result == HandlerResult.BREAK:
-                if stream_model:
-                    yield {
-                        "type": "step",
-                        "stage": "complete",
-                        "message": "任务完成",
-                        "iteration": iteration,
-                    }
+            if self._budget_exceeded(iteration):
+                message = self._stop_for_budget()
+                yield {"type": "step", "stage": "budget_exceeded", "message": message}
                 break
-            elif result == HandlerResult.CONTINUE:
-                if exec_result := self.context.metadata.get("execution_result"):
-                    if self._command_failure_limit_reached(exec_result):
-                        abort_message = self._record_command_abort(exec_result)
-                        if stream_model:
-                            yield {
-                                "type": "step",
-                                "stage": "command_abort",
-                                "message": abort_message,
-                                "iteration": iteration,
-                            }
-                        break
-                    self.conversation.add_user_message(f"[执行完成]\n{exec_result.feedback}")
-                    if stream_model:
+            iteration += 1
+            yield {
+                "type": "step",
+                "stage": "context",
+                "message": "构建结构化工具上下文",
+                "iteration": iteration,
+            }
+            messages, context_node_ids = await self._build_model_context()
+            schemas = self.tool_registry.schemas() if self.tool_registry else []
+            yield {
+                "type": "model_start",
+                "stage": "model",
+                "message": "发送原生 function calling 请求",
+                "iteration": iteration,
+                "model": self.llm_client.model,
+                "message_count": len(messages),
+                "tool_count": len(schemas),
+            }
+
+            response: AgentModelResponse
+            if stream_model and hasattr(self.llm_client, "astream_with_tools"):
+                response = AgentModelResponse()
+                async for item in self.llm_client.astream_with_tools(messages, schemas):
+                    if item.get("type") == "content_delta":
                         yield {
-                            "type": "step",
-                            "stage": "conversation",
-                            "message": "命令结果已写回上下文，继续请求模型",
+                            "type": "model_delta",
+                            "stage": "model",
                             "iteration": iteration,
+                            "delta": item.get("delta") or "",
                         }
-                continue
-            elif result == HandlerResult.RETRY:
-                self.conversation.add_user_message(
-                    "请严格按照格式回复：[命令]XXX 或 [完成]XXX"
+                    elif item.get("type") == "done":
+                        response = item["response"]
+            else:
+                response = await self.llm_client.achat_with_tools(messages, schemas)
+
+            tool_payloads = [call.as_openai() for call in response.tool_calls]
+            self.conversation.add_assistant_message(
+                response.content,
+                tool_calls=tool_payloads or None,
+            )
+            self._record_context_nodes(context_node_ids)
+            await self._checkpoint()
+            self._append_run_step({
+                "kind": "model",
+                "iteration": iteration,
+                "content": response.content,
+                "tool_calls": [call.as_dict() for call in response.tool_calls],
+                "finish_reason": response.finish_reason,
+            })
+            yield {
+                "type": "model_done",
+                "stage": "model",
+                "message": "模型输出完成",
+                "iteration": iteration,
+                "content": response.content,
+                "tool_calls": [call.as_dict() for call in response.tool_calls],
+            }
+
+            if not response.tool_calls:
+                self.context.stop()
+                self._update_run(status="completed", pending_approval=None)
+                yield {
+                    "type": "step",
+                    "stage": "complete",
+                    "message": "任务完成",
+                    "iteration": iteration,
+                }
+                break
+
+            paused, tool_events = await self._execute_tool_calls(response.tool_calls)
+            for event in tool_events:
+                yield {**event, "iteration": iteration}
+            if paused:
+                break
+
+    async def _execute_tool_calls(
+        self,
+        calls: List[ToolCall],
+        *,
+        first_call_approved: bool = False,
+    ) -> tuple[bool, List[Dict[str, Any]]]:
+        events: List[Dict[str, Any]] = []
+        for index, call in enumerate(calls):
+            events.append({
+                "type": "tool_start",
+                "stage": "tool",
+                "message": f"调用工具：{call.name}",
+                "tool_call": call.as_dict(),
+            })
+            try:
+                result = await self.tool_registry.invoke(
+                    call,
+                    approved=first_call_approved and index == 0,
                 )
-                if stream_model:
-                    yield {
-                        "type": "step",
-                        "stage": "retry",
-                        "message": "模型回复格式不符合协议，已追加格式提醒",
-                        "iteration": iteration,
-                    }
+            except ToolApprovalRequired as approval:
+                token = secrets.token_urlsafe(24)
+                self.pending_approval_token = token
+                pending = {
+                    "tool_call": approval.call.as_dict(),
+                    "remaining_tool_calls": [item.as_dict() for item in calls[index + 1:]],
+                    "token_hash": self._token_hash(token),
+                    "risk_level": approval.definition.risk_level,
+                    "requested_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self._update_run(status="waiting_approval", pending_approval=pending)
+                events.append({
+                    "type": "approval_required",
+                    "stage": "approval",
+                    "message": f"工具 {call.name} 需要确认后才能执行",
+                    "run_id": self.run.get("id") if self.run else None,
+                    "approval_token": token,
+                    "risk_level": approval.definition.risk_level,
+                    "tool_call": call.as_dict(),
+                })
+                return True, events
+
+            content = result.model_content(self.max_tool_output_chars)
+            self.conversation.add_tool_message(call.id, call.name, content)
+            await self._checkpoint()
+            self._append_run_step({"kind": "tool", "tool_result": result.as_dict()})
+            events.append({
+                "type": "tool_result",
+                "stage": "tool",
+                "message": "工具执行完成" if result.success else "工具执行失败",
+                "tool_call": call.as_dict(),
+                "tool_result": result.as_dict(),
+                "success": result.success,
+                "output": content,
+            })
+        return False, events
+
+    async def resume_after_approval_stream_async(
+        self,
+        run_id: str,
+        approval_token: str,
+        *,
+        approved: bool = True,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Resume a checkpointed run after a one-time approval decision."""
+        if not self.run_store:
+            raise RuntimeError("run_store_not_configured")
+        self.run = self.run_store.load(run_id)
+        pending = self.run.get("pending_approval") or {}
+        if self.run.get("status") != "waiting_approval" or not pending:
+            raise ValueError("run_is_not_waiting_for_approval")
+        expected = str(pending.get("token_hash") or "")
+        if not expected or not hmac.compare_digest(expected, self._token_hash(approval_token)):
+            raise PermissionError("invalid_approval_token")
+        self.pending_approval_token = None
+        self._run_started_monotonic = time.monotonic()
+
+        call = ToolCall.from_dict(pending["tool_call"])
+        remaining = [ToolCall.from_dict(item) for item in pending.get("remaining_tool_calls") or []]
+        if not approved:
+            self._update_run(status="cancelled", pending_approval=None)
+            self.conversation.add_tool_message(
+                call.id,
+                call.name,
+                '{"status":"cancelled","error":"user_rejected"}',
+            )
+            await self._checkpoint()
+            self.context.stop()
+            yield {
+                "type": "done",
+                "stage": "cancelled",
+                "message": "用户已拒绝工具调用",
+                "run_id": run_id,
+                "run_status": "cancelled",
+            }
+            return
+
+        self._update_run(status="running", pending_approval=None)
+        paused, events = await self._execute_tool_calls(
+            [call, *remaining],
+            first_call_approved=True,
+        )
+        for event in events:
+            yield event
+        if not paused:
+            async for event in self._structured_ai_loop_events(stream_model=True):
+                yield event
+        yield {
+            "type": "done",
+            "stage": "done",
+            "message": "响应完成",
+            "run_id": run_id,
+            "run_status": self.run.get("status") if self.run else None,
+        }
+
+    async def resume_run_stream_async(self, run_id: str) -> AsyncIterator[Dict[str, Any]]:
+        """Continue an interrupted structured run from its last durable step."""
+        if not self.run_store:
+            raise RuntimeError("run_store_not_configured")
+        self.run = self.run_store.load(run_id)
+        status = self.run.get("status")
+        if status == "waiting_approval":
+            raise ValueError("run_requires_approval")
+        if status in RunStore.TERMINAL_STATUSES:
+            raise ValueError(f"run_is_terminal:{status}")
+        if not self._structured_tools_available():
+            raise RuntimeError("structured_tools_not_available")
+        self._run_started_monotonic = time.monotonic()
+        self.context = ExecutionContext()
+        self._update_run(status="running", interrupted_reason=None)
+
+        steps = list(self.run.get("steps") or [])
+        last_model_index = next(
+            (index for index in range(len(steps) - 1, -1, -1) if steps[index].get("kind") == "model"),
+            -1,
+        )
+        if last_model_index >= 0:
+            model_step = steps[last_model_index]
+            calls = [ToolCall.from_dict(item) for item in model_step.get("tool_calls") or []]
+            completed_ids = {
+                str((step.get("tool_result") or {}).get("call_id") or "")
+                for step in steps[last_model_index + 1:]
+                if step.get("kind") == "tool"
+            }
+            conversation_messages = self.conversation.get_messages()
+            completed_ids.update(
+                str(message.get("tool_call_id") or "")
+                for message in conversation_messages
+                if message.get("role") == "tool"
+            )
+            stored_call_ids = {
+                str(raw.get("id") or "")
+                for message in conversation_messages
+                for raw in (message.get("tool_calls") or [])
+            }
+            if calls and not all(call.id in stored_call_ids for call in calls):
+                self.conversation.add_assistant_message(
+                    str(model_step.get("content") or ""),
+                    tool_calls=[call.as_openai() for call in calls],
+                )
+                await self._checkpoint()
+            remaining = [call for call in calls if call.id not in completed_ids]
+            if remaining:
+                paused, events = await self._execute_tool_calls(remaining)
+                for event in events:
+                    yield event
+                if paused:
+                    return
+            elif not calls and model_step.get("content"):
+                self.context.stop()
+                self._update_run(status="completed")
+                yield {
+                    "type": "done",
+                    "stage": "done",
+                    "message": "任务已在中断前完成",
+                    "run_id": run_id,
+                    "run_status": "completed",
+                }
+                return
+
+        else:
+            conversation_calls = self._latest_conversation_tool_calls()
+            completed_ids = {
+                str(message.get("tool_call_id") or "")
+                for message in self.conversation.get_messages()
+                if message.get("role") == "tool"
+            }
+            remaining = [call for call in conversation_calls if call.id not in completed_ids]
+            if remaining:
+                paused, events = await self._execute_tool_calls(remaining)
+                for event in events:
+                    yield event
+                if paused:
+                    return
+
+        async for event in self._structured_ai_loop_events(stream_model=True):
+            yield event
+        yield {
+            "type": "done",
+            "stage": "done",
+            "message": "恢复执行完成",
+            "run_id": run_id,
+            "run_status": self.run.get("status") if self.run else None,
+        }
+
+    def mark_interrupted(self, reason: str) -> None:
+        if self.run and self.run.get("status") == "running":
+            self._update_run(status="interrupted", interrupted_reason=reason)
+
+    def _latest_conversation_tool_calls(self) -> List[ToolCall]:
+        for message in reversed(self.conversation.get_messages()):
+            raw_calls = message.get("tool_calls") or []
+            if not raw_calls:
                 continue
+            calls: List[ToolCall] = []
+            for index, raw in enumerate(raw_calls):
+                function = raw.get("function") or {}
+                arguments = function.get("arguments") or "{}"
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except Exception:
+                        arguments = {"__invalid_json__": arguments}
+                calls.append(ToolCall(
+                    id=str(raw.get("id") or f"recovered_call_{index}"),
+                    name=str(function.get("name") or ""),
+                    arguments=arguments if isinstance(arguments, dict) else {},
+                ))
+            return calls
+        return []
+
+    def resume_after_approval(
+        self,
+        run_id: str,
+        approval_token: str,
+        *,
+        approved: bool = True,
+    ) -> List[Dict[str, Any]]:
+        return list(self._iter_async_sync(lambda: self.resume_after_approval_stream_async(
+            run_id,
+            approval_token,
+            approved=approved,
+        )))
+
+    def _start_run(self, *, session_id: str, goal: str) -> None:
+        active_skill = self.context.active_skill
+        self.context = ExecutionContext(active_skill=active_skill)
+        self._run_started_monotonic = time.monotonic()
+        if self.run_store:
+            self.run = self.run_store.create(
+                session_id=session_id,
+                goal=goal,
+                max_steps=self.max_steps,
+                max_runtime_seconds=self.max_runtime_seconds,
+            )
+        else:
+            self.run = {
+                "id": None,
+                "session_id": session_id,
+                "goal": goal,
+                "status": "running",
+                "steps": [],
+                "step_count": 0,
+            }
+
+    def _append_run_step(self, step: Dict[str, Any]) -> None:
+        if not self.run:
+            return
+        if self.run_store and self.run.get("id"):
+            self.run = self.run_store.append_step(self.run, step)
+        else:
+            self.run.setdefault("steps", []).append(step)
+            self.run["step_count"] = len(self.run["steps"])
+
+    def _update_run(self, **changes: Any) -> None:
+        if not self.run:
+            return
+        if self.run_store and self.run.get("id"):
+            self.run = self.run_store.update(self.run, **changes)
+        else:
+            self.run.update(changes)
+
+    async def _checkpoint(self) -> None:
+        if not self.checkpoint_callback:
+            return
+        value = self.checkpoint_callback()
+        if asyncio.iscoroutine(value):
+            await value
+
+    def _budget_exceeded(self, iteration: int) -> bool:
+        step_count = int((self.run or {}).get("step_count") or iteration)
+        elapsed = time.monotonic() - self._run_started_monotonic
+        return step_count >= self.max_steps or elapsed >= self.max_runtime_seconds
+
+    def _stop_for_budget(self) -> str:
+        message = (
+            f"Agent 执行预算已用尽：最多 {self.max_steps} 步、"
+            f"最长 {self.max_runtime_seconds} 秒。"
+        )
+        self.conversation.add_assistant_message(message)
+        self.context.stop()
+        self._update_run(status="budget_exceeded", pending_approval=None, error=message)
+        return message
+
+    @staticmethod
+    def _token_hash(token: str) -> str:
+        return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
     async def _build_model_context(self) -> tuple[List[Dict[str, Any]], List[str]]:
         """构建模型请求上下文，并返回本轮 assistant 需要记录的上下文节点。"""
@@ -483,29 +790,3 @@ class AgentOrchestrator:
             else:
                 thread.join()
                 break
-
-    @staticmethod
-    def _extract_command(response: str) -> str:
-        return InputParser.extract_command(response)
-
-    @staticmethod
-    def _extract_commands(response: str) -> List[str]:
-        return InputParser.extract_commands(response)
-
-    def _command_failure_limit_reached(self, exec_result) -> bool:
-        if exec_result.success:
-            return False
-        return (
-            self.context.metadata.get("command_failure_count", 0)
-            >= self.max_command_failures
-        )
-
-    def _record_command_abort(self, exec_result) -> str:
-        failure_count = self.context.metadata.get("command_failure_count", 0)
-        message = (
-            f"命令连续失败 {failure_count} 次，已停止自动重试。"
-            f"最后一次错误：\n{exec_result.feedback}"
-        )
-        self.conversation.add_user_message(f"[执行中止]\n{message}")
-        print(message)
-        return message

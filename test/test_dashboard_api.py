@@ -21,9 +21,28 @@ def _sample_session():
     messages = estimator.annotate_messages([
         {"node_id": "root", "parent_id": None, "role": "system", "content": "System prompt", "ts": now},
         {"node_id": "n1", "parent_id": "root", "role": "user", "content": "请分析 dashboard token 使用情况", "ts": now},
-        {"node_id": "n2", "parent_id": "n1", "role": "assistant", "content": "[命令] rg token -n", "ts": now},
-        {"node_id": "n3", "parent_id": "n2", "role": "user", "content": "[执行完成]\n命令执行成功，token output", "ts": now},
-        {"node_id": "n4", "parent_id": "n3", "role": "assistant", "content": "[完成] 已完成 token 分析", "ts": now},
+        {
+            "node_id": "n2",
+            "parent_id": "n1",
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "shell_execute", "arguments": '{"command":"rg token -n"}'},
+            }],
+            "ts": now,
+        },
+        {
+            "node_id": "n3",
+            "parent_id": "n2",
+            "role": "tool",
+            "tool_call_id": "call-1",
+            "name": "shell_execute",
+            "content": '{"status":"success","output":{"return_code":0,"output":"token output"}}',
+            "ts": now,
+        },
+        {"node_id": "n4", "parent_id": "n3", "role": "assistant", "content": "已完成 token 分析", "ts": now},
     ])
     return {
         "id": "session-1",

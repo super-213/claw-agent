@@ -5,12 +5,11 @@ from collections import Counter, defaultdict
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import json
 import math
 import re
 import shlex
 from typing import Any, Iterable
-
-from utils.parser import InputParser
 
 
 RANGE_DAYS = {
@@ -107,9 +106,9 @@ def _message_category(message: dict[str, Any]) -> str:
     content = (message.get("content") or "").lstrip()
     if role == "system":
         return "skill" if content.startswith("## 激活技能：") else "system_prompt"
-    if _has_marker(content, "命令"):
+    if message.get("tool_calls"):
         return "tool_call"
-    if _has_marker(content, "执行完成") or _has_marker(content, "执行中止"):
+    if role == "tool":
         return "tool_result"
     usage = _message_usage(message)
     category = usage.get("category")
@@ -118,29 +117,27 @@ def _message_category(message: dict[str, Any]) -> str:
     return str(role or "message")
 
 
-def _has_marker(text: str, marker: str) -> bool:
-    return bool(re.search(rf"[\[［]\s*{re.escape(marker)}\s*[\]］]", text or ""))
+def _native_tool_calls(message: dict[str, Any]) -> list[dict[str, Any]]:
+    calls = []
+    for raw in message.get("tool_calls") or []:
+        function = raw.get("function") or {}
+        arguments = function.get("arguments") or {}
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except (TypeError, json.JSONDecodeError):
+                arguments = {"raw": arguments}
+        calls.append({
+            "id": str(raw.get("id") or ""),
+            "name": str(function.get("name") or "unknown_tool"),
+            "arguments": arguments if isinstance(arguments, dict) else {},
+        })
+    return calls
 
 
-def _normalize_command_markers(text: str) -> str:
-    return (
-        (text or "")
-        .replace("［命令］", "[命令]")
-        .replace("［执行完成］", "[执行完成]")
-        .replace("［执行中止］", "[执行中止]")
-    )
-
-
-def _extract_commands(content: str) -> list[str]:
-    text = _normalize_command_markers(content)
-    commands = InputParser.extract_commands(text)
-    if commands:
-        return commands
-    if not _has_marker(text, "命令"):
-        return []
-    body = re.split(r"[\[［]\s*命令\s*[\]］]", text, maxsplit=1)[-1].strip()
-    first_line = body.splitlines()[0].strip() if body else ""
-    return [first_line] if first_line else []
+def _tool_text(call: dict[str, Any]) -> str:
+    arguments = json.dumps(call.get("arguments") or {}, ensure_ascii=False, sort_keys=True)
+    return f"{call.get('name') or 'unknown_tool'} {arguments}"
 
 
 def _strip_heredoc_body(command: str) -> str:
@@ -215,6 +212,26 @@ def _command_category(command: str, result_text: str = "") -> str:
     return "unknown"
 
 
+def _tool_category(call: dict[str, Any], result_text: str = "") -> str:
+    name = str(call.get("name") or "unknown_tool")
+    arguments = call.get("arguments") or {}
+    if name == "shell_execute":
+        return _command_category(str(arguments.get("command") or ""), result_text)
+    if name == "http_request":
+        return "network"
+    if name in {"file_read", "file_write", "datetime_now"}:
+        return name
+    if name.startswith("home_assistant_"):
+        return "home_assistant"
+    return "tool"
+
+
+def _tool_label(call: dict[str, Any]) -> str:
+    if call.get("name") == "shell_execute":
+        return _command_label(str((call.get("arguments") or {}).get("command") or ""))
+    return str(call.get("name") or "unknown_tool")
+
+
 def _looks_like_write(command: str) -> bool:
     return bool(
         re.search(r"(^|\s)(>|>>|1>|1>>|2>|2>>|&>|&>>)\s*\S+", command)
@@ -236,24 +253,17 @@ def _parse_tool_result(message: dict[str, Any] | None) -> dict[str, Any]:
             "token_usage": 0,
         }
     content = message.get("content") or ""
-    body = re.split(r"[\[［]\s*(?:执行完成|执行中止)\s*[\]］]", content, maxsplit=1)[-1].strip()
-    fail_match = re.search(r"命令执行失败[，,]\s*退出码\s*(-?\d+)\s*[:：]\s*([\s\S]*)", body)
-    aborted = _has_marker(content, "执行中止")
-    if fail_match:
-        success = False
-        status = "failed"
-        return_code = _safe_int(fail_match.group(1))
-        output = fail_match.group(2).strip()
-    elif aborted:
-        success = False
-        status = "aborted"
-        return_code = -1
-        output = body
-    else:
-        success = True
-        status = "success"
-        return_code = 0
-        output = body
+    try:
+        payload = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        payload = {"status": "unknown", "output": content}
+    status = str(payload.get("status") or "unknown")
+    success = status == "success"
+    value = payload.get("output") if success else payload.get("error") or payload.get("output")
+    output = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    return_code = None
+    if isinstance(payload.get("output"), dict) and "return_code" in payload["output"]:
+        return_code = _safe_int(payload["output"].get("return_code"))
     return {
         "success": success,
         "status": status,
@@ -415,9 +425,9 @@ def _word_counts(sessions: list[dict[str, Any]], scope: str, limit: int) -> list
         for message in session.get("messages", []):
             if not _session_word_source(message, scope):
                 continue
-            content = _normalize_command_markers(message.get("content") or "")
+            content = message.get("content") or ""
             if scope in {"tool", "tools"} and _message_category(message) == "tool_call":
-                content = " ".join(_extract_commands(content)) or content
+                content = " ".join(_tool_text(call) for call in _native_tool_calls(message))
             for token in _tokenize(content):
                 counts[token] += 1
                 if session_id:
@@ -714,21 +724,22 @@ class DashboardMetrics:
                     continue
                 if not _in_range(message.get("ts") or session.get("updated_at"), start):
                     continue
-                commands = _extract_commands(message.get("content") or "")
-                if not commands:
+                calls = _native_tool_calls(message)
+                if not calls:
                     continue
-                result_message = self._next_tool_result(messages, index)
-                result = _parse_tool_result(result_message)
-                for command in commands:
-                    category = _command_category(command, result.get("output_preview", ""))
+                for call in calls:
+                    result_message = self._next_tool_result(messages, index, call.get("id") or "")
+                    result = _parse_tool_result(result_message)
+                    tool_text = _tool_text(call)
+                    category = _tool_category(call, result.get("output_preview", ""))
                     events.append({
                         "id": f"{session_id}:{index}:{len(events)}",
                         "session_id": session_id,
                         "session_title": title,
                         "timestamp": _session_timestamp(session, message),
-                        "command": command,
-                        "command_preview": command.replace("\n", " ")[:160],
-                        "label": _command_label(command),
+                        "command": tool_text,
+                        "command_preview": tool_text.replace("\n", " ")[:160],
+                        "label": _tool_label(call),
                         "category": category,
                         "success": result["success"],
                         "status": result["status"],
@@ -740,12 +751,15 @@ class DashboardMetrics:
         return events
 
     @staticmethod
-    def _next_tool_result(messages: list[dict[str, Any]], index: int) -> dict[str, Any] | None:
-        for message in messages[index + 1:index + 5]:
-            category = _message_category(message)
-            if category == "tool_result":
+    def _next_tool_result(
+        messages: list[dict[str, Any]],
+        index: int,
+        call_id: str,
+    ) -> dict[str, Any] | None:
+        for message in messages[index + 1:]:
+            if message.get("role") == "tool" and message.get("tool_call_id") == call_id:
                 return message
-            if category == "tool_call":
+            if message.get("role") in {"user", "assistant"}:
                 return None
         return None
 

@@ -91,6 +91,7 @@ class BranchEngine:
             "parent_id": branch_point_id,
             "role": "user",
             "content": "",
+            "_branch_placeholder": True,
         }
 
         # 添加到节点索引
@@ -109,7 +110,15 @@ class BranchEngine:
     def is_placeholder(self, node_id: str) -> bool:
         """判断节点是否为 create_branch 生成的空分支占位节点。"""
         node = self._nodes.get(node_id)
-        return bool(node and node.get("role") == "user" and not (node.get("content") or "").strip())
+        return bool(
+            node
+            and node.get("role") == "user"
+            and (
+                node.get("_branch_placeholder") is True
+                or node.get("content") == ""
+                or node.get("content") is None
+            )
+        )
 
     def delete_branch(self, node_id: str, active_node_id: str) -> int:
         """删除指定节点及其所有后代，返回删除数量。
@@ -196,6 +205,12 @@ class BranchEngine:
                 "parent_id": node.get("parent_id"),
                 "role": node.get("role", ""),
                 "summary": summary,
+                "has_tool_calls": bool(node.get("tool_calls")),
+                "tool_names": [
+                    str((call.get("function") or {}).get("name") or "")
+                    for call in node.get("tool_calls") or []
+                    if (call.get("function") or {}).get("name")
+                ],
                 "is_active": node_id in active_path_ids,
                 "is_placeholder": self.is_placeholder(node_id),
                 "child_count": len(self._children.get(node_id, [])),
@@ -226,7 +241,10 @@ class BranchEngine:
         path = self.get_path_to_node(leaf_node_id)
 
         # 过滤掉空占位节点（如 create_branch 创建的空节点）
-        context = [msg for msg in path if msg.get("content")]
+        context = [
+            msg for msg in path
+            if msg.get("content") or msg.get("tool_calls") or msg.get("role") == "tool"
+        ]
 
         return context
 

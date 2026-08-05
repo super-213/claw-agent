@@ -1,14 +1,17 @@
 # Claw Agent
 
-基于 FastAPI、分层架构和插件化技能系统的本地智能 Agent。项目当前同时提供 CLI、Vite + React + TypeScript Web UI、后台数据看板、会话分支树、流式响应、文件级持久化、token 估算和命令执行安全控制。
+基于 FastAPI、分层架构和插件化技能系统的本地智能 Agent。项目提供原生 function calling、统一工具注册表、可恢复运行 checkpoint、CLI、Vite + React + TypeScript Web UI、后台数据看板、会话分支树、流式响应、文件级持久化、token 估算和执行安全控制。
 
 ## 核心能力
 
-- **分层架构**：`core`、`services`、`handlers`、`skills`、`web-react` 边界清晰，便于扩展和测试。
-- **异步 Agent 编排**：同步入口保留兼容，Web 聊天走 async 主流程，支持模型流式输出和命令执行循环。
+- **分层架构**：`agent_runtime`、`core`、`services`、`skills`、`web-react` 边界清晰，便于扩展和测试。
+- **异步 Agent 编排**：CLI 和 Web 使用同一 async 主流程，支持模型流式输出和原生工具执行循环。
+- **结构化工具调用**：通过 OpenAI-compatible `tools/tool_calls` 协议选择工具，统一执行参数校验、超时、重试、输出截断和结果回灌。
+- **运行状态与恢复**：每个任务生成独立 `run_id`，持久化模型步骤、工具步骤、预算和审批状态，支持中断恢复。
+- **统一审批**：覆盖文件覆盖、Shell 写操作和 Home Assistant 控制等高风险工具，审批令牌绑定单次工具调用。
 - **插件化技能系统**：支持 `.md` 和 `.skill` 技能文件，CLI/Web 均可添加和热重载技能。
 - **FastAPI API + Vite Web UI**：FastAPI 提供 API、文件访问和 OpenAPI 文档；React 前端由 Vite 开发服务器或独立静态服务承载。
-- **NDJSON 流式响应**：前端逐步渲染解析、模型输出、命令执行、保存和完成事件。
+- **NDJSON 流式响应**：前端逐步渲染解析、模型输出、工具执行、保存和完成事件。
 - **会话分支树**：每条消息有 `node_id`/`parent_id`，支持任意节点创建分支、切换路径、删除非活跃分支和上下文高亮。
 - **会话复制与迁移**：旧线性会话自动迁移为树结构，复制会话时保留完整分支树。
 - **文件级持久化**：会话保存到 JSON 文件，按 session 加锁，并通过临时文件 + `os.replace` 原子写入。
@@ -21,21 +24,18 @@
 ```text
 .
 ├── Agent.md                         # Agent 系统指令
+├── agent_runtime/                   # 工具模型、注册表、内置工具、Run checkpoint
 ├── main.py                          # CLI 入口
 ├── web_app.py                       # FastAPI Web 服务入口
 ├── config/
 │   ├── settings.py                  # 配置加载、校验、.env 写入
 │   └── .env.example                 # 环境变量示例
 ├── core/
-│   ├── orchestrator.py              # Agent 编排、流式事件、命令循环
+│   ├── orchestrator.py              # Agent 编排、流式事件、工具循环
 │   ├── conversation.py              # 对话管理和分支状态
 │   ├── branch_engine.py             # 树状分支索引与操作
 │   ├── context.py                   # 执行上下文
 │   └── context_compressor.py        # 长上下文压缩
-├── handlers/
-│   ├── command.py                   # [命令] 输出处理
-│   ├── completion.py                # [完成] 输出处理
-│   └── skill.py                     # 技能输出处理
 ├── services/
 │   ├── chat_runner.py               # Web 聊天运行器与 session 级运行锁
 │   ├── conversation_store.py        # JSON 会话持久化、复制、迁移、token 标注
@@ -104,10 +104,15 @@ export MODEL_NAME="qwen-plus"
 | `AGENT_FILE` | `Agent.md` | Agent 系统指令文件 |
 | `SKILLS_DIR` | `skills` | 技能目录 |
 | `CONVERSATION_DIR` | `.data/conversations` | 会话 JSON 保存目录 |
+| `RUN_DIR` | `.data/runs` | Agent Run/Step checkpoint 保存目录 |
 | `GENERATED_FILES_DIR` | `files` | 生成文件目录 |
 | `WEB_HOST` | `0.0.0.0` | Web 服务监听地址 |
 | `PORT` | `8000` | Web 服务端口 |
 | `TIMEOUT` | `30` | 命令与模型客户端超时 |
+| `MAX_RETRIES` | `3` | 模型请求最大重试次数 |
+| `AGENT_MAX_STEPS` | `12` | 单次 Agent Run 最大模型/工具步骤数 |
+| `AGENT_MAX_RUNTIME_SECONDS` | `180` | 单次连续执行最长秒数 |
+| `TOOL_OUTPUT_MAX_CHARS` | `12000` | 写回模型的单次工具结果字符上限 |
 | `TOKEN_ENCODING` | `cl100k_base` | token 估算编码 |
 
 长上下文压缩配置：
@@ -328,8 +333,9 @@ curl -N -X POST http://localhost:8000/api/chat/stream \
 | `model_start` | 模型请求开始，包含 `model`、`iteration`、`message_count` |
 | `model_delta` | 模型流式增量文本，字段为 `delta` |
 | `model_done` | 模型输出完成，包含完整 `content` |
-| `command_start` | 检测到 `[命令]` 并开始执行 |
-| `command_result` | 命令执行结果，包含 `success`、`return_code`、`output` |
+| `tool_start` | 原生结构化工具开始执行，包含工具名和参数 |
+| `tool_result` | 结构化工具执行结果 |
+| `approval_required` | 高风险工具等待用户确认，包含 `run_id` 和一次性审批令牌 |
 | `done` | 本次请求完成，包含新增 `messages`、`session_id`、`active_node_id`、`context_nodes` |
 | `error` | 处理失败，包含错误信息 |
 
@@ -375,6 +381,38 @@ curl -X POST http://localhost:8000/api/config \
 ```
 
 `POST /api/config` 会写入优先级最高的现有 `.env`；如果不存在，则写入 `config/.env` 并尽量设置权限为 `0600`。
+
+### Agent Runtime API
+
+查看当前注册的工具及其参数 Schema：
+
+```bash
+curl http://localhost:8000/api/runtime/tools
+```
+
+查询某个会话的运行记录：
+
+```bash
+curl http://localhost:8000/api/sessions/<session_id>/runs
+```
+
+确认或拒绝等待审批的工具调用：
+
+```bash
+curl -N -X POST http://localhost:8000/api/runs/<run_id>/approval \
+  -H 'Content-Type: application/json' \
+  -d '{"approval_token":"<token>","approved":true}'
+```
+
+如果原审批页面已关闭，可先调用 `POST /api/runs/<run_id>/approval-token` 轮换并取得新的单次审批令牌。
+
+从最后一个持久化步骤恢复中断任务：
+
+```bash
+curl -N -X POST http://localhost:8000/api/runs/<run_id>/resume
+```
+
+内置结构化工具包括 `datetime_now`、`file_read`、`file_write`、`http_request`、`shell_execute` 以及 Home Assistant 工具。模型适配器必须支持原生 Function Calling；不满足该能力时 Run 会以 `failed` 状态结束并返回明确错误。
 
 ### Token 与看板 API
 
@@ -433,22 +471,9 @@ curl -X DELETE http://localhost:8000/api/sessions/<session_id>/branch/<node_id>
 
 用户输入包含 `调用 <技能名> skill ...` 时，系统会加载对应技能内容并注入模型上下文。
 
-## 命令执行协议
+## 原生工具协议
 
-Agent 通过 `Agent.md` 约束模型输出协议：
-
-```text
-[命令] ls -la
-[完成] 任务已完成
-```
-
-处理规则：
-
-- `[命令]` 优先于 `[完成]`，避免同一回复中同时出现时跳过命令执行。
-- 命令结果会以 `[执行完成]` 写回上下文，模型继续下一轮。
-- 命令失败会统计连续失败次数，达到上限后写入 `[执行中止]` 并停止自动重试。
-- 交互式命令和危险命令会被拦截。
-- 命令执行工作目录固定为 `GENERATED_FILES_DIR`，默认 `files/`。
+Runtime 只接受 OpenAI-compatible `tools/tool_calls`：模型发起 Function Calling，注册表验证名称和 JSON Schema 参数，执行器返回标准 `tool` 消息，模型根据观察结果继续规划或给出最终回答。Shell 也只是注册表中的 `shell_execute` 工具，遵循同一审批、安全、超时和结果回灌流程。
 
 ## 测试
 

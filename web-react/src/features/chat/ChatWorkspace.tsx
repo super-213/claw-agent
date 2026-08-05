@@ -292,13 +292,24 @@ export function ChatWorkspace({
     ]);
 
     const streamMessages = new Map<number, string>();
+    const approvalState: {
+      pending: { runId: string; approvalToken: string; approved: boolean } | null;
+    } = { pending: null };
     const appendSynthetic = (message: Message) => {
       useAppStore.getState().setSessionMessages(targetSessionId as string, (currentMessages) => [...currentMessages, message]);
     };
-    const updateSyntheticAssistant = (iteration: number, content: string) => {
+    const updateSyntheticAssistant = (
+      iteration: number,
+      content: string,
+      toolCalls?: Message['tool_calls'],
+    ) => {
       const nodeId = `stream-assistant-${iteration}`;
       useAppStore.getState().setSessionMessages(targetSessionId as string, (currentMessages) =>
-        currentMessages.map((message) => (message.node_id === nodeId ? { ...message, content } : message)),
+        currentMessages.map((message) => (
+          message.node_id === nodeId
+            ? { ...message, content, ...(toolCalls?.length ? { tool_calls: toolCalls } : {}) }
+            : message
+        )),
       );
     };
 
@@ -327,28 +338,52 @@ export function ChatWorkspace({
       }
       if (event.type === 'model_done') {
         const iteration = event.iteration || 1;
-        updateSyntheticAssistant(iteration, event.content || streamMessages.get(iteration) || '');
+        const toolCalls: Message['tool_calls'] = event.tool_calls?.map((call) => ({
+          id: call.id,
+          type: 'function',
+          function: {
+            name: call.name || 'tool',
+            arguments: JSON.stringify(call.arguments || {}),
+          },
+        }));
+        updateSyntheticAssistant(
+          iteration,
+          event.content || streamMessages.get(iteration) || '',
+          toolCalls,
+        );
         setStatusText('解析模型回复...');
         return;
       }
-      if (event.type === 'command_start') {
+      if (event.type === 'tool_start') {
         updateStream(targetSessionId as string, { status: 'running_tool' });
-        setStatusText('执行命令...');
+        const name = event.tool_call?.name || '工具';
+        setStatusText(`正在调用 ${name}...`);
         appendSynthetic({
-          role: 'assistant',
-          content: `[命令]\n${event.command || ''}`,
-          node_id: `command-${event.iteration || Date.now()}`,
+          role: 'process',
+          content: `调用工具：${name}`,
+          node_id: `tool-${event.tool_call?.id || Date.now()}`,
         });
         return;
       }
-      if (event.type === 'command_result') {
-        setStatusText(event.success === false ? '命令执行失败' : '命令结果写回上下文...');
-        const prefix = event.success === false ? `命令执行失败，退出码 ${event.return_code ?? -1}:` : '命令执行成功';
+      if (event.type === 'tool_result') {
+        const name = event.tool_call?.name || '工具';
+        setStatusText(event.success === false ? `${name} 执行失败` : `${name} 执行完成`);
         appendSynthetic({
-          role: 'user',
-          content: `[执行完成]\n${prefix}\n${String(event.output || '').slice(0, 4000)}`,
-          node_id: `command-result-${event.iteration || Date.now()}`,
+          role: 'process',
+          content: `${name}：${event.success === false ? '执行失败' : '执行完成'}`,
+          node_id: `tool-result-${event.tool_call?.id || Date.now()}`,
         });
+        return;
+      }
+      if (event.type === 'approval_required') {
+        const runId = String(event.run_id || '');
+        const approvalToken = String(event.approval_token || '');
+        const name = event.tool_call?.name || '高风险工具';
+        const args = JSON.stringify(event.tool_call?.arguments || {}, null, 2);
+        updateStream(targetSessionId as string, { status: 'waiting_approval' });
+        setStatusText('等待操作确认');
+        const approved = confirm(`是否允许执行 ${name}？\n\n参数：\n${args}`);
+        if (runId && approvalToken) approvalState.pending = { runId, approvalToken, approved };
         return;
       }
       if (event.type === 'error') {
@@ -359,6 +394,19 @@ export function ChatWorkspace({
 
     try {
       await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, signal: abortController.signal }, handleEvent);
+      while (approvalState.pending) {
+        const decision = approvalState.pending;
+        approvalState.pending = null;
+        await chatApi.approveRun(
+          {
+            runId: decision.runId,
+            approvalToken: decision.approvalToken,
+            approved: decision.approved,
+            signal: abortController.signal,
+          },
+          handleEvent,
+        );
+      }
       await loadSessions();
       if (useAppStore.getState().currentSessionId === targetSessionId) {
         const detail = await sessionsApi.get(targetSessionId);

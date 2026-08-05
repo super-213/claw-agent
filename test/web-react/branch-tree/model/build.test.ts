@@ -8,9 +8,9 @@ describe('buildBranchTree', () => {
       nodes: [
         { node_id: 'root', parent_id: null, role: 'system', summary: 'system' },
         { node_id: 'u1', parent_id: 'root', role: 'user', summary: 'run tests' },
-        { node_id: 'cmd1', parent_id: 'u1', role: 'assistant', summary: '[命令]\npytest' },
-        { node_id: 'res1', parent_id: 'cmd1', role: 'user', summary: '[执行完成]\nok' },
-        { node_id: 'a2', parent_id: 'res1', role: 'assistant', summary: '[完成]\ndone' },
+        { node_id: 'cmd1', parent_id: 'u1', role: 'assistant', summary: '', has_tool_calls: true, tool_names: ['shell_execute'] },
+        { node_id: 'res1', parent_id: 'cmd1', role: 'tool', summary: '{"status":"success"}' },
+        { node_id: 'a2', parent_id: 'res1', role: 'assistant', summary: 'done' },
       ],
     });
 

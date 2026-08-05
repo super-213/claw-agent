@@ -1,4 +1,4 @@
-import type { Message, MessageMedia, MessageUsage } from '../api/types';
+import type { MessageMedia, MessageUsage } from '../api/types';
 
 export const formatTime = (value?: string | null): string => {
   if (!value) return '';
@@ -63,24 +63,6 @@ export const escapeHtml = (text: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-export const hasMarker = (text: string | undefined, marker: string): boolean => {
-  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^\\s*[\\[［]\\s*${escaped}\\s*[\\]］]`).test(text || '');
-};
-
-export const markerRegex = (marker: string): RegExp => {
-  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`[\\[［]\\s*${escaped}\\s*[\\]］]`);
-};
-
-export const isFormatNudge = (text?: string): boolean =>
-  Boolean(
-    text &&
-      text.includes('请严格按照格式回复') &&
-      /[\[［]\s*命令\s*[\]］]/.test(text) &&
-      /[\[［]\s*完成\s*[\]］]/.test(text),
-  );
-
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg)(?:[?#].*)?$/i;
 const LOCAL_IMAGE_PREFIXES = ['/generated/', '/assets/', '/images/', '/static/', '/uploads/'];
 
@@ -144,63 +126,6 @@ export const isImageAttachment = (item: MessageMedia): boolean => {
   const type = String(item?.type || item?.mime_type || item?.mimeType || '').toLowerCase();
   const source = imageSourceFrom(item);
   return type.startsWith('image/') || looksLikeImageSource(source);
-};
-
-export const isToolCallMessage = (msg: Message): boolean =>
-  msg?.role === 'assistant' && markerRegex('命令').test(msg.content || '');
-
-export const isToolResultMessage = (msg: Message): boolean =>
-  msg?.role === 'user' && markerRegex('执行完成').test(msg.content || '');
-
-export const extractCommandFromContent = (content?: string): string => {
-  const text = content || '';
-  const match = markerRegex('命令').exec(text);
-  if (!match) return '';
-  let raw = text.slice(match.index + match[0].length).trim();
-  if (!raw) return '';
-
-  const lines = raw.split('\n');
-  if (lines[0].trim().startsWith('```')) {
-    const inner: string[] = [];
-    for (let i = 1; i < lines.length; i += 1) {
-      if (lines[i].trim().startsWith('```')) break;
-      inner.push(lines[i]);
-    }
-    raw = inner.join('\n').trim();
-  }
-
-  const commandLines = raw.split('\n');
-  if (!commandLines.length) return '';
-
-  const firstLine = commandLines[0].trim();
-  const heredocMatch = firstLine.match(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/);
-  if (!heredocMatch) return firstLine;
-
-  const delimiter = heredocMatch[2];
-  const collected = [commandLines[0]];
-  for (let i = 1; i < commandLines.length; i += 1) {
-    collected.push(commandLines[i]);
-    if (commandLines[i].trim() === delimiter) break;
-  }
-  return collected.join('\n').trim();
-};
-
-export const extractToolOutput = (
-  content?: string,
-): { output: string; success: boolean | null; returnCode: number | null } => {
-  const text = content || '';
-  const match = markerRegex('执行完成').exec(text);
-  if (!match) return { output: text, success: null, returnCode: null };
-  const body = text.slice(match.index + match[0].length).trim();
-  const failMatch = body.match(/^命令执行失败[，,]\s*退出码\s*(-?\d+)\s*[:：]\s*([\s\S]*)/);
-  if (failMatch) {
-    return { output: failMatch[2].trim(), success: false, returnCode: Number(failMatch[1]) };
-  }
-  if (body.startsWith('命令执行成功')) {
-    const rest = body.replace(/^命令执行成功[，,：:\s]*/, '').trim();
-    return { output: rest, success: true, returnCode: 0 };
-  }
-  return { output: body, success: true, returnCode: 0 };
 };
 
 export const messageImageAlt = (item: string | MessageMedia): string => {

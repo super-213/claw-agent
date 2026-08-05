@@ -1,7 +1,8 @@
 """上下文压缩器"""
 from __future__ import annotations
 
-from typing import Dict, Iterable, List
+import json
+from typing import Any, Dict, Iterable, List
 
 from services.llm_client import LLMClient
 
@@ -258,7 +259,7 @@ class ContextCompressor:
             yield batch
 
     def _normalize_for_summary(self, message: Dict[str, str]) -> Dict[str, str]:
-        content = message.get("content", "")
+        content = self._summary_content(message)
         max_single = max(1000, self.summary_input_chars // 3)
         if len(content) <= max_single:
             return {"role": message.get("role", ""), "content": content}
@@ -276,9 +277,18 @@ class ContextCompressor:
         parts = []
         for idx, msg in enumerate(messages, start=1):
             role = msg.get("role", "")
-            content = msg.get("content", "")
+            content = ContextCompressor._summary_content(msg)
             parts.append(f"{idx}. {role}:\n{content}")
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _summary_content(message: Dict[str, Any]) -> str:
+        content = str(message.get("content") or "")
+        if message.get("tool_calls"):
+            content += "\n[tool_calls] " + json.dumps(message["tool_calls"], ensure_ascii=False)
+        if message.get("tool_call_id"):
+            content += f"\n[tool_call_id] {message['tool_call_id']}"
+        return content.strip()
 
     def _fallback_summary(
         self,

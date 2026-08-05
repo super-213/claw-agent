@@ -16,6 +16,8 @@ export interface TreeNode {
   toolSummary?: string;
   modelSummary?: string;
   toolCount?: number;
+  hasToolCalls?: boolean;
+  toolNames?: string[];
 }
 
 export const computeActivePath = (nodeMap: Map<string, TreeNode>, activeNodeId?: string | null): Set<string> => {
@@ -51,6 +53,8 @@ export const buildTree = (
       parentId: n.parent_id,
       role: n.role,
       summary: n.summary || '',
+      hasToolCalls: Boolean(n.has_tool_calls),
+      toolNames: n.tool_names || [],
       isActive: false,
       isPlaceholder: Boolean(n.is_placeholder),
       childCount: n.child_count || 0,
@@ -75,10 +79,10 @@ export const buildTree = (
 };
 
 const hasContent = (node?: TreeNode) => Boolean((node?.summary || '').trim());
-const isToolCallNode = (node?: TreeNode) => node?.role === 'assistant' && (node.summary || '').trim().startsWith('[命令]');
-const isToolResultNode = (node?: TreeNode) => node?.role === 'user' && (node.summary || '').trim().startsWith('[执行完成]');
+const isToolCallNode = (node?: TreeNode) => node?.role === 'assistant' && Boolean(node.hasToolCalls);
+const isToolResultNode = (node?: TreeNode) => node?.role === 'tool';
 const isPlaceholderNode = (node?: TreeNode) => Boolean(node?.isPlaceholder) || (node?.role === 'user' && !hasContent(node));
-const isUserInputNode = (node?: TreeNode) => node?.role === 'user' && hasContent(node) && !isToolResultNode(node);
+const isUserInputNode = (node?: TreeNode) => node?.role === 'user' && hasContent(node);
 
 const createDisplayNode = ({
   nodeId,

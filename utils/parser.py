@@ -5,7 +5,6 @@ from typing import Optional, Tuple
 
 class InputParser:
     """解析用户输入"""
-    COMMAND_MARKER = "[命令]"
 
     # 实时查询意图关键词
     REALTIME_KEYWORDS = [
@@ -42,67 +41,3 @@ class InputParser:
         if skill_name:
             text = InputParser.remove_skill_call(text)
         return skill_name, text
-
-    @staticmethod
-    def extract_command(text: str) -> str:
-        """提取模型回复中的第一条命令，支持 heredoc 多行写入命令。"""
-        commands = InputParser.extract_commands(text)
-        return commands[0] if commands else ""
-
-    @staticmethod
-    def extract_commands(text: str) -> list[str]:
-        """提取模型回复中的全部命令。
-
-        模型偶尔会违反提示词一次输出多条 [命令]。这里顺序提取，避免只执行
-        第一条后让模型误以为后续文件也已写入。
-        """
-        if InputParser.COMMAND_MARKER not in text:
-            return []
-
-        commands: list[str] = []
-        for raw in text.split(InputParser.COMMAND_MARKER)[1:]:
-            command = InputParser._extract_command_from_marker_body(raw)
-            if command:
-                commands.append(command)
-        return commands
-
-    @staticmethod
-    def _extract_command_from_marker_body(raw: str) -> str:
-        raw = raw.strip()
-        if not raw:
-            return ""
-
-        raw = InputParser._unwrap_fenced_command(raw)
-        lines = raw.splitlines()
-        if not lines:
-            return ""
-
-        first_line = lines[0].strip()
-        delimiter = InputParser._heredoc_delimiter(first_line)
-        if not delimiter:
-            return first_line
-
-        command_lines = [lines[0]]
-        for line in lines[1:]:
-            command_lines.append(line)
-            if line.strip() == delimiter:
-                break
-        return "\n".join(command_lines).strip()
-
-    @staticmethod
-    def _unwrap_fenced_command(text: str) -> str:
-        lines = text.splitlines()
-        if not lines or not lines[0].strip().startswith("```"):
-            return text
-
-        command_lines: list[str] = []
-        for line in lines[1:]:
-            if line.strip().startswith("```"):
-                break
-            command_lines.append(line)
-        return "\n".join(command_lines).strip()
-
-    @staticmethod
-    def _heredoc_delimiter(command_line: str) -> Optional[str]:
-        match = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1", command_line)
-        return match.group(2) if match else None

@@ -1,14 +1,7 @@
 import { Check, GitBranch, Loader2 } from 'lucide-react';
 import type { Message } from '../../api/types';
-import {
-  extractCommandFromContent,
-  extractToolOutput,
-  formatBytes,
-  formatUsage,
-  isToolCallMessage,
-  isToolResultMessage,
-} from '../../utils/format';
-import { getMessageView, isFormatNudgeMessage, splitMixedProtocolMessage } from '../../utils/messageView';
+import { formatBytes, formatUsage } from '../../utils/format';
+import { getMessageView } from '../../utils/messageView';
 import { MessageContent } from './MessageContent';
 
 interface MessageRowsProps {
@@ -28,6 +21,7 @@ interface ToolCardProps {
   success?: boolean | null;
   returnCode?: number | null;
   running?: boolean;
+  badge?: string;
 }
 
 function ProtocolFlow({ flow }: { flow: NonNullable<ReturnType<typeof getMessageView>['flow']> }) {
@@ -120,7 +114,7 @@ function BranchAction({
   );
 }
 
-function ToolCard({ iteration, command, output = '', success = null, returnCode = null, running = false }: ToolCardProps) {
+function ToolCard({ iteration, command, output = '', success = null, returnCode = null, running = false, badge = 'SHELL' }: ToolCardProps) {
   const resolved = success ?? (returnCode == null ? null : Number(returnCode) === 0);
   const text = output || '';
   const parts = [];
@@ -131,7 +125,7 @@ function ToolCard({ iteration, command, output = '', success = null, returnCode 
     <div className="message-row tool-call-row">
       <div className={`tool-call-card${running ? ' running' : ''}${resolved === false ? ' failure' : ''}${resolved === true ? ' success' : ''}`}>
         <div className="tool-call-head">
-          <span className="tool-badge">SHELL</span>
+          <span className="tool-badge">{badge}</span>
           <span className="tool-iter">#{iteration}</span>
           <span className="tool-status">
             <span className="dot" />
@@ -227,17 +221,54 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
   for (let index = 0; index < messages.length; index += 1) {
     const msg = messages[index];
     if (isEmptyBranchPlaceholder(msg)) continue;
-    if (msg.role === 'system' || isFormatNudgeMessage(msg)) continue;
+    if (msg.role === 'system') continue;
 
-    if (isToolCallMessage(msg)) {
+    if (msg.tool_calls?.length) {
       iteration += 1;
       if (iteration > 1) rows.push(<IterationDivider key={`iter-${index}`} iteration={iteration} />);
-      const displayMessages = splitMixedProtocolMessage(msg);
-      const commandMessage = displayMessages[0];
+      const results = new Map<string, Message>();
+      let resultIndex = index + 1;
+      while (messages[resultIndex]?.role === 'tool') {
+        const resultMessage = messages[resultIndex];
+        if (resultMessage.tool_call_id) results.set(resultMessage.tool_call_id, resultMessage);
+        resultIndex += 1;
+      }
+      msg.tool_calls.forEach((call, callIndex) => {
+        const name = call.function?.name || msg.name || 'tool';
+        const args = call.function?.arguments || '{}';
+        const resultMessage = call.id ? results.get(call.id) : undefined;
+        let success: boolean | null = null;
+        if (resultMessage?.content) {
+          try {
+            success = JSON.parse(resultMessage.content).status === 'success';
+          } catch {
+            success = null;
+          }
+        }
+        rows.push(
+          <ToolCard
+            key={`${msg.node_id || index}-native-tool-${call.id || callIndex}`}
+            iteration={iteration}
+            command={`${name} ${args}`}
+            output={resultMessage?.content || ''}
+            success={success}
+            badge="TOOL"
+          />,
+        );
+      });
+      index = resultIndex - 1;
+      continue;
+    }
+
+    if (msg.role === 'tool') continue;
+
+    if (msg.role === 'assistant') {
+      iteration += 1;
+      if (iteration > 1) rows.push(<IterationDivider key={`iter-${index}`} iteration={iteration} />);
       rows.push(
         <MessageRow
-          key={`${msg.node_id || index}-command`}
-          message={commandMessage}
+          key={`${msg.node_id || index}-assistant`}
+          message={msg}
           index={index}
           iteration={iteration}
           showHeader
@@ -246,56 +277,6 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
           branchCreationLocked={branchCreationLocked}
         />,
       );
-
-      let result = null;
-      if (messages[index + 1] && isToolResultMessage(messages[index + 1])) {
-        result = extractToolOutput(messages[index + 1].content || '');
-        index += 1;
-      }
-      rows.push(
-        <ToolCard
-          key={`${msg.node_id || index}-tool`}
-          iteration={iteration}
-          command={extractCommandFromContent(commandMessage.content || '')}
-          output={result?.output}
-          success={result?.success}
-          returnCode={result?.returnCode}
-        />,
-      );
-
-      displayMessages.slice(1).forEach((displayMsg, splitIndex) => {
-        rows.push(
-          <MessageRow
-            key={`${msg.node_id || index}-split-${splitIndex}`}
-            message={displayMsg}
-            index={index}
-            iteration={iteration}
-            onCreateBranch={onCreateBranch}
-            branchActionStates={branchActionStates}
-            branchCreationLocked={branchCreationLocked}
-          />,
-        );
-      });
-      continue;
-    }
-
-    if (msg.role === 'assistant') {
-      iteration += 1;
-      if (iteration > 1) rows.push(<IterationDivider key={`iter-${index}`} iteration={iteration} />);
-      splitMixedProtocolMessage(msg).forEach((displayMsg, splitIndex) => {
-        rows.push(
-          <MessageRow
-            key={`${msg.node_id || index}-assistant-${splitIndex}`}
-            message={displayMsg}
-            index={index}
-            iteration={iteration}
-            showHeader={splitIndex === 0}
-            onCreateBranch={onCreateBranch}
-            branchActionStates={branchActionStates}
-            branchCreationLocked={branchCreationLocked}
-          />,
-        );
-      });
       continue;
     }
 

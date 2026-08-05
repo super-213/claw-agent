@@ -43,6 +43,13 @@ export interface Message {
   context_nodes?: string[];
   images?: Array<string | MessageMedia>;
   attachments?: Array<string | MessageMedia>;
+  tool_calls?: Array<{
+    id?: string;
+    type?: string;
+    function?: { name?: string; arguments?: string };
+  }>;
+  tool_call_id?: string;
+  name?: string;
   [key: string]: unknown;
 }
 
@@ -121,6 +128,8 @@ export interface BranchApiNode {
   parent_id: string | null;
   role: string;
   summary?: string;
+  has_tool_calls?: boolean;
+  tool_names?: string[];
   is_active?: boolean;
   is_placeholder?: boolean;
   child_count?: number;
@@ -136,6 +145,7 @@ export type ChatRunStatus =
   | 'preparing'
   | 'streaming'
   | 'running_tool'
+  | 'waiting_approval'
   | 'saving'
   | 'done'
   | 'error';
@@ -165,20 +175,29 @@ export type ChatStreamEvent =
       type: 'model_done';
       iteration?: number;
       content?: string;
+      tool_calls?: Array<{
+        id?: string;
+        name?: string;
+        arguments?: Record<string, unknown>;
+      }>;
       [key: string]: unknown;
     }
   | {
-      type: 'command_start';
+      type: 'tool_start' | 'tool_result';
       iteration?: number;
-      command?: string;
-      [key: string]: unknown;
-    }
-  | {
-      type: 'command_result';
-      iteration?: number;
-      output?: string;
-      return_code?: number;
+      tool_call?: { id?: string; name?: string; arguments?: Record<string, unknown> };
+      tool_result?: Record<string, unknown>;
       success?: boolean;
+      output?: string;
+      message?: string;
+      [key: string]: unknown;
+    }
+  | {
+      type: 'approval_required';
+      run_id?: string;
+      approval_token?: string;
+      risk_level?: string;
+      tool_call?: { id?: string; name?: string; arguments?: Record<string, unknown> };
       message?: string;
       [key: string]: unknown;
     }

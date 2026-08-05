@@ -8,6 +8,8 @@ from config import ConfigManager
 from core import AgentOrchestrator, ContextCompressor, ConversationManager
 from services import LLMClient, CommandExecutor
 from skills import SkillRegistry
+from agent_runtime import RunStore
+from agent_runtime.builtin_tools import build_tool_registry
 
 
 def _print_skill_help():
@@ -63,6 +65,7 @@ def _new_llm_client(config: ConfigManager) -> LLMClient:
         base_url=config["base_url"],
         model=config["model"],
         timeout=config["timeout"],
+        max_retries=config["max_retries"],
     )
 
 
@@ -87,6 +90,10 @@ def _append_file_generation_prompt(agent_prompt: str, project_root: Path, genera
         "或 $FILES_DIR/文件名；不要写入项目根目录、用户主目录、/tmp 或其他目录。\n"
         f"- 如需读取或检查项目源码，使用 PROJECT_ROOT 环境变量：{project_root}\n"
         "- 完成时请给出生成文件相对该目录的文件名，不要返回本地绝对路径。\n"
+        "\n## 结构化工具协议\n"
+        "- 本运行时只支持原生 function calling；需要行动时必须调用结构化工具。\n"
+        "- 工具结果会以 tool 消息返回；根据观察继续调用工具或直接给出最终回答。\n"
+        "- 不能用普通文本模拟工具调用；不需要工具时直接回答。\n"
     )
 
 
@@ -222,14 +229,25 @@ def main():
             cwd=generated_dir,
             generated_files_dir=generated_dir,
         )
+        tool_registry = build_tool_registry(
+            project_root=project_root,
+            generated_files_dir=generated_dir,
+            executor=executor,
+        )
+        run_dir = _resolve_project_path(project_root, config["run_dir"])
+        run_store = RunStore(run_dir)
         
         # 创建编排器
         orchestrator = AgentOrchestrator(
             llm_client=llm_client,
             conversation=conversation,
             skill_registry=skill_registry,
-            executor=executor,
             context_compressor=context_compressor,
+            tool_registry=tool_registry,
+            run_store=run_store,
+            max_steps=config["agent_max_steps"],
+            max_runtime_seconds=config["agent_max_runtime_seconds"],
+            max_tool_output_chars=config["tool_output_max_chars"],
         )
         
         print("Agent 已启动，输入 Ctrl+C 退出；输入 /skill-help 或 /config-help 查看命令\n")
@@ -244,6 +262,18 @@ def main():
                     if _handle_skill_command(user_input, skill_registry):
                         continue
                     orchestrator.process_user_input(user_input)
+                    while orchestrator.run and orchestrator.run.get("status") == "waiting_approval":
+                        pending = orchestrator.run.get("pending_approval") or {}
+                        call = pending.get("tool_call") or {}
+                        answer = input(
+                            f"工具 {call.get('name')} 请求执行，参数 {call.get('arguments')}。允许？[y/N] "
+                        ).strip().lower()
+                        token = orchestrator.pending_approval_token or ""
+                        orchestrator.resume_after_approval(
+                            str(orchestrator.run.get("id")),
+                            token,
+                            approved=answer in {"y", "yes", "是", "确认"},
+                        )
                 except KeyboardInterrupt:
                     print("\n已退出")
                     break

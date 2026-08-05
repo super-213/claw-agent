@@ -374,6 +374,9 @@ class ConversationStore:
             payload["attachments"] = message["attachments"]
         if message.get("images"):
             payload["images"] = message["images"]
+        for key in ("tool_calls", "tool_call_id", "name"):
+            if key in message:
+                payload[key] = message[key]
         return payload
 
     def _with_usage(self, data: Dict[str, Any]) -> Dict[str, Any]:
