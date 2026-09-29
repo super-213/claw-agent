@@ -187,6 +187,8 @@ npm --prefix web-react run preview
 
 `npm run web:build` 会输出到 `web-react/dist`。FastAPI 的 `8000` 端口只提供后端 API，不托管前端页面；生产前端请用 Vite preview、Nginx 或其他静态服务承载，并把 API 目标指向后端地址。
 
+树莓派部署在本机运行 `./package-pi.sh` 即可构建并打包，传输压缩包后在树莓派执行启动、状态、停止或更新脚本。参见 [树莓派部署说明](deploy/README.md)。
+
 前端常用命令：
 
 | 命令 | 说明 |
