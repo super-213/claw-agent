@@ -1,5 +1,8 @@
 # 树莓派部署
 
+需要使用自己的域名从外网访问时，在完成本页部署后继续阅读
+[树莓派安装 Cloudflare Tunnel 并绑定自定义域名](CLOUDFLARE_TUNNEL.md)。
+
 本机在项目根目录运行 `./package-pi.sh`。脚本会在需要时安装前端依赖、构建 React，再生成
 `release/claw-agent-pi.tar.gz`。压缩包包含后端源码、前端构建产物、技能和部署脚本；
 不包含 `.env`、`.data`、`files`、日志、虚拟环境或 `node_modules`。

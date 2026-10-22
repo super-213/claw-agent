@@ -25,6 +25,7 @@ SINGLE_FILES = (
     "deploy/pi-nginx.sh",
     "deploy/claw-agent.conf",
     "deploy/README.md",
+    "deploy/CLOUDFLARE_TUNNEL.md",
 )
 
 
