@@ -7,6 +7,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List
 
 from agent_runtime.models import AgentModelResponse, ToolCall
 from services.model_providers import ModelProvider, provider_for
+from services.media_input import MediaInputReader
 
 
 class LLMClient:
@@ -20,6 +21,8 @@ class LLMClient:
         timeout: int = 30,
         max_retries: int = 2,
         provider: str | ModelProvider | None = None,
+        vision_model: str = "",
+        media_root: str | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -27,6 +30,10 @@ class LLMClient:
         self.timeout = timeout
         self.max_retries = max(0, max_retries)
         self.provider = provider if isinstance(provider, ModelProvider) else provider_for(base_url, provider)
+        self.vision_model = vision_model.strip() or (
+            "qwen3-vl-plus" if self.provider.name == "dashscope" and "vl" not in model.lower() else model
+        )
+        self.media_root = media_root
         self.last_request_metrics: Dict[str, Any] = {}
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self._async_client: AsyncOpenAI | None = None
@@ -48,15 +55,14 @@ class LLMClient:
     def chat(self, messages: List[Dict[str, Any]]) -> str:
         """发送聊天请求"""
         response = self._retry_sync(lambda: self.client.chat.completions.create(
-            model=self.model, messages=self._chat_messages(messages), timeout=self.timeout
+            **self._request_payload(messages), timeout=self.timeout
         ))
         return response.choices[0].message.content
 
     def stream_chat(self, messages: List[Dict[str, Any]]) -> Iterator[str]:
         """流式发送聊天请求，逐段返回模型输出。"""
         stream = self.client.chat.completions.create(
-            model=self.model,
-            messages=self._chat_messages(messages),
+            **self._request_payload(messages),
             timeout=self.timeout,
             stream=True,
         )
@@ -70,8 +76,9 @@ class LLMClient:
 
     async def achat(self, messages: List[Dict[str, Any]]) -> str:
         """异步发送聊天请求。"""
+        payload = await asyncio.to_thread(self._request_payload, messages)
         response = await self._retry_async(lambda: self.async_client.chat.completions.create(
-            model=self.model, messages=self._chat_messages(messages), timeout=self.timeout
+            **payload, timeout=self.timeout
         ))
         return response.choices[0].message.content
 
@@ -83,8 +90,7 @@ class LLMClient:
         """Request one structured Agent turn using native function calling."""
         started = time.monotonic()
         response = self._retry_sync(lambda: self.client.chat.completions.create(
-            model=self.model,
-            messages=self._chat_messages(messages),
+            **self._request_payload(messages),
             tools=self.provider.prepare_tools(tools),
             tool_choice="auto",
             timeout=self.timeout,
@@ -105,9 +111,9 @@ class LLMClient:
     ) -> AgentModelResponse:
         """Async structured Agent turn using native function calling."""
         started = time.monotonic()
+        payload = await asyncio.to_thread(self._request_payload, messages)
         response = await self._retry_async(lambda: self.async_client.chat.completions.create(
-            model=self.model,
-            messages=self._chat_messages(messages),
+            **payload,
             tools=self.provider.prepare_tools(tools),
             tool_choice="auto",
             timeout=self.timeout,
@@ -128,9 +134,9 @@ class LLMClient:
     ) -> AsyncIterator[Dict[str, Any]]:
         """Yield content deltas followed by a final structured Agent response."""
         started = time.monotonic()
+        payload = await asyncio.to_thread(self._request_payload, messages)
         stream = await self._retry_async(lambda: self.async_client.chat.completions.create(
-            model=self.model,
-            messages=self._chat_messages(messages),
+            **payload,
             tools=self.provider.prepare_tools(tools),
             tool_choice="auto",
             timeout=self.timeout,
@@ -181,9 +187,9 @@ class LLMClient:
 
     async def astream_chat(self, messages: List[Dict[str, Any]]) -> AsyncIterator[str]:
         """异步流式发送聊天请求，逐段返回模型输出。"""
+        payload = await asyncio.to_thread(self._request_payload, messages)
         stream = await self.async_client.chat.completions.create(
-            model=self.model,
-            messages=self._chat_messages(messages),
+            **payload,
             timeout=self.timeout,
             stream=True,
         )
@@ -195,14 +201,20 @@ class LLMClient:
             if content:
                 yield content
 
+    def _request_payload(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        normalized = self._chat_messages(messages, self.media_root)
+        has_images = any(isinstance(message["content"], list) for message in normalized)
+        return {"model": self.vision_model if has_images else self.model, "messages": normalized}
+
     @staticmethod
-    def _chat_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _chat_messages(messages: List[Dict[str, Any]], media_root=None) -> List[Dict[str, Any]]:
         """Normalize stored messages while preserving native tool-call fields."""
         normalized: List[Dict[str, Any]] = []
+        reader = MediaInputReader(media_root)
         for message in messages:
             row: Dict[str, Any] = {
                 "role": message.get("role", ""),
-                "content": LLMClient._content_with_media(message),
+                "content": reader.content(message),
             }
             if message.get("tool_calls"):
                 row["tool_calls"] = message["tool_calls"]
@@ -263,37 +275,10 @@ class LLMClient:
                 await asyncio.sleep(min(0.5 * (2 ** attempt), 4.0))
 
     @staticmethod
-    def _content_with_media(message: Dict[str, Any]) -> str:
-        content = str(message.get("content") or "")
-        media_lines = LLMClient._media_lines("图片", message.get("images"))
-        media_lines.extend(LLMClient._media_lines("附件", message.get("attachments")))
-        if not media_lines:
-            return content
-        media_text = "\n".join(["[上传内容]", *media_lines])
-        return f"{content}\n\n{media_text}".strip()
+    def _content_with_media(message: Dict[str, Any], media_root=None) -> str:
+        """Text-only view used for budgeting and summaries; never count Base64."""
+        return MediaInputReader(media_root).content(message, include_images=False)
 
-    @staticmethod
-    def _media_lines(label: str, items: Any) -> List[str]:
-        if not isinstance(items, list):
-            return []
-        lines: List[str] = []
-        for item in items:
-            if isinstance(item, str):
-                source = item.strip()
-                name = source.rsplit("/", 1)[-1] or source
-                mime = ""
-            elif isinstance(item, dict):
-                source = str(item.get("path") or item.get("url") or item.get("src") or "").strip()
-                name = str(item.get("name") or item.get("alt") or item.get("title") or source.rsplit("/", 1)[-1]).strip()
-                mime = str(item.get("type") or item.get("mime_type") or item.get("mimeType") or "").strip()
-            else:
-                continue
-            if not source:
-                continue
-            suffix = f", {mime}" if mime else ""
-            lines.append(f"- {label}: {name} ({source}{suffix})")
-        return lines
-    
     def close(self):
         """关闭客户端"""
         self.client.close()

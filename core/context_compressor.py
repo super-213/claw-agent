@@ -1,6 +1,7 @@
 """上下文压缩器"""
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Dict, Iterable, List
 
@@ -79,7 +80,7 @@ class ContextCompressor:
             conversation.get_summary(),
             summarized_until,
         )
-        if self._within_budget(prompt_messages):
+        if await asyncio.to_thread(self._within_budget, prompt_messages):
             return prompt_messages
 
         await self._compress_old_messages_async(conversation, messages, summarized_until)
@@ -94,7 +95,7 @@ class ContextCompressor:
             conversation.get_summary(),
             updated_until,
         )
-        if self._within_budget(prompt_messages):
+        if await asyncio.to_thread(self._within_budget, prompt_messages):
             return prompt_messages
 
         return self._trim_recent_overflow(prompt_messages)
@@ -260,7 +261,11 @@ class ContextCompressor:
 
     def _count_tokens(self, messages: List[Dict[str, Any]]) -> int:
         return sum(
-            int(self.token_estimator.estimate_message(message).get("total_tokens") or 0)
+            int(self.token_estimator.estimate_message({
+                **message,
+                "content": self._summary_content(message),
+                "tool_calls": None,
+            }).get("total_tokens") or 0)
             for message in messages
         )
 
@@ -296,18 +301,16 @@ class ContextCompressor:
         )
         return {"role": message.get("role", ""), "content": trimmed}
 
-    @staticmethod
-    def _format_messages(messages: List[Dict[str, str]]) -> str:
+    def _format_messages(self, messages: List[Dict[str, str]]) -> str:
         parts = []
         for idx, msg in enumerate(messages, start=1):
             role = msg.get("role", "")
-            content = ContextCompressor._summary_content(msg)
+            content = self._summary_content(msg)
             parts.append(f"{idx}. {role}:\n{content}")
         return "\n\n".join(parts)
 
-    @staticmethod
-    def _summary_content(message: Dict[str, Any]) -> str:
-        content = str(message.get("content") or "")
+    def _summary_content(self, message: Dict[str, Any]) -> str:
+        content = LLMClient._content_with_media(message, getattr(self.llm_client, "media_root", None))
         if message.get("tool_calls"):
             content += "\n[tool_calls] " + json.dumps(message["tool_calls"], ensure_ascii=False)
         if message.get("tool_call_id"):
@@ -327,10 +330,9 @@ class ContextCompressor:
         )
         return combined[: self.summary_target_chars].rstrip()
 
-    @staticmethod
-    def _count_chars(messages: List[Dict[str, str]]) -> int:
+    def _count_chars(self, messages: List[Dict[str, str]]) -> int:
         return sum(
-            len(msg.get("role", "")) + len(msg.get("content", "")) + 8
+            len(msg.get("role", "")) + len(self._summary_content(msg)) + 8
             for msg in messages
         )
 

@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@testing-library/jest-dom/vitest': jestDomVitest,
+      '@testing-library/react': fileURLToPath(new URL('./node_modules/@testing-library/react/dist/@testing-library/react.esm.js', import.meta.url)),
     },
   },
   server: {

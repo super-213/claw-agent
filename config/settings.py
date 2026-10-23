@@ -14,6 +14,7 @@ class ConfigManager:
         "api_key": "DASHSCOPE_API_KEY",
         "base_url": "API_BASE_URL",
         "model": "MODEL_NAME",
+        "vision_model": "VISION_MODEL",
     }
     HOME_ASSISTANT_ENV_KEYS = {
         "base_url": "HOME_ASSISTANT_URL",
@@ -25,6 +26,7 @@ class ConfigManager:
     DEFAULT_CONFIG = {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-plus",
+        "vision_model": "",
         "agent_file": "Agent.md",
         "skills_dir": "skills",
         "conversation_dir": ".data/conversations",
@@ -101,6 +103,8 @@ class ConfigManager:
         
         if model := os.getenv("MODEL_NAME"):
             config["model"] = model
+
+        config["vision_model"] = os.getenv("VISION_MODEL", "").strip()
 
         if agent_file := os.getenv("AGENT_FILE"):
             config["agent_file"] = agent_file
@@ -228,6 +232,7 @@ class ConfigManager:
         return {
             "base_url": self.config.get("base_url", ""),
             "model": self.config.get("model", ""),
+            "vision_model": self.config.get("vision_model", ""),
             "api_key_set": bool(api_key),
             "api_key_masked": self.mask_secret(api_key),
             "config_file": str(self._target_dotenv_path()),
@@ -260,6 +265,7 @@ class ConfigManager:
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
+        vision_model: str | None = None,
     ) -> Dict[str, Any]:
         """更新 LLM 配置并写入 .env；api_key 为 None 或空字符串时保留原值"""
         updates: Dict[str, str] = {}
@@ -270,6 +276,11 @@ class ConfigManager:
             updates["base_url"] = self._validate_base_url(base_url.strip())
         if model is not None:
             updates["model"] = self._validate_plain_value("模型名称", model.strip())
+
+        if vision_model is not None:
+            updates["vision_model"] = (
+                self._validate_plain_value("视觉模型名称", vision_model.strip()) if vision_model.strip() else ""
+            )
 
         if not updates:
             return self.get_public_llm_config()

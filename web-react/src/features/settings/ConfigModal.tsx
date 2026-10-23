@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { configApi, type ConfigUpdatePayload } from '../../api/config';
+import { configApi, type AvailableModel, type ConfigUpdatePayload } from '../../api/config';
 import type { ModelConfig } from '../../api/types';
 import { Modal } from '../../components/ui/Modal';
 
@@ -18,24 +18,77 @@ export function ConfigModal({
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
+  const [visionModel, setVisionModel] = useState('');
   const [haBaseUrl, setHaBaseUrl] = useState('');
   const [haToken, setHaToken] = useState('');
   const [haAllowedEntities, setHaAllowedEntities] = useState('');
   const [haRequestTimeout, setHaRequestTimeout] = useState('10');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [models, setModels] = useState<AvailableModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsReady, setModelsReady] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+  const [modelSearch, setModelSearch] = useState('');
+  const modelRequest = useRef<AbortController | null>(null);
+
+  const loadModels = useCallback(async (url: string, key: string) => {
+    modelRequest.current?.abort();
+    const controller = new AbortController();
+    modelRequest.current = controller;
+    setModelsLoading(true);
+    setModelsReady(false);
+    setModelsError('');
+    setModels([]);
+    try {
+      const result = await configApi.models({ base_url: url.trim(), ...(key.trim() ? { api_key: key.trim() } : {}) }, controller.signal);
+      if (controller.signal.aborted) return;
+      setModels(result.models);
+      setModelsReady(true);
+    } catch (caught) {
+      if (controller.signal.aborted) return;
+      const apiError = caught as ApiError;
+      setModelsError(apiError.data?.message || apiError.message || '获取模型列表失败');
+    } finally {
+      if (!controller.signal.aborted) setModelsLoading(false);
+    }
+  }, []);
+
+  const invalidateModels = () => {
+    modelRequest.current?.abort();
+    setModels([]);
+    setModelsLoading(false);
+    setModelsReady(false);
+    setModelsError('API URL 或密钥已更改，请重新获取模型列表');
+    // A selection fetched using old credentials must not be saved accidentally.
+    setModel(config?.model || '');
+    setVisionModel(config?.vision_model || '');
+  };
 
   useEffect(() => {
     if (!open) return;
     setBaseUrl(config?.base_url || '');
     setModel(config?.model || '');
+    setVisionModel(config?.vision_model || '');
     setApiKey('');
     setHaBaseUrl(config?.home_assistant?.base_url || '');
     setHaToken('');
     setHaAllowedEntities(config?.home_assistant?.allowed_entities || '');
     setHaRequestTimeout(String(config?.home_assistant?.request_timeout || 10));
     setError('');
-  }, [open, config]);
+    setModelSearch('');
+    void loadModels(config?.base_url || '', '');
+    return () => modelRequest.current?.abort();
+  }, [open, config, loadModels]);
+
+  const matchingModels = models.filter((item) => item.id.toLowerCase().includes(modelSearch.trim().toLowerCase()));
+  const optionsFor = (selected: string) => {
+    const options = matchingModels.map((item) => item.id);
+    if (selected && !options.includes(selected)) options.unshift(selected);
+    return options;
+  };
+  const modelLabel = (id: string) => modelsReady && !models.some((item) => item.id === id)
+    ? `${id}（当前配置，接口未列出）` : id;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -45,6 +98,7 @@ export function ConfigModal({
       const payload: ConfigUpdatePayload = {
         base_url: baseUrl.trim(),
         model: model.trim(),
+        vision_model: visionModel.trim(),
       };
       if (apiKey.trim()) payload.api_key = apiKey.trim();
       const timeout = Number.parseInt(haRequestTimeout, 10);
@@ -81,16 +135,40 @@ export function ConfigModal({
         </div>
         <label className="field-label">
           API URL
-          <input className="skill-input" autoComplete="off" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+          <input className="skill-input" autoComplete="off" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" value={baseUrl} onChange={(event) => { setBaseUrl(event.target.value); invalidateModels(); }} />
         </label>
         <label className="field-label">
           API KEY
-          <input className="skill-input" type="password" autoComplete="new-password" placeholder="留空则保留当前密钥" value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
+          <input className="skill-input" type="password" autoComplete="new-password" placeholder="留空则保留当前密钥" value={apiKey} onChange={(event) => { setApiKey(event.target.value); invalidateModels(); }} />
+        </label>
+        <div className="model-catalog-status">
+          <span role="status">{modelsLoading ? '正在获取可用模型…' : modelsReady ? `API 返回 ${models.length} 个模型${models.length ? '' : '，请检查账号权限'}` : '从 API 获取可用模型后选择'}</span>
+          <button className="modal-secondary" type="button" disabled={modelsLoading || saving || !baseUrl.trim()} onClick={() => void loadModels(baseUrl, apiKey)}>
+            {modelsLoading ? '获取中…' : '刷新模型列表'}
+          </button>
+        </div>
+        {modelsError ? <div className="skill-form-error" role="alert">{modelsError}</div> : null}
+        {models.length ? (
+          <label className="field-label">
+            搜索可用模型
+            <input className="skill-input" type="search" placeholder="输入模型名称筛选" value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />
+          </label>
+        ) : null}
+        <label className="field-label">
+          文本模型
+          <select className="skill-input" value={model} disabled={modelsLoading || !modelsReady || !models.length} onChange={(event) => setModel(event.target.value)}>
+            {!model ? <option value="" disabled>请选择文本模型</option> : null}
+            {optionsFor(model).map((id) => <option key={id} value={id}>{modelLabel(id)}</option>)}
+          </select>
         </label>
         <label className="field-label">
-          模型名称
-          <input className="skill-input" autoComplete="off" placeholder="qwen-plus" value={model} onChange={(event) => setModel(event.target.value)} />
+          视觉模型
+          <select className="skill-input" value={visionModel} disabled={modelsLoading || !modelsReady || !models.length} onChange={(event) => setVisionModel(event.target.value)}>
+            <option value="">自动选择（百炼：qwen3-vl-plus；其他：文本模型）</option>
+            {optionsFor(visionModel).map((id) => <option key={id} value={id}>{modelLabel(id)}</option>)}
+          </select>
         </label>
+        <div className="model-catalog-hint">视觉模型请选择支持图片输入的模型；列表由 API 提供，保存后对所有用户的新请求生效。</div>
         <div className="config-section-title">Home Assistant</div>
         <div className="config-summary">
           <span>HA URL</span>
@@ -134,7 +212,7 @@ export function ConfigModal({
           <button className="modal-secondary" type="button" onClick={onClose}>
             取消
           </button>
-          <button className="modal-primary" type="submit" disabled={saving}>
+          <button className="modal-primary" type="submit" disabled={saving || modelsLoading || !model.trim()}>
             保存
           </button>
         </div>

@@ -42,6 +42,7 @@ def _print_config(config: ConfigManager):
         f"  API URL: {public_config['base_url']}\n"
         f"  API KEY: {public_config['api_key_masked'] or '<未设置>'}\n"
         f"  模型: {public_config['model']}\n"
+        f"  视觉模型: {public_config['vision_model'] or '自动选择'}\n"
         f"  配置文件: {public_config['config_file']}"
     )
 
@@ -66,6 +67,8 @@ def _new_llm_client(config: ConfigManager) -> LLMClient:
         model=config["model"],
         timeout=config["timeout"],
         max_retries=config["max_retries"],
+        vision_model=config["vision_model"],
+        media_root=str(_resolve_project_path(config.project_root, config["generated_files_dir"])),
     )
 
 
@@ -131,10 +134,10 @@ def _handle_config_command(
         update_kwargs["api_key"] = value
     elif field == "base_url":
         update_kwargs["base_url"] = value
-    elif field == "model":
-        update_kwargs["model"] = value
+    elif field in {"model", "vision_model"}:
+        update_kwargs[field] = value
     else:
-        print("未知配置项，可用项: api_key, base_url, model")
+        print("未知配置项，可用项: api_key, base_url, model, vision_model")
         return True
 
     try:

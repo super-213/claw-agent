@@ -52,6 +52,7 @@ from services.chat_runner import (
 )
 from services.dashboard_metrics import DashboardMetrics
 from services.message_media import normalize_attachments, normalize_images
+from services.model_catalog import ModelCatalogError, fetch_available_models
 from skills import SkillRegistry
 from agent_runtime import ArtifactStore, MemoryStore, RunStore
 from agent_runtime.builtin_tools import build_tool_registry
@@ -71,7 +72,13 @@ class ConfigUpdateRequest(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model: str | None = None
+    vision_model: str | None = None
     home_assistant: HomeAssistantConfigRequest | None = None
+
+
+class ModelListRequest(BaseModel):
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class HomeAssistantToolCallRequest(BaseModel):
@@ -427,10 +434,13 @@ def _new_llm_client() -> LLMClient:
         "timeout": config["timeout"],
     }
     try:
-        return LLMClient(**kwargs, max_retries=config["max_retries"])
+        return LLMClient(
+            **kwargs, max_retries=config["max_retries"],
+            vision_model=config["vision_model"], media_root=str(GENERATED_DIR),
+        )
     except TypeError as exc:
         # Keep simple third-party/test adapters compatible with the old constructor.
-        if "max_retries" not in str(exc):
+        if not any(key in str(exc) for key in ("max_retries", "vision_model", "media_root")):
             raise
         return LLMClient(**kwargs)
 
@@ -1486,6 +1496,7 @@ def update_config(
             api_key=payload_data.get("api_key"),
             base_url=payload_data.get("base_url"),
             model=payload_data.get("model"),
+            vision_model=payload_data.get("vision_model"),
         )
         home_assistant_payload = payload_data.get("home_assistant")
         if isinstance(home_assistant_payload, dict):
@@ -1518,6 +1529,28 @@ def update_config(
         return _json({"error": "invalid_config", "message": str(e)}, 400)
 
     return {"ok": True, "config": _public_config_payload()}
+
+
+@app.post("/api/config/models", tags=["config"])
+async def list_config_models(
+    payload: ModelListRequest | None = Body(default=None),
+    _admin: dict[str, Any] = Depends(require_admin),
+):
+    """Preview a connection's model list without changing persisted settings."""
+    data = _payload(payload)
+    try:
+        base_url = config._validate_base_url(data.get("base_url") or config["base_url"])
+        api_key = config._validate_secret(
+            "API KEY", (data.get("api_key") or "").strip() or config.get("api_key", ""),
+        )
+    except ValueError as exc:
+        return _json({"error": "invalid_config", "message": str(exc)}, 400)
+    try:
+        models = await fetch_available_models(base_url=base_url, api_key=api_key)
+    except ModelCatalogError as exc:
+        # An upstream 401 must not log the administrator out of this application.
+        return _json({"error": "model_list_failed", "message": str(exc)}, 502)
+    return JSONResponse(content={"models": models}, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/home-assistant/config", tags=["home-assistant"])

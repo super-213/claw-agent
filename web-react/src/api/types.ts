@@ -93,6 +93,7 @@ export interface Skill {
 export interface ModelConfig {
   base_url?: string;
   model?: string;
+  vision_model?: string;
   api_key_masked?: string;
   home_assistant?: HomeAssistantConfig;
   [key: string]: unknown;

@@ -7,3 +7,10 @@ tiktoken>=0.7.0
 hypothesis>=6.0.0
 pytest>=7.0.0
 pywebpush>=2.0.0
+
+# Uploaded image and document understanding
+Pillow>=10.0.0
+PyMuPDF>=1.24.0
+python-docx>=1.1.2
+openpyxl>=3.1.0
+python-pptx>=1.0.0

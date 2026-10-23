@@ -91,6 +91,26 @@
   gap: 7px;
 }
 
+.model-catalog-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+}
+
+.model-catalog-status > span,
+.model-catalog-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.skill-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .skill-input,
 .skill-textarea {
   background: var(--surface-solid);

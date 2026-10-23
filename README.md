@@ -16,7 +16,7 @@
 - **会话复制与迁移**：旧线性会话自动迁移为树结构，复制会话时保留完整分支树。
 - **文件级持久化**：会话保存到 JSON 文件，按 session 加锁，并通过临时文件 + `os.replace` 原子写入。
 - **Token 与看板分析**：基于 `tiktoken` 估算系统提示词、技能、会话、工具调用、摘要等 token，并提供使用趋势、词云、热力图和工具统计。
-- **图片与附件元数据**：聊天 API 支持 `images` 与 `attachments`，生成文件统一通过 `/generated/*` 或 `/files/*` 访问。
+- **图片与文件理解**：图片以真实视觉输入发送；自动提取 PDF、DOCX、XLSX、PPTX 和文本文件正文，扫描 PDF 页面自动转图识别。生成文件统一通过 `/generated/*` 或 `/files/*` 访问。
 - **安全执行**：命令黑名单、交互式命令拦截、超时保护、连续失败中止、API Key 脱敏展示。
 
 ## 目录结构
@@ -100,7 +100,8 @@ export MODEL_NAME="qwen-plus"
 | --- | --- | --- |
 | `DASHSCOPE_API_KEY` | 无 | 必填，OpenAI-compatible API Key |
 | `API_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 模型 API 地址 |
-| `MODEL_NAME` | `qwen-plus` | 模型名称 |
+| `MODEL_NAME` | `qwen-plus` | 文本模型名称 |
+| `VISION_MODEL` | 自动选择 | 带图请求的视觉模型；百炼默认 `qwen3-vl-plus`，其他兼容服务默认使用主模型 |
 | `AGENT_FILE` | `Agent.md` | Agent 系统指令文件 |
 | `SKILLS_DIR` | `skills` | 技能目录 |
 | `CONVERSATION_DIR` | `.data/conversations` | 会话 JSON 保存目录 |
@@ -200,7 +201,7 @@ npm --prefix web-react run preview
 | `npm run web:build` | 生成 `web-react/dist` 生产静态资源 |
 | `npm --prefix web-react run preview` | 本地预览 Vite 构建产物 |
 
-Web 端的“模型设置”可修改 API URL、API Key 和模型名称。API Key 只脱敏展示；保存时留空会保留原值，不会把完整密钥返回给浏览器。
+管理员可在 Web 端的“模型设置”修改 API URL、API Key，并从接口返回的列表选择文本模型和视觉模型。打开设置会自动获取模型列表，也可搜索、手动刷新；更改 URL 或 Key 后点击“刷新模型列表”，即可在保存前预览新服务的模型。获取失败或列表未包含当前模型时会保留原配置。API Key 只脱敏展示；保存时留空会保留原值，不会把完整密钥返回给浏览器。模型选择保存后对所有用户的后续新请求生效。
 
 ## Web UI 功能
 
@@ -215,7 +216,7 @@ Web 端的“模型设置”可修改 API URL、API Key 和模型名称。API Ke
 - 支持上下文路径高亮，标记本轮模型实际使用的历史节点。
 - 支持技能列表、技能新增、技能重载和技能快速插入输入框。
 - 支持模型 API URL、API Key、模型名称配置。
-- 支持图片与附件元数据展示。
+- 支持图片与附件上传、预览和内容理解。
 - 桌面端与移动端响应式布局；移动端分支树以抽屉形式展示。
 - React 构建产物使用 Vite 内容哈希；`/assets/*` 使用长期缓存，其余 HTML/CSS/JS 开发回退资源仍禁用缓存。
 
@@ -365,6 +366,16 @@ curl -X POST http://localhost:8000/api/chat \
 
 `images` 支持字符串 URL 或对象；`attachments` 支持字符串 URL 或包含 `name`、`url`、`path`、`type`、`size` 等字段的对象。单次最多处理 32 个媒体项，文本字段会截断到安全长度。
 
+网页输入框旁的回形针按钮可多选图片或文件；上传接口为 `POST /api/chat/uploads`（multipart 字段 `files`），每次最多 10 个、单文件最大 25MB。上传成功返回的 `media` 可按类型放入聊天请求的 `images` 或 `attachments`。
+
+- 图片：PNG、JPEG、WebP、GIF、BMP、TIFF。上传图片经方向校正并缩放到最长边 2048 像素，以 Base64 图像内容发送，模型无需访问本机 URL。GIF/TIFF 处理第一帧。外部图片支持 HTTPS URL，由模型服务读取。
+- 文档：PDF、DOCX、XLSX、PPTX、TXT、Markdown、CSV、TSV、JSON 以及常见代码/配置文本。工作表、表格和幻灯片保留分隔标记；Excel 公式保留原表达式，不执行计算。旧版 DOC/XLS/PPT 须先转换，Office 内嵌图片需单独上传。
+- 扫描 PDF：缺少正文的页面转成图片，结合视觉模型识别；每条消息总共最多发送 10 张图片（包含 PDF 扫描页）。PDF 最多处理前 100 页。
+- 每个文档最多提取约 16000 字符，每条消息文档正文总量最多 40000 字符，超限有截断提示。解析失败、加密、缺失或不支持的文件会明确标记，其他附件继续处理。只读取生成文件目录内的本地文件；外部文档须先上传。
+
+文本请求继续使用 `MODEL_NAME`。包含图片或扫描页面的请求（包括流式响应和工具调用）使用 `VISION_MODEL`，可在网页模型设置中修改；百炼留空默认使用 `qwen3-vl-plus`，其他服务留空使用主模型，因此主模型需支持视觉输入与 function calling。视觉与文本模型共用 API URL / API KEY。百炼请求格式参见[官方视觉接口文档](https://help.aliyun.com/zh/model-studio/qwen-vl-compatible-with-openai)。修改依赖后先运行 `python -m pip install -r requirements.txt`，再重启后端。
+
+
 ### 技能与配置 API
 
 ```bash
@@ -392,6 +403,8 @@ curl -X POST http://localhost:8000/api/config \
 ```
 
 `POST /api/config` 会写入优先级最高的现有 `.env`；如果不存在，则写入 `config/.env` 并尽量设置权限为 `0600`。
+
+`POST /api/config/models` 获取兼容服务的 `/models` 列表，返回 `models: [{id, owned_by}]`。请求体可省略，默认使用服务器已保存的连接；也可传入 `base_url` 和 `api_key` 预览尚未保存的连接（Key 留空使用已保存的密钥）。此操作不写入配置，响应不包含密钥。模型列表查询与配置修改均只允许已登录的管理员，普通用户返回 `403`、未登录返回 `401`。上游鉴权失败返回 `502` 并显示错误，不影响本项目的登录状态。
 
 ### Agent Runtime API
 
