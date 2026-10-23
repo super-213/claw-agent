@@ -98,6 +98,11 @@ class ToolRouter:
             "number": (int, float),
             "boolean": bool,
         }
+        if isinstance(expected, list):
+            if value is None and 'null' in expected:
+                return []
+            alternatives = [cls.validate_schema(value, {**schema, 'type': t}, path=path) for t in expected if t != 'null']
+            return [] if any(not errors for errors in alternatives) else [f'{path} 类型无效']
         python_type = type_map.get(expected)
         if python_type is not None:
             valid = isinstance(value, python_type)
@@ -181,6 +186,10 @@ class ToolExecutor:
                     metadata={"retry_errors": retry_errors},
                 )
             except Exception as exc:
+                from services.task_store import TaskError
+                if isinstance(exc, TaskError):
+                    return ToolResult(call.id, call.name, 'error', output=exc.payload(), error=exc.code,
+                                      attempts=attempts, duration_ms=int((time.monotonic() - started) * 1000))
                 last_error = str(exc)
                 retry_errors.append(last_error)
                 # Invalid arguments, denied access and missing resources are

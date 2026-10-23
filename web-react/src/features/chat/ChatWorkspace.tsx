@@ -1,7 +1,10 @@
+import { TaskDraftChooser, type TaskDraft } from '../tasks/TaskDraftChooser';
+import { requestId, type TaskInvocation } from '../../api/tasks';
 import { ArrowLeft, GitFork } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
+import { ApiError } from '../../api/client';
 import { chatApi } from '../../api/chat';
 import { configApi } from '../../api/config';
 import { sessionsApi } from '../../api/sessions';
@@ -80,6 +83,8 @@ export function ChatWorkspace({
   const [treeOpen, setTreeOpen] = useState(initialTreeOpen);
   const [tree, setTree] = useState<BranchTree | null>(null);
   const [draft, setDraft] = useState('');
+  const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
+  useEffect(() => setTaskDraft(null), [currentSessionId, currentUser?.id]);
   const [branchActionStates, setBranchActionStates] = useState<Record<string, BranchActionState>>({});
   const [branchNotice, setBranchNotice] = useState<BranchNotice | null>(null);
 
@@ -263,7 +268,7 @@ export function ChatWorkspace({
     return result.media || [];
   }, []);
 
-  const sendMessage = async (text: string, media: MessageMedia[] = []) => {
+  const sendMessage = async (text: string, media: MessageMedia[] = [], invocation?: TaskInvocation) => {
     setBranchNotice(null);
     let targetSessionId = currentSessionId;
     if (!targetSessionId) {
@@ -356,6 +361,12 @@ export function ChatWorkspace({
       }
       if (event.type === 'tool_start') {
         updateStream(targetSessionId as string, { status: 'running_tool' });
+        const output = event.tool_result?.output as Record<string, unknown> | undefined;
+        if (event.success === false && output?.draft) {
+          const values = Array.isArray(output.draft) ? output.draft : [output.draft];
+          const items = values.filter((value): value is { title: string } => Boolean(value && typeof value.title === 'string'));
+          if (items.length) setTaskDraft({ sessionId: targetSessionId as string, items, message: String(output.message || '请选择空间和性质，补充所需信息后再保存。') });
+        } else if (event.success !== false && output?.task_changed) setTaskDraft(null);
         const name = event.tool_call?.name || '工具';
         setStatusText(`正在调用 ${name}...`);
         appendSynthetic({
@@ -365,6 +376,7 @@ export function ChatWorkspace({
         });
         return;
       }
+      if (event.type === 'task_changed' || (event.type === 'tool_result' && event.success !== false && event.tool_call?.name?.startsWith('family_'))) window.dispatchEvent(new CustomEvent('task_changed'));
       if (event.type === 'tool_result') {
         const name = event.tool_call?.name || '工具';
         setStatusText(event.success === false ? `${name} 执行失败` : `${name} 执行完成`);
@@ -393,7 +405,7 @@ export function ChatWorkspace({
     };
 
     try {
-      await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, signal: abortController.signal }, handleEvent);
+      await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, invocation, requestId: requestId(), signal: abortController.signal }, handleEvent);
       while (approvalState.pending) {
         const decision = approvalState.pending;
         approvalState.pending = null;
@@ -415,6 +427,7 @@ export function ChatWorkspace({
       }
     } catch (caught) {
       console.warn('[ChatWorkspace] sendMessage:', caught);
+      if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500 && useAppStore.getState().currentSessionId === targetSessionId) setDraft(text);
       appendSynthetic({ role: 'process', content: `请求失败\n${(caught as Error).message || '网络错误'}`, node_id: `error-${Date.now()}` });
     } finally {
       endStream(targetSessionId);
@@ -447,6 +460,7 @@ export function ChatWorkspace({
   };
 
   const switchBranch = async (nodeId: string) => {
+    setTaskDraft(null);
     if (!currentSessionId) return;
     setBranchNotice(null);
     const result = await sessionsApi.switchBranch(currentSessionId, nodeId);
@@ -566,6 +580,8 @@ export function ChatWorkspace({
                 </div>
               </div>
             ) : null}
+            {taskDraft && taskDraft.sessionId === currentSessionId && <TaskDraftChooser draft={taskDraft}
+              onChoose={(command, body) => { setDraft(`/ ${command} ${body}`); setTaskDraft(null); }} onDismiss={() => setTaskDraft(null)} />}
             <Composer disabled={currentBusy} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
           </div>
           <BranchTreePanel

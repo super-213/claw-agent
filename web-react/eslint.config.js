@@ -29,6 +29,8 @@ export default [
         ResizeObserver: 'readonly',
         URLSearchParams: 'readonly',
         HTMLElement: 'readonly',
+        HTMLButtonElement: 'readonly',
+        Node: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         SVGSVGElement: 'readonly',

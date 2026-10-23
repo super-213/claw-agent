@@ -20,7 +20,6 @@ import {
   Trash2,
   Users,
   Utensils,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -28,13 +27,17 @@ import { Link } from 'react-router-dom';
 import { configApi } from '../../api/config';
 import { homeApi } from '../../api/home';
 import { sessionsApi } from '../../api/sessions';
-import type { HomeInventoryItem, HomeNotification, HomeReminder, HomeTaskSummary } from '../../api/types';
+import type { HomeInventoryItem, HomeNotification, HomeTaskSummary } from '../../api/types';
 import { isAdmin, useAppStore } from '../../stores/appStore';
 import { formatTime, formatTokens } from '../../utils/format';
 import { ChatWorkspace } from '../chat/ChatWorkspace';
+import { TaskBoard } from '../tasks/TaskBoard';
+import { tasksApi, type TaskSummary } from '../../api/tasks';
 import { ConfigModal } from '../settings/ConfigModal';
 
 const statusLabel: Record<string, string> = {
+  open: '未完成',
+  information: '信息记录',
   scheduled: '已排程',
   snoozed: '已延后',
   completed: '已完成',
@@ -53,7 +56,7 @@ const channelLabel: Record<string, string> = {
 const familyNavItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
   { label: '今日概览', href: '#today', icon: Home },
   { label: '空间与物品', href: '#inventory', icon: MapPin },
-  { label: '任务提醒', href: '#reminders', icon: ListTodo },
+  { label: '事项清单', href: '#reminders', icon: ListTodo },
   { label: '家庭时间线', href: '#timeline', icon: CalendarDays },
   { label: '文件', href: '#files', icon: FileText },
 ];
@@ -63,14 +66,14 @@ const objectShortcuts: Array<{ label: string; meta: string; icon: LucideIcon; dr
   { label: '药箱', meta: '药品、用量、提醒', icon: Pill, draft: '帮我检查药箱和用药提醒。' },
   { label: '购物清单', meta: '低库存、采购计划', icon: ShoppingBasket, draft: '根据低库存生成一份购物清单。' },
   { label: '账单文件', meta: '缴费、票据、归档', icon: FileText, draft: '整理最近需要处理的家庭账单。' },
-  { label: '家庭成员', meta: '任务归属、通知', icon: Users, draft: '查看每个家庭成员待处理的事项。' },
+  { label: '家庭成员', meta: '任务归属、协作', icon: Users, draft: '查看每个家庭成员待处理的事项。' },
 ];
 
 const quickActions: Array<{ label: string; icon: LucideIcon; draft: string }> = [
   { label: '记录冰箱物品', icon: PackagePlus, draft: '我要记录一件冰箱物品：' },
-  { label: '创建提醒', icon: Bell, draft: '提醒我：' },
+  { label: '记录备忘', icon: Bell, draft: '/ 备忘 ' },
   { label: '拍照识别', icon: Camera, draft: '我想上传图片，让你识别并记录家庭物品。' },
-  { label: '处理未读通知', icon: Inbox, draft: '帮我处理家庭通知收件箱里的待确认事项。' },
+  { label: '查看我的事项', icon: ListTodo, draft: '列出我的事项清单。' },
 ];
 
 const agentHeadingPhrases = [
@@ -82,10 +85,10 @@ const agentHeadingPhrases = [
 ];
 
 const agentSubtitlePhrases = [
-  '记录物品、创建提醒、查库存或处理通知，都从这里开始。',
-  '可以直接说“明早提醒我倒垃圾”，也可以让 Agent 整理购物清单。',
+  '记录物品、记录事项、查库存或查询事项，都从这里开始。',
+  '可以直接说“/ 日程 明天倒垃圾”，也可以让 Agent 整理购物清单。',
   '不用先找功能入口，把要做的事用自然语言说出来。',
-  'Agent 会把对话转成提醒、库存、通知和家庭记录。',
+  'Agent 会把对话转成日程、备忘、库存和家庭记录。',
   '从一句话进入任务，再回到家庭工作台查看结果。',
 ];
 
@@ -94,18 +97,6 @@ const randomDifferentIndex = (length: number, currentIndex: number) => {
   const next = Math.floor(Math.random() * (length - 1));
   return next >= currentIndex ? next + 1 : next;
 };
-
-const urlBase64ToUint8Array = (base64String: string) => {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-};
-
-function relativeRunTime(value?: string | null) {
-  if (!value) return '未设置';
-  return formatTime(value);
-}
 
 export function HomePage() {
   const sessions = useAppStore((state) => state.sessions);
@@ -117,14 +108,9 @@ export function HomePage() {
 
   const [items, setItems] = useState<HomeInventoryItem[]>([]);
   const [expiring, setExpiring] = useState<HomeInventoryItem[]>([]);
-  const [reminders, setReminders] = useState<HomeReminder[]>([]);
   const [notifications, setNotifications] = useState<HomeNotification[]>([]);
   const [summary, setSummary] = useState<HomeTaskSummary | null>(null);
-  const [pushConfigured, setPushConfigured] = useState(false);
-  const [pushPermission, setPushPermission] = useState(
-    typeof window !== 'undefined' && 'Notification' in window ? window.Notification.permission : 'unsupported',
-  );
-  const [deviceCount, setDeviceCount] = useState(0);
+  const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [now, setNow] = useState(() => new Date());
@@ -144,7 +130,6 @@ export function HomePage() {
   const overlayHistoryPushed = useRef(false);
 
   const [itemDraft, setItemDraft] = useState({ name: '', quantity: '', unit: '个', expires_at: '', zone: '冷藏层' });
-  const [reminderDraft, setReminderDraft] = useState({ title: '', raw_text: '' });
 
   useEffect(() => {
     document.body.classList.add('home-route');
@@ -261,28 +246,22 @@ export function HomePage() {
   }, [currentUser, setConfig]);
 
   const load = useCallback(async () => {
-    const [inventoryData, expiringData, reminderData, notificationData, summaryData, vapidData, subscriptionData] = await Promise.all([
-      homeApi.inventory(),
-      homeApi.expiring(3),
-      homeApi.reminders(),
-      homeApi.notifications(),
-      homeApi.taskSummary(),
-      homeApi.vapidKey().catch(() => ({ public_key: '', configured: false })),
-      homeApi.subscriptions().catch(() => ({ subscriptions: [] })),
+    const [inventoryData, expiringData, notificationData, summaryData, taskData] = await Promise.all([
+      homeApi.inventory(), homeApi.expiring(3), homeApi.notifications().catch(() => ({ notifications: [] })),
+      homeApi.taskSummary().catch(() => null), tasksApi.summary().catch(() => null),
     ]);
-    setItems(inventoryData.items || []);
-    setExpiring(expiringData.items || []);
-    setReminders(reminderData.reminders || []);
-    setNotifications(notificationData.notifications || []);
-    setSummary(summaryData);
-    setPushConfigured(Boolean(vapidData.configured));
-    setDeviceCount(subscriptionData.subscriptions?.length || 0);
-    setPushPermission(typeof window !== 'undefined' && 'Notification' in window ? window.Notification.permission : 'unsupported');
+    setItems(inventoryData.items || []); setExpiring(expiringData.items || []);
+    setNotifications(notificationData.notifications || []); setSummary(summaryData); setTaskSummary(taskData);
   }, []);
 
   useEffect(() => {
     void load().catch((error) => setMessage(error.message || '读取家庭数据失败'));
+    const refreshTasks = () => { if (document.visibilityState === 'visible') void load().catch(() => undefined); };
+    const timer = window.setInterval(refreshTasks, 60_000);
+    window.addEventListener('task_changed', refreshTasks);
+    window.addEventListener('focus', refreshTasks);
     void loadRecentSessions().catch(() => undefined);
+    return () => { window.clearInterval(timer); window.removeEventListener('task_changed', refreshTasks); window.removeEventListener('focus', refreshTasks); };
   }, [load, loadRecentSessions]);
 
   const openConversation = useCallback(
@@ -329,19 +308,11 @@ export function HomePage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [chatOpen, closeConversation]);
 
-  const todayReminders = useMemo(() => {
-    const today = new Date().toDateString();
-    return reminders.filter((item) => item.next_run_at && new Date(item.next_run_at).toDateString() === today && item.status !== 'cancelled');
-  }, [reminders]);
-
-  const pendingReminders = useMemo(() => reminders.filter((item) => item.status !== 'cancelled' && item.status !== 'completed'), [reminders]);
-
   const lowStock = useMemo(
     () => items.filter((item) => item.status === 'low' || (typeof item.quantity === 'number' && item.quantity <= 1)),
     [items],
   );
 
-  const unreadNotifications = useMemo(() => notifications.filter((item) => !item.read_at).length, [notifications]);
   const recentSessions = useMemo(() => sessions.slice(0, 6), [sessions]);
   const recentActivities = useMemo(() => {
     const notificationActivities = notifications.slice(0, 4).map((item) => ({
@@ -375,11 +346,11 @@ export function HomePage() {
   const statusCards = useMemo(
     () => [
       {
-        label: '今日提醒',
-        value: todayReminders.length,
-        detail: pendingReminders.length ? `${pendingReminders.length} 个待处理` : '今天没有待处理提醒',
+        label: '今日事项',
+        value: (taskSummary?.counts.today || 0),
+        detail: (taskSummary?.counts.open || 0) ? `${(taskSummary?.counts.open || 0)} 个待处理` : '今天没有待处理事项',
         icon: Clock3,
-        draft: '查看今天要处理的家庭提醒。',
+        draft: '查看今天要处理的事项。',
       },
       {
         label: '快过期',
@@ -396,14 +367,14 @@ export function HomePage() {
         draft: '根据低库存生成一份购物清单。',
       },
       {
-        label: '未读通知',
-        value: unreadNotifications,
-        detail: unreadNotifications ? '有事项待确认' : '通知已处理完',
+        label: '无日期备忘',
+        value: taskSummary?.counts.undated || 0,
+        detail: '没有日期也可以逐条完成',
         icon: Inbox,
-        draft: '帮我处理家庭通知收件箱里的待确认事项。',
+        draft: '列出我的备忘清单。',
       },
     ],
-    [expiring.length, lowStock.length, pendingReminders.length, todayReminders.length, unreadNotifications],
+    [expiring.length, lowStock.length, taskSummary],
   );
 
   const addItem = async (event: FormEvent) => {
@@ -420,78 +391,6 @@ export function HomePage() {
       });
       setItemDraft({ name: '', quantity: '', unit: '个', expires_at: '', zone: '冷藏层' });
       setMessage('冰箱清单已更新');
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const addReminder = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!reminderDraft.title.trim() && !reminderDraft.raw_text.trim()) return;
-    setBusy(true);
-    try {
-      const rawText = reminderDraft.raw_text.trim() || `${reminderDraft.title.trim()} 提醒我`;
-      const result = await homeApi.createReminder({
-        title: reminderDraft.title.trim() || '家庭提醒',
-        description: reminderDraft.title.trim(),
-        raw_text: rawText,
-        channels: ['in_app', 'web_push'],
-      });
-      setReminderDraft({ title: '', raw_text: '' });
-      setMessage(result.receipt || '提醒已添加');
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const enablePush = async () => {
-    setBusy(true);
-    try {
-      if (!('Notification' in window) || !('serviceWorker' in window.navigator)) {
-        setMessage('当前浏览器不支持通知或 Service Worker');
-        return;
-      }
-      const permission = await window.Notification.requestPermission();
-      setPushPermission(permission);
-      if (permission !== 'granted') {
-        setMessage('通知权限未授权');
-        return;
-      }
-      const vapid = await homeApi.vapidKey();
-      if (!vapid.configured || !vapid.public_key) {
-        setMessage('浏览器通知权限已开启；服务端未配置 VAPID，系统会使用站内通知记录。');
-        return;
-      }
-      const registration = await window.navigator.serviceWorker.register('/sw.js');
-      const existing = await registration.pushManager.getSubscription();
-      const subscription =
-        existing ||
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapid.public_key),
-        }));
-      await homeApi.saveSubscription({
-        subscription: subscription.toJSON(),
-        device_name: window.navigator.platform || '当前浏览器',
-        user_agent: window.navigator.userAgent,
-      });
-      setMessage('当前设备通知已启用');
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const sendTestPush = async () => {
-    setBusy(true);
-    try {
-      const result = await homeApi.sendTestPush();
-      if ('Notification' in window && window.Notification.permission === 'granted') {
-        new window.Notification('测试通知', { body: '家庭 Agent 推送已启用' });
-      }
-      setMessage(result.web_push_configured ? '测试推送已发送' : '测试通知已写入站内通知；Web Push 尚未配置 VAPID');
       await load();
     } finally {
       setBusy(false);
@@ -579,7 +478,7 @@ export function HomePage() {
           <div className="home-title-block">
             <span className="home-kicker">主工作台</span>
             <h1>家庭工作台</h1>
-            <p>{todayLabel} · 今日提醒、物品状态、通知和最近协作集中在这里。</p>
+            <p>{todayLabel} · 今日事项、物品状态和最近协作集中在这里。</p>
           </div>
           <nav className="home-nav" aria-label="家庭页面操作">
             <button className="icon-button" type="button" title="刷新" disabled={busy} onClick={() => void load()}>
@@ -615,7 +514,7 @@ export function HomePage() {
             <input
               aria-label="和家庭 Agent 对话"
               value={commandDraft}
-              placeholder="例如：明天早上 8 点提醒我倒垃圾"
+              placeholder="例如：/ 日程 明天倒垃圾"
               onChange={(event) => setCommandDraft(event.target.value)}
             />
             <button className="home-agent-mic" type="button" title="语音输入" onClick={() => openConversation({ draft: '语音记录：' })}>
@@ -728,85 +627,7 @@ export function HomePage() {
             </div>
           </section>
 
-          <section className="home-section" id="reminders">
-            <div className="home-section-head">
-              <div>
-                <h2>任务与提醒</h2>
-                <p>今日、未来和周期任务统一管理。</p>
-              </div>
-            </div>
-            <form className="home-stack-form" onSubmit={(event) => void addReminder(event)}>
-              <input
-                aria-label="事件标题"
-                value={reminderDraft.title}
-                placeholder="事件标题"
-                onChange={(event) => setReminderDraft({ ...reminderDraft, title: event.target.value })}
-              />
-              <input
-                aria-label="提醒内容"
-                value={reminderDraft.raw_text}
-                placeholder="例如：明天早上 8 点提醒我倒垃圾"
-                onChange={(event) => setReminderDraft({ ...reminderDraft, raw_text: event.target.value })}
-              />
-              <button type="submit" disabled={busy}>
-                <Bell size={16} />
-                添加提醒
-              </button>
-            </form>
-            <div className="home-list">
-              {reminders.slice(0, 8).map((reminder) => (
-                <article
-                  className="home-list-item home-task-card"
-                  key={reminder.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openConversation({ draft: `继续处理提醒：${reminder.title}` })}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') openConversation({ draft: `继续处理提醒：${reminder.title}` });
-                  }}
-                >
-                  <div>
-                    <strong>{reminder.title}</strong>
-                    <small>
-                      {relativeRunTime(reminder.next_run_at)} · {statusLabel[reminder.status || ''] || reminder.status}
-                    </small>
-                  </div>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      title="完成"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void homeApi.completeReminder(reminder.id).then(load);
-                      }}
-                    >
-                      <Check size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      title="延后 10 分钟"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void homeApi.snoozeReminder(reminder.id, 10).then(load);
-                      }}
-                    >
-                      <Clock3 size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      title="取消"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void homeApi.cancelReminder(reminder.id).then(load);
-                      }}
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          <TaskBoard key={currentUser?.id} />
 
           <section className="home-section home-insights-pane" id="files">
             <div className="home-section-head">
@@ -843,53 +664,8 @@ export function HomePage() {
         </div>
       </section>
 
-      <aside className="home-detail-panel" aria-label="详情与通知">
-        <section className="home-section">
-          <div className="home-section-head">
-            <div>
-              <h2>详情面板</h2>
-              <p>通知权限、来源和状态摘要。</p>
-            </div>
-          </div>
-          <div className="push-state">
-            <span>浏览器权限</span>
-            <strong>{pushPermission}</strong>
-            <span>VAPID</span>
-            <strong>{pushConfigured ? '已配置' : '未配置'}</strong>
-            <span>绑定设备</span>
-            <strong>{deviceCount}</strong>
-          </div>
-          <div className="home-button-row">
-            <button type="button" disabled={busy} onClick={() => void enablePush()}>
-              <Bell size={16} />
-              启用通知
-            </button>
-            <button type="button" disabled={busy} onClick={() => void sendTestPush()}>
-              <RefreshCw size={16} />
-              测试通知
-            </button>
-          </div>
-        </section>
-
-        <section className="home-section">
-          <div className="home-section-head">
-            <div>
-              <h2>通知收件箱</h2>
-              <p>{unreadNotifications} 条未读，按状态和来源汇总。</p>
-            </div>
-          </div>
-          <div className="home-list compact">
-            {notifications.slice(0, 8).map((notification) => (
-              <button className="home-notification" type="button" key={notification.id} onClick={() => void homeApi.readNotification(notification.id).then(load)}>
-                <span>{notification.title}</span>
-                <small>
-                  {notification.status}
-                  {notification.reason ? ` · ${notification.reason}` : ''} · {formatTime(notification.created_at)}
-                </small>
-              </button>
-            ))}
-          </div>
-        </section>
+      <aside className="home-detail-panel" aria-label="详情与说明">
+        <section className="home-section"><h2>事项说明</h2><p>事项保存在独立清单中。使用 / 空格选择空间与性质，用 @ 空格选择负责人。</p><p>成员通过主动询问或打开工作台查看，不发送通知。</p></section>
 
         <section className="home-section" id="timeline">
           <div className="home-section-head">

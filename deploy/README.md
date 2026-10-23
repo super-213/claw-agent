@@ -61,3 +61,45 @@ bash ~/claw-agent-new/deploy/pi-update.sh
 
 注意：本机是 macOS 时，Python 虚拟环境不能打包后在树莓派 Linux ARM 上直接运行。
 前端构建产物可以跨平台复制，Python 依赖必须在树莓派上安装。
+
+
+## 009 家庭事项上线与回滚
+
+当前家庭产品模式不主动发送通知。配置默认值为：
+
+```dotenv
+HOME_DATA_DIR=.data/home
+HOME_TIMEZONE=Asia/Shanghai
+HOME_REMINDER_DELIVERY_ENABLED=false
+```
+
+保留 `false`；新事项从不进入旧 `process_due_reminders()` 发送链。旧推送订阅和历史文件保留，工作台不展示通知权限、VAPID、发送测试或送达率。Web 工具集默认关闭通用 Shell；CLI 无成员身份时不会注册跨成员事项写工具。
+
+升级步骤：
+
+1. 先保留整个 `.data`、`files` 和 `.env`。更新代码和前端后确认服务没有启动旧发送任务。
+2. 管理员在工作台展开“家庭成员绑定与迁移核对”，将旧数据涉及的有效账号逐一绑定为成员；不要把全部技术账号自动加入家庭。尚未绑定的账号无法查询事项。
+3. 暂停服务写入，再预演迁移。默认使用 `.data/home`、`.data/users.json`；自定义路径必须同时传入 `--home-dir`、`--users`，自定义时区传 `--timezone`。
+
+```bash
+sudo systemctl stop claw-agent
+.venv/bin/python scripts/migrate_family_tasks.py
+.venv/bin/python scripts/migrate_family_tasks.py --apply
+sudo systemctl start claw-agent
+```
+
+迁移前备份原家庭配置、提醒、周期、日志及账本，保存到 `HOME_DATA_DIR/backups/task-migration-<ID>`，报告含来源计数、稳定来源映射和待核对原因。每条记录按 `legacy_type:legacy_id` 去重，不按标题合并。旧 `sent/failed/snoozed/scheduled` 不表示事情完成；旧周期整条 `completed`、复杂规则、多收件人语义不明等保留为归档待核对，不自动恢复周期或推断历史。迁移完成前旧清单不会出现在新账本中。
+
+上线后分别以交代者、负责人和第三名成员检查同一事项的可见性、完成/撤销和多人进度，再检查家庭未认领事项、每周完成及下期预览。管理员的待核对入口为工作台折叠面板或 `GET /api/home/tasks-migration/review`。
+
+日常备份除部署脚本的整目录备份外，账本首次日内更新会在 `backups/<账本名>-YYYY-MM-DD.json` 保存更新前快照。不要单独备份提醒文件；`tasks.json` 中的操作去重、实例、来源映射和事件必须一起保存。账本损坏会返回 `ledger_corrupt`，不会以空账本覆盖损坏文件。
+
+回滚先预演，核对所有切换后的新增/修改数据，再停服务执行：
+
+```bash
+.venv/bin/python scripts/migrate_family_tasks.py --rollback .data/home/backups/task-migration-实际备份ID
+sudo systemctl stop claw-agent
+.venv/bin/python scripts/migrate_family_tasks.py --rollback .data/home/backups/task-migration-实际备份ID --apply --writes-paused
+```
+
+执行回滚会先把当前完整账本导出为备份目录下 `post-cutover-<ID>.json`，再原子恢复迁移前账本。导出的新事项与修改需保留并人工核对合并，不能只恢复旧提醒文件后丢弃新指令。旧源文件始终保留且没有双写。确认数据处理完成后再启动目标版本。

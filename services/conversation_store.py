@@ -183,6 +183,7 @@ class ConversationStore:
             "active_node_id": source.get("active_node_id"),
             # 保留完整的消息列表（含 node_id/parent_id 树结构）
             "messages": cloned_messages,
+            "private_task_history": bool(source.get("private_task_history")),
             "summary": source.get("summary", ""),
             "summarized_until": source.get("summarized_until", 1),
             # 保留已压缩节点列表（分支模式下的压缩记录）
@@ -293,10 +294,23 @@ class ConversationStore:
             self._write_session(session_id, data)
             return data
 
+    def protect_private_task_history(self, session_id, user_id=None):
+        with self._session_lock(session_id):
+            data = self.load_session(session_id)
+            if ((data.get('sharing') or {}).get('scope', 'private') == 'private'
+                    and (user_id is None or data.get('owner_user_id') == user_id)
+                    and not data.get('private_task_history')):
+                data['private_task_history'] = True
+                self._write_session(session_id, data)
+            return data
+
     def update_sharing(self, session_id: str, sharing: Dict[str, Any]) -> Dict[str, Any]:
         with self._session_lock(session_id):
             data = self.load_session(session_id)
-            data["sharing"] = self._normalized_sharing(sharing)
+            normalized = self._normalized_sharing(sharing)
+            if data.get('private_task_history') and normalized.get('scope') != 'private':
+                raise ValueError('private_task_history_cannot_be_shared')
+            data["sharing"] = normalized
             data["updated_at"] = self._now_iso()
             self._write_session(session_id, data)
             return data

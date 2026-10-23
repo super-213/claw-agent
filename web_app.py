@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime
 import os
 from pathlib import Path
@@ -55,7 +55,15 @@ from services.message_media import normalize_attachments, normalize_images
 from services.model_catalog import ModelCatalogError, fetch_available_models
 from skills import SkillRegistry
 from agent_runtime import ArtifactStore, MemoryStore, RunStore
-from agent_runtime.builtin_tools import build_tool_registry
+from agent_runtime.builtin_tools import build_tool_registry, _file_read, _file_write, _file_write_needs_approval, _resolve_path
+from agent_runtime.registry import ToolRegistry
+from agent_runtime.family_task_tools import register_family_task_tools
+from services.family_member_service import FamilyMemberService
+from services.family_task_service import FamilyTaskService
+from services.family_task_api import task_router
+from services.task_commands import normalize_invocation
+from services.task_legacy_adapter import TaskLegacyAdapter
+from services.task_store import TaskStore, TaskError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -112,6 +120,9 @@ class ChatRequest(BaseModel):
     message: str | None = None
     images: Any = None
     attachments: Any = None
+    invocation: dict[str, Any] | None = None
+    request_id: str | None = None
+    task_ref: dict[str, Any] | None = None
 
 
 class RunApprovalRequest(BaseModel):
@@ -327,6 +338,8 @@ def _safe_file_response(directory: Path, filename: str) -> FileResponse:
         requested_path.relative_to(directory)
     except ValueError:
         raise HTTPException(status_code=404, detail="Not Found")
+    if any(requested_path == p or p in requested_path.parents for p in PROTECTED_TASK_PATHS):
+        raise HTTPException(status_code=404, detail="Not Found")
     if not requested_path.is_file():
         raise HTTPException(status_code=404, detail="Not Found")
     return FileResponse(requested_path)
@@ -400,6 +413,15 @@ user_file = Path(config["user_file"])
 if not user_file.is_absolute():
     user_file = PROJECT_ROOT / user_file
 user_store = UserStore(user_file)
+family_members = FamilyMemberService(home_service, user_store)
+file_access_store = TaskStore(run_root.parent / 'file_access.json')
+family_tasks = FamilyTaskService(TaskStore(home_data_dir / 'tasks.json'), family_members,
+                                 timezone_name=config['home_timezone'])
+PROTECTED_TASK_PATHS = tuple(p.resolve() for p in (
+    home_data_dir, user_file, user_file.with_name('auth_sessions.json'), conversation_root, run_root,
+    run_root.parent / 'memory', run_root.parent / 'file_access.json', run_root.parent / 'backups', PROJECT_ROOT / '.data', PROJECT_ROOT / '.git', PROJECT_ROOT / '.env', PROJECT_ROOT / 'config',
+    PROJECT_ROOT / '.codex', PROJECT_ROOT / '.agents', PROJECT_ROOT / '.aws',
+))
 auth_sessions = AuthSessionStore(path=user_file.with_name("auth_sessions.json"))
 session_run_locks = SessionRunLocks()
 skills_dir = Path(config["skills_dir"])
@@ -419,6 +441,8 @@ tool_registry = build_tool_registry(
     executor=executor,
     home_assistant_service=home_assistant_service,
     skill_registry=skill_registry,
+    family_mode=True,
+    protected_paths=PROTECTED_TASK_PATHS,
     allowed_http_domains=tuple(
         item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
         if item.strip()
@@ -501,6 +525,14 @@ async def require_admin(user: dict[str, Any] = Depends(require_user)) -> dict[st
     if not can_manage_users(user):
         raise HTTPException(status_code=403, detail="forbidden")
     return user
+
+
+@app.exception_handler(TaskError)
+async def task_exception_handler(_request: Request, exc: TaskError):
+    return JSONResponse(exc.payload(), status_code=exc.status)
+
+
+app.include_router(task_router(lambda: family_tasks, require_user, require_admin))
 
 
 def _response_with_login_cookie(user: dict[str, Any], *, remember_me: bool = False) -> JSONResponse:
@@ -637,9 +669,11 @@ artifact_store = ArtifactStore(run_root / "artifacts")
 memory_store = MemoryStore(run_root.parent / "memory")
 
 
-def _build_orchestrator(user_id: str | None = None) -> AgentOrchestrator:
+def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentOrchestrator:
     llm_client = _new_llm_client()
-    conversation = ConversationManager(agent_prompt)
+    user_files = GENERATED_DIR / str(user_id) if user_id else GENERATED_DIR
+    user_files.mkdir(parents=True, exist_ok=True)
+    conversation = ConversationManager(agent_prompt + f'\n本次认证账号的文件目录为 {user_files}；生成下载链接使用 /generated/{user_id}/文件名。')
     context_compressor = ContextCompressor(
         llm_client=llm_client,
         max_context_chars=config["context_max_chars"],
@@ -652,12 +686,41 @@ def _build_orchestrator(user_id: str | None = None) -> AgentOrchestrator:
         ),
         token_estimator=token_estimator,
     )
-    return AgentOrchestrator(
+    bound_registry = ToolRegistry()
+    for definition in tool_registry.list():
+        if definition.name == 'file_write':
+            def write_for_actor(args):
+                result = _file_write(args, user_files)
+                session_id = (orchestrator.run or {}).get('session_id')
+                if session_id:
+                    with file_access_store.transaction() as doc:
+                        doc.setdefault('file_grants', {})[str(Path(result['path']).resolve())] = {
+                            'owner_user_id': user_id, 'session_id': session_id}
+                result['url'] = '/generated/' + str(Path(result['path']).relative_to(GENERATED_DIR))
+                return result
+            definition = replace(definition, handler=write_for_actor,
+                approval_policy=lambda args: _file_write_needs_approval(args, user_files))
+        elif definition.name == 'file_read':
+            def read_for_actor(args):
+                raw = Path(args['path'])
+                local = (raw if raw.is_absolute() else PROJECT_ROOT / raw).resolve()
+                if not raw.is_absolute() and not local.exists():
+                    local = (user_files / raw).resolve()
+                if GENERATED_DIR.resolve() in local.parents:
+                    _authorize_generated_path(user_store.get_user(user_id), local)
+                return _file_read({**args, 'path': str(local)}, (PROJECT_ROOT, GENERATED_DIR), PROTECTED_TASK_PATHS)
+            definition = replace(definition, handler=read_for_actor)
+        if definition.name != "shell_execute":
+            bound_registry.register(definition)
+    for alias, target in tool_registry.aliases().items():
+        if bound_registry.get(target):
+            bound_registry.register_alias(alias, target)
+    orchestrator = AgentOrchestrator(
         llm_client=llm_client,
         conversation=conversation,
         skill_registry=skill_registry,
         context_compressor=context_compressor,
-        tool_registry=tool_registry,
+        tool_registry=bound_registry,
         run_store=run_store,
         max_steps=config["agent_max_steps"],
         max_runtime_seconds=config["agent_max_runtime_seconds"],
@@ -673,6 +736,34 @@ def _build_orchestrator(user_id: str | None = None) -> AgentOrchestrator:
         memory_store=memory_store,
         user_id=user_id,
     )
+    orchestrator.family_task_context = task_context
+    def execution_context():
+        run = orchestrator.run or {}
+        context = dict(run.get('family_task_context') or task_context or {})
+        context.setdefault('user_id', user_id)
+        context.setdefault('request_id', run.get('id'))
+        context['run_id'] = run.get('id')
+        context['user_message_id'] = next((m.get('node_id') for m in reversed(orchestrator.conversation.get_messages()) if m.get('role') == 'user'), None)
+        context['session_id'] = run.get('session_id', context.get('session_id', ''))
+        context['branch_id'] = context.get('branch_id') or 'main'
+        engine = orchestrator.conversation.branch_engine
+        active = orchestrator.conversation.active_node_id
+        context['active_message_ids'] = [m['node_id'] for m in engine.get_path_to_node(active)] if engine and active else []
+        if context['session_id']:
+            session = store.load_session(context['session_id'])
+            context['session'] = session
+            def protect_private():
+                latest = store.protect_private_task_history(context['session_id'], user_id)
+                if ((latest.get('sharing') or {}).get('scope', 'private') != 'private'
+                        or latest.get('owner_user_id') != user_id):
+                    raise TaskError('private_session_required', '请进入自己的个人会话。', status=403)
+            context['protect_private_session'] = protect_private
+            if not can_write_session(user_store.get_user(user_id), session):
+                raise TaskError('forbidden', status=403)
+        return context
+    if user_id:
+        register_family_task_tools(bound_registry, family_tasks, lambda: user_store.get_user(user_id), execution_context)
+    return orchestrator
 
 
 @app.get("/", include_in_schema=False)
@@ -680,13 +771,40 @@ def index():
     return {"service": "Claw Agent API"}
 
 
-@app.get("/generated/{filename:path}", include_in_schema=False)
-def generated_file(filename: str):
-    return _safe_file_response(GENERATED_DIR, filename)
+def _authorize_generated_path(user, path):
+    from services.media_input import media_source
+    if not user or user.get('status') != 'active':
+        raise TaskError('unauthorized', status=401)
+    path = Path(path).resolve()
+    root = GENERATED_DIR.resolve()
+    if root not in path.parents or any(path == p or p in path.parents for p in PROTECTED_TASK_PATHS):
+        raise TaskError('file_not_found', status=404)
+    if root / user['id'] in path.parents or root / 'uploads' / user['id'] in path.parents:
+        return
+    relative = str(path.relative_to(root))
+    with file_access_store.transaction() as doc:
+        grant = doc.get('file_grants', {}).get(str(path))
+    if grant:
+        try:
+            if can_read_session(user, store.load_session(grant['session_id'])):
+                return
+        except KeyError:
+            pass
+    # Uploaded media was authorized when submitted. Plain text URLs grant no access.
+    for meta in _visible_session_metas(user):
+        session = store.load_session(meta['id'])
+        for message in session.get('messages', []):
+            for item in [*(message.get('images') or []), *(message.get('attachments') or [])]:
+                source = media_source(item)
+                if source in {relative, '/generated/' + relative, '/files/' + relative}:
+                    return
+    raise TaskError('file_not_found', status=404)
 
 
-@app.get("/files/{filename:path}", include_in_schema=False)
-def files_file(filename: str):
+@app.get('/generated/{filename:path}', include_in_schema=False)
+@app.get('/files/{filename:path}', include_in_schema=False)
+def generated_file(filename: str, user=Depends(require_user)):
+    _authorize_generated_path(user, GENERATED_DIR / filename)
     return _safe_file_response(GENERATED_DIR, filename)
 
 
@@ -704,7 +822,9 @@ async def upload_chat_files(
     media: list[dict[str, Any]] = []
     for upload in uploads:
         stored_name = _safe_upload_name(upload.filename or "upload")
-        stored_path = UPLOAD_DIR / stored_name
+        upload_root = UPLOAD_DIR / user['id']
+        upload_root.mkdir(parents=True, exist_ok=True)
+        stored_path = upload_root / stored_name
         size = 0
         try:
             with stored_path.open("wb") as output:
@@ -730,8 +850,8 @@ async def upload_chat_files(
         mime_type = upload.content_type or "application/octet-stream"
         item = {
             "name": upload.filename or stored_name,
-            "url": f"/generated/uploads/{stored_name}",
-            "path": f"uploads/{stored_name}",
+            "url": f"/generated/uploads/{user['id']}/{stored_name}",
+            "path": f"uploads/{user['id']}/{stored_name}",
             "type": mime_type,
             "mime_type": mime_type,
             "mimeType": mime_type,
@@ -1016,7 +1136,7 @@ async def _home_scheduler_loop() -> None:
 
 @app.on_event("startup")
 async def _start_home_scheduler() -> None:
-    if app.config.get("TESTING"):
+    if app.config.get("TESTING") or not config["home_reminder_delivery_enabled"]:
         return
     app.state.home_scheduler_task = asyncio.create_task(_home_scheduler_loop())
 
@@ -1130,37 +1250,28 @@ def dashboard_users(_admin: dict[str, Any] = Depends(require_admin)):
     return {"users": rows}
 
 
-@app.get("/api/dashboard/home/tasks/summary", tags=["dashboard"])
-def dashboard_home_tasks_summary(_user: dict[str, Any] = Depends(require_user)):
-    return home_service.dashboard_task_summary()
+@app.get('/api/dashboard/home/tasks/summary', tags=['dashboard'])
+def dashboard_home_tasks_summary(user=Depends(require_user)):
+    result = family_tasks.summary(user, view='visible')
+    return {**result, 'status_distribution': [{'label': k, 'value': v} for k, v in result['counts'].items()
+                                              if k in {'open', 'completed', 'information'}],
+            'channel_distribution': [], 'alerts': [], 'metrics': result['counts']}
 
 
-@app.get("/api/dashboard/home/tasks/timeseries", tags=["dashboard"])
-def dashboard_home_tasks_timeseries(days: int = 30, _user: dict[str, Any] = Depends(require_user)):
-    return home_service.dashboard_task_timeseries(days)
+@app.get('/api/dashboard/home/tasks/timeseries', tags=['dashboard'])
+def dashboard_home_tasks_timeseries(days: int = 30, user=Depends(require_user)):
+    return family_tasks.list(user, view='visible')
 
 
-@app.get("/api/dashboard/home/tasks", tags=["dashboard"])
-def dashboard_home_tasks(
-    status: str | None = None,
-    type: str | None = None,
-    recipient_user_id: str | None = None,
-    channel: str | None = None,
-    next_run_before: str | None = None,
-    _user: dict[str, Any] = Depends(require_user),
-):
-    return home_service.dashboard_tasks(
-        status=status,
-        type=type,
-        recipient_user_id=recipient_user_id,
-        channel=channel,
-        next_run_before=next_run_before,
-    )
+@app.get('/api/dashboard/home/tasks', tags=['dashboard'])
+def dashboard_home_tasks(user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).list(user)
 
 
-@app.get("/api/dashboard/home/notifications/summary", tags=["dashboard"])
-def dashboard_home_notifications_summary(_user: dict[str, Any] = Depends(require_user)):
-    return home_service.dashboard_notifications_summary()
+@app.get('/api/dashboard/home/notifications/summary', tags=['dashboard'])
+def dashboard_home_notifications_summary(user=Depends(require_user)):
+    rows = _private_legacy_notifications(user, 500)
+    return {'total': len(rows), 'unread': sum(not r.get('read_at') for r in rows)}
 
 
 @app.get("/api/home/household", tags=["home"])
@@ -1170,12 +1281,15 @@ def home_household(_user: dict[str, Any] = Depends(require_user)):
 
 @app.patch("/api/home/household", tags=["home"])
 def home_update_household(payload: dict[str, Any] | None = Body(default=None), admin: dict[str, Any] = Depends(require_admin)):
+    if "members" in (payload or {}):
+        raise TaskError("use_member_binding_api", "请通过成员绑定接口维护成员。")
     return home_service.update_household(payload or {}, admin)
 
 
 @app.get("/api/home/activity-log", tags=["home"])
 def home_activity_log(limit: int = 100, _user: dict[str, Any] = Depends(require_user)):
-    return {"activity": home_service.activity_log(limit)}
+    family_members.actor(_user)
+    return {"activity": [e for e in home_service.activity_log(limit) if str(e.get("action", "")).startswith("inventory.")]}
 
 
 @app.get("/api/home/inventory/expiring", tags=["home"])
@@ -1290,135 +1404,79 @@ def home_inventory_restore_item(location: str, item_id: str, user: dict[str, Any
         return _json({"error": str(e)}, 400)
 
 
-@app.get("/api/home/reminders", tags=["home"])
-def home_reminders(
-    status: str | None = None,
-    type: str | None = None,
-    recipient_user_id: str | None = None,
-    channel: str | None = None,
-    next_run_before: str | None = None,
-    _user: dict[str, Any] = Depends(require_user),
-):
-    return home_service.list_reminders(
-        status=status,
-        type=type,
-        recipient_user_id=recipient_user_id,
-        channel=channel,
-        next_run_before=next_run_before,
-    )
+@app.get('/api/home/reminders', tags=['home'])
+def home_reminders(status: str | None = None, recipient_user_id: str | None = None,
+                   next_run_before: str | None = None, _user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).list(_user, status=status, recipient_user_id=recipient_user_id,
+                                                next_run_before=next_run_before)
 
 
-@app.post("/api/home/reminders", tags=["home"], status_code=201)
-def home_create_reminder(
-    payload: dict[str, Any] | None = Body(default=None),
-    user: dict[str, Any] = Depends(require_user),
-):
-    try:
-        return _json(home_service.create_reminder(payload or {}, user), 201)
-    except ValueError as e:
-        return _json({"error": str(e)}, 400)
+@app.post('/api/home/reminders', tags=['home'], status_code=201)
+@app.post('/api/home/schedules', tags=['home'], status_code=201)
+def home_create_reminder(payload: dict = Body(default={}), user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).create(user, payload)
 
 
-@app.get("/api/home/reminders/{reminder_id}", tags=["home"])
-def home_get_reminder(reminder_id: str, _user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.get_reminder(reminder_id)
-    except KeyError:
-        return _json({"error": "reminder_not_found"}, 404)
+@app.get('/api/home/reminders/{reminder_id}', tags=['home'])
+def home_get_reminder(reminder_id: str, user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).get(user, reminder_id)
 
 
-@app.patch("/api/home/reminders/{reminder_id}", tags=["home"])
-def home_update_reminder(
-    reminder_id: str,
-    payload: dict[str, Any] | None = Body(default=None),
-    user: dict[str, Any] = Depends(require_user),
-):
-    try:
-        return home_service.update_reminder(reminder_id, payload or {}, user)
-    except KeyError:
-        return _json({"error": "reminder_not_found"}, 404)
-    except ValueError as e:
-        return _json({"error": str(e)}, 400)
+@app.patch('/api/home/reminders/{reminder_id}', tags=['home'])
+def home_update_reminder(reminder_id: str, payload: dict = Body(default={}), user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).change(user, reminder_id, 'update', payload)
 
 
-@app.delete("/api/home/reminders/{reminder_id}", tags=["home"])
-def home_delete_reminder(reminder_id: str, user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.delete_reminder(reminder_id, user)
-    except KeyError:
-        return _json({"error": "reminder_not_found"}, 404)
+@app.delete('/api/home/reminders/{reminder_id}', tags=['home'])
+def home_delete_reminder(reminder_id: str, payload: dict = Body(default={}), user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).change(user, reminder_id, 'archive', payload)
 
 
-@app.post("/api/home/reminders/{reminder_id}/complete", tags=["home"])
-def home_complete_reminder(reminder_id: str, user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.complete_reminder(reminder_id, user)
-    except KeyError:
-        return _json({"error": "reminder_not_found"}, 404)
+@app.post('/api/home/reminders/{reminder_id}/{action}', tags=['home'])
+def home_reminder_action(reminder_id: str, action: str, payload: dict = Body(default={}), user=Depends(require_user)):
+    if action not in {'complete', 'cancel', 'snooze'}:
+        raise TaskError('invalid_action')
+    return TaskLegacyAdapter(family_tasks).change(user, reminder_id, action, payload)
 
 
-@app.post("/api/home/reminders/{reminder_id}/snooze", tags=["home"])
-def home_snooze_reminder(
-    reminder_id: str,
-    payload: ReminderSnoozeRequest | None = Body(default=None),
-    user: dict[str, Any] = Depends(require_user),
-):
-    try:
-        return home_service.snooze_reminder(reminder_id, int(_payload(payload).get("minutes") or 10), user)
-    except KeyError:
-        return _json({"error": "reminder_not_found"}, 404)
+@app.get('/api/home/schedules', tags=['home'])
+def home_schedules(user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).list(user, kind='schedule')
 
 
-@app.post("/api/home/reminders/{reminder_id}/cancel", tags=["home"])
-def home_cancel_reminder(reminder_id: str, user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.cancel_reminder(reminder_id, user)
-    except KeyError:
-        return _json({"error": "reminder_not_found"}, 404)
+@app.patch('/api/home/schedules/{schedule_id}', tags=['home'])
+def home_update_schedule(schedule_id: str, payload: dict = Body(default={}), user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).change(user, schedule_id, 'update', payload, kind='schedule')
 
 
-@app.get("/api/home/schedules", tags=["home"])
-def home_schedules(_user: dict[str, Any] = Depends(require_user)):
-    return home_service.list_schedules()
+@app.delete('/api/home/schedules/{schedule_id}', tags=['home'])
+def home_delete_schedule(schedule_id: str, payload: dict = Body(default={}), user=Depends(require_user)):
+    return TaskLegacyAdapter(family_tasks).change(user, schedule_id, 'archive', payload, kind='schedule')
 
 
-@app.post("/api/home/schedules", tags=["home"], status_code=201)
-def home_create_schedule(payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
-    return _json(home_service.create_schedule(payload or {}, user), 201)
+def _private_legacy_notifications(user, limit=100):
+    family_members.actor(user)
+    rows = home_service.notifications(limit=500).get('notifications', [])
+    return [r for r in rows if user['id'] in (r.get('recipients') or [])][-min(limit, 500):]
 
 
-@app.patch("/api/home/schedules/{schedule_id}", tags=["home"])
-def home_update_schedule(schedule_id: str, payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.update_schedule(schedule_id, payload or {}, user)
-    except KeyError:
-        return _json({"error": "schedule_not_found"}, 404)
+@app.get('/api/home/notifications', tags=['home'])
+def home_notifications(unread_only: bool = False, limit: int = 100, user=Depends(require_user)):
+    return {'notifications': [r for r in _private_legacy_notifications(user, limit) if not unread_only or not r.get('read_at')]}
 
 
-@app.delete("/api/home/schedules/{schedule_id}", tags=["home"])
-def home_delete_schedule(schedule_id: str, user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.delete_schedule(schedule_id, user)
-    except KeyError:
-        return _json({"error": "schedule_not_found"}, 404)
+@app.post('/api/home/notifications/read-all', tags=['home'])
+def home_notification_read_all(user=Depends(require_user)):
+    for row in _private_legacy_notifications(user, 500):
+        home_service.mark_notification_read(row['id'], user)
+    return {'ok': True}
 
 
-@app.get("/api/home/notifications", tags=["home"])
-def home_notifications(unread_only: bool = False, limit: int = 100, _user: dict[str, Any] = Depends(require_user)):
-    return home_service.notifications(unread_only=unread_only, limit=limit)
-
-
-@app.post("/api/home/notifications/{notification_id}/read", tags=["home"])
-def home_notification_read(notification_id: str, user: dict[str, Any] = Depends(require_user)):
-    try:
-        return home_service.mark_notification_read(notification_id, user)
-    except KeyError:
-        return _json({"error": "notification_not_found"}, 404)
-
-
-@app.post("/api/home/notifications/read-all", tags=["home"])
-def home_notification_read_all(user: dict[str, Any] = Depends(require_user)):
-    return home_service.mark_all_notifications_read(user)
+@app.post('/api/home/notifications/{notification_id}/read', tags=['home'])
+def home_notification_read(notification_id: str, user=Depends(require_user)):
+    if notification_id not in {r['id'] for r in _private_legacy_notifications(user, 500)}:
+        raise TaskError('notification_not_found', status=404)
+    return home_service.mark_notification_read(notification_id, user)
 
 
 @app.get("/api/push/vapid-public-key", tags=["push"])
@@ -1465,6 +1523,8 @@ def push_delete_subscription(subscription_id: str, user: dict[str, Any] = Depend
 
 @app.post("/api/push/test", tags=["push"])
 def push_test(payload: dict[str, Any] | None = Body(default=None), user: dict[str, Any] = Depends(require_user)):
+    if not config["home_reminder_delivery_enabled"]:
+        raise TaskError("delivery_disabled", "当前仅记录事项，不主动通知。", status=409)
     try:
         return home_service.send_test_push(payload or {}, user)
     except KeyError:
@@ -1520,6 +1580,8 @@ def update_config(
                 executor=executor,
                 home_assistant_service=home_assistant_service,
                 skill_registry=skill_registry,
+                family_mode=True,
+                protected_paths=PROTECTED_TASK_PATHS,
                 allowed_http_domains=tuple(
                     item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
                     if item.strip()
@@ -1838,6 +1900,60 @@ def delete_branch(
         return _json({"error": "delete_rejected", "message": error_msg}, 400)
 
 
+def _task_chat_context(payload, user, session_id):
+    raw = payload.get('message') or ''
+    from services.media_input import media_source
+    from urllib.parse import urlsplit, unquote
+    for item in [*(payload.get('images') or []), *(payload.get('attachments') or [])]:
+        source = media_source(item)
+        if not source or urlsplit(source).netloc:
+            continue
+        relative = unquote(source)
+        for prefix in ('/generated/', '/files/'):
+            if relative.startswith(prefix):
+                relative = relative[len(prefix):]
+        _authorize_generated_path(user, GENERATED_DIR / relative)
+    session = store.load_session(session_id)
+    from core.branch_engine import BranchEngine
+    engine = BranchEngine(session.get('messages') or [])
+    active = session.get('active_node_id')
+    path = engine.get_path_to_node(active) if active and active in engine._nodes else []
+    branch_id = 'main'
+    for node in path:
+        if len(engine._children.get(node.get('parent_id'), [])) > 1 or node.get('_branch_placeholder'):
+            branch_id = node['node_id']
+    try:
+        invocation = normalize_invocation(raw, payload.get('invocation'))
+    except TaskError as error:
+        if error.code in {'unresolved_mentions', 'invalid_mentions'}:
+            from datetime import timedelta
+            import json
+            actor = family_members.actor(user)
+            with family_tasks.store.transaction() as doc:
+                doc['drafts'][json.dumps([session_id, branch_id, actor])] = {
+                    'raw_input': raw, 'items': [], 'user_id': user['id'],
+                    'expires_at': (family_tasks.now() + timedelta(minutes=30)).isoformat()}
+        raise
+    if invocation:
+        family_members.actor(user)
+        family_members.validate([m['member_id'] for m in invocation.get('mentions', [])])
+        current_members = {m['member_id']: m for m in family_members.list()}
+        if any(m['label'] not in {current_members[m['member_id']]['display_name'], *current_members[m['member_id']].get('aliases', [])}
+               for m in invocation.get('mentions', [])):
+            raise TaskError('member_label_changed', '成员姓名已变化，请重新选择标签。')
+    task_ref = payload.get('task_ref')
+    if task_ref:
+        if not isinstance(task_ref, dict) or not task_ref.get('task_id'):
+            raise TaskError('invalid_task_ref')
+        family_tasks.get(user, task_ref['task_id'])
+    return {'user_id': user['id'], 'session_id': session_id,
+            'branch_id': branch_id, 'invocation': invocation, 'task_ref': task_ref,
+            'request_id': payload.get('request_id') or uuid.uuid4().hex,
+            'raw_input': raw, 'as_of': family_tasks.now().isoformat(),
+            'explicit_recurrence_update': bool(re.search(r'(这件事|改|设|变|重复|记录).{0,30}每周|每周.{0,30}(改|设|记录)', raw)),
+            'shared': (session.get('sharing') or {}).get('scope', 'private') != 'private' or session.get('owner_user_id') != user['id']}
+
+
 @app.post("/api/chat", tags=["chat"])
 async def chat(
     payload: ChatRequest | None = Body(default=None),
@@ -1859,8 +1975,9 @@ async def chat(
 
     try:
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+        task_context = _task_chat_context(payload_data, user, session_id)
         auto_skills: list[str] = []
-        if not images and not attachments:
+        if not task_context["invocation"] and not images and not attachments:
             route = await intent_router.route(user_message, user, session_id)
             if route.action == "direct_response" and route.reply:
                 messages = await asyncio.to_thread(
@@ -1874,7 +1991,7 @@ async def chat(
                 auto_skills = route.skills
         return await run_chat(
             store=store,
-            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or "")),
+            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or ""), task_context),
             session_run_locks=session_run_locks,
             session_id=session_id,
             user_message=user_message,
@@ -1913,12 +2030,13 @@ async def session_runs(
 
 @app.get("/api/runtime/tools", tags=["runtime"])
 async def runtime_tools(user: dict[str, Any] = Depends(require_user)):
+    metadata_registry = _build_orchestrator(str(user.get("id") or "")).tool_registry
     return {
         "tools": [
             {
                 "name": tool.name,
                 "canonical_names": [
-                    alias for alias, target in tool_registry.aliases().items()
+                    alias for alias, target in metadata_registry.aliases().items()
                     if target == tool.name
                 ],
                 "description": tool.description,
@@ -1936,7 +2054,7 @@ async def runtime_tools(user: dict[str, Any] = Depends(require_user)):
                 "max_retries": tool.max_retries,
                 "idempotent": tool.idempotent,
             }
-            for tool in tool_registry.list()
+            for tool in metadata_registry.list()
         ]
     }
 
@@ -2174,8 +2292,9 @@ async def chat_stream(
     except PermissionError:
         return _json({"error": "forbidden"}, 403)
 
+    task_context = _task_chat_context(payload_data, user, session_id)
     auto_skills: list[str] = []
-    if not images and not attachments:
+    if not task_context["invocation"] and not images and not attachments:
         route = await intent_router.route(user_message, user, session_id)
         if route.action == "direct_response" and route.reply:
             async def direct_intent_stream():
@@ -2228,7 +2347,7 @@ async def chat_stream(
     return StreamingResponse(
         stream_chat_events(
             store=store,
-            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or "")),
+            build_orchestrator=lambda: _build_orchestrator(str(user.get("id") or ""), task_context),
             session_run_locks=session_run_locks,
             session_id=session_id,
             user_message=user_message,

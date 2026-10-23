@@ -75,6 +75,7 @@ class AgentOrchestrator:
         self.artifact_store = artifact_store
         self.memory_store = memory_store
         self.user_id = user_id
+        self.family_task_context = None
         self.loop_guard = LoopGuard(
             max_repeated_calls=max(2, max_repeated_calls),
             max_empty_turns=max(1, max_empty_turns),
@@ -585,7 +586,7 @@ class AgentOrchestrator:
             ledger = dict(((self.run or {}).get("tool_ledger") or {}).get(call.id) or {})
             if ledger.get("fingerprint") and ledger.get("fingerprint") != fingerprint:
                 result = ToolResult(call.id, call.name, "error", error="tool_call_id_reused_with_different_arguments")
-            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict):
+            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and not call.name.startswith("family_"):
                 cached = ledger["result"]
                 result = ToolResult(
                     call_id=str(cached.get("call_id") or call.id),
@@ -677,6 +678,8 @@ class AgentOrchestrator:
                         active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
                         if self.active_skill_allowed_tools is not None else None,
                     )
+            if result.success and isinstance(result.output, dict) and result.output.get('task_changed'):
+                events.append(result.output['task_changed'])
             content = result.model_content(self.max_tool_output_chars)
             self.conversation.add_tool_message(call.id, call.name, content)
             await self._checkpoint()
@@ -718,6 +721,8 @@ class AgentOrchestrator:
         if not self.run_store:
             raise RuntimeError("run_store_not_configured")
         self.run = self.run_store.load(run_id)
+        if self.run.get("actor_user_id") and self.run["actor_user_id"] != self.user_id:
+            raise PermissionError("run_identity_mismatch")
         self._restore_skill_state()
         pending = self.run.get("pending_approval") or {}
         if self.run.get("status") != "waiting_approval" or not pending:
@@ -790,6 +795,8 @@ class AgentOrchestrator:
         if not self.run_store:
             raise RuntimeError("run_store_not_configured")
         self.run = self.run_store.load(run_id)
+        if self.run.get("actor_user_id") and self.run["actor_user_id"] != self.user_id:
+            raise PermissionError("run_identity_mismatch")
         status = self.run.get("status")
         if status == "waiting_approval":
             raise ValueError("run_requires_approval")
@@ -938,6 +945,8 @@ class AgentOrchestrator:
             self.run = self.run_store.update(
                 self.run,
                 active_skill=active_skill,
+                family_task_context=self.family_task_context,
+                actor_user_id=self.user_id,
                 active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
                 if self.active_skill_allowed_tools is not None else None,
             )
@@ -1139,6 +1148,12 @@ class AgentOrchestrator:
         else:
             messages = self.conversation.get_messages()
         dynamic_system: List[Dict[str, Any]] = []
+        task_context = (self.run or {}).get('family_task_context') or self.family_task_context
+        if task_context:
+            dynamic_system.append({'role': 'system', 'content':
+                '本次事项显式选择（不得覆盖；未选择必须先返回草稿）：' + json.dumps(task_context.get('invocation'), ensure_ascii=False) +
+                '\n本次当地时间：' + str(task_context.get('as_of')) +
+                '\n事项必须调用 family_task 工具查询或执行。每周完成仅完成本期；不发送消息或通知。'})
         catalog = self.skill_registry.catalog(auto_only=True)
         if catalog:
             dynamic_system.append({
@@ -1153,7 +1168,7 @@ class AgentOrchestrator:
         if self.memory_store and self.run:
             session_id = str(self.run.get("session_id") or "")
             scopes = [("session", session_id)]
-            if self.user_id:
+            if self.user_id and not (task_context or {}).get("shared"):
                 scopes.append(("user", self.user_id))
             memories = self.memory_store.search(
                 str(self.run.get("goal") or ""), scopes=scopes, limit=8

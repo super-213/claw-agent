@@ -41,6 +41,8 @@ def build_tool_registry(
     browser_handler: Callable[[dict[str, Any]], Any] | None = None,
     app_handler: Callable[[dict[str, Any]], Any] | None = None,
     allowed_http_domains: tuple[str, ...] = (),
+    protected_paths: tuple[Path, ...] = (),
+    family_mode: bool = False,
 ) -> ToolRegistry:
     project = Path(project_root).resolve()
     generated = Path(generated_files_dir).resolve()
@@ -132,7 +134,7 @@ def build_tool_registry(
             "required": ["path"],
             "additionalProperties": False,
         },
-        handler=lambda args: _file_read(args, (project, generated)),
+        handler=lambda args: _file_read(args, (project, generated), protected_paths),
         idempotent=True,
         max_retries=1,
     ))
@@ -174,23 +176,25 @@ def build_tool_registry(
         capabilities=("network:public-read",),
         allowed_domains=allowed_http_domains,
     ))
-    registry.register(ToolDefinition(
-        name="shell_execute",
-        description=(
-            "Execute one non-interactive shell command in the generated-files directory. "
-            "Prefer dedicated datetime, file and HTTP tools when available."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {"command": {"type": "string", "minLength": 1, "maxLength": 20000}},
-            "required": ["command"],
-            "additionalProperties": False,
-        },
-        handler=lambda args: _shell_execute(args, executor),
-        risk_level="high",
-        approval_policy=_shell_needs_approval,
-        timeout=max(1, executor.timeout + 2),
-    ))
+    if not family_mode:
+        registry.register(ToolDefinition(
+            name="shell_execute",
+            description=(
+                "Execute one non-interactive shell command in the generated-files directory. "
+                "Prefer dedicated datetime, file and HTTP tools when available."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"command": {"type": "string", "minLength": 1, "maxLength": 20000}},
+                "required": ["command"],
+                "additionalProperties": False,
+            },
+            handler=lambda args: _shell_execute(args, executor),
+            risk_level="high",
+            approval_policy=_shell_needs_approval,
+            timeout=max(1, executor.timeout + 2),
+        ))
+
 
     if (
         home_assistant_service is not None
@@ -244,8 +248,10 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return False
 
 
-def _file_read(args: dict[str, Any], roots: tuple[Path, ...]) -> dict[str, Any]:
+def _file_read(args: dict[str, Any], roots: tuple[Path, ...], protected_paths=()) -> dict[str, Any]:
     path = _resolve_path(str(args["path"]), roots, default_root=roots[0])
+    if any(path == Path(p).resolve() or _is_relative_to(path, Path(p).resolve()) for p in protected_paths):
+        raise PermissionError("protected_family_data")
     if not path.exists() or not path.is_file():
         raise FileNotFoundError(str(path))
     max_chars = max(1, min(int(args.get("max_chars") or 20000), 100000))

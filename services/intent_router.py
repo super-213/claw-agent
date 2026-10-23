@@ -63,6 +63,9 @@ class HybridIntentRouter:
         if not normalized:
             return IntentRouteResult(action="general_chat", source="empty")
 
+        if re.search(r'^/ |备忘|日程|清单|事项|记下|记住|每周|提醒|告诉.+要|这件事|做完|标记.*完成', normalized):
+            return IntentRouteResult(action='general_chat', source='family_task_tools')
+
         rule_result = await self._route_by_rules(normalized, user, session_id)
         if rule_result.action != "general_chat":
             return rule_result
@@ -187,7 +190,7 @@ class HybridIntentRouter:
                     model_response=llm_payload,
                 )
 
-        if domain == "home":
+        if domain == "home" and intent not in {"create_reminder", "reminder_create", "create_schedule", "schedule_create"}:
             reply = await asyncio.to_thread(
                 self._handle_home_structured_intent,
                 intent,

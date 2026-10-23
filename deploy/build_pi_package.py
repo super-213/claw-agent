@@ -18,6 +18,7 @@ SINGLE_FILES = (
     "main.py",
     "web_app.py",
     "requirements.txt",
+    "scripts/migrate_family_tasks.py",
     "deploy/pi-start.sh",
     "deploy/pi-status.sh",
     "deploy/pi-stop.sh",

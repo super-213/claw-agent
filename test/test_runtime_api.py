@@ -49,10 +49,11 @@ def test_runtime_tools_exposes_schema_without_handlers(client):
     assert response.status_code == 200
     tools = response.get_json()["tools"]
     names = {tool["name"] for tool in tools}
-    assert {"datetime_now", "file_read", "file_write", "http_request", "shell_execute"} <= names
+    assert {"datetime_now", "file_read", "file_write", "http_request", "family_task_list", "family_timed_memo_create", "family_undated_memo_create"} <= names
+    assert "shell_execute" not in names
     assert all("input_schema" in tool and "description" in tool for tool in tools)
     canonical = {name for tool in tools for name in tool.get("canonical_names", [])}
-    assert {"datetime.now", "file.read", "file.write", "http.request", "shell.execute"} <= canonical
+    assert {"datetime.now", "file.read", "file.write", "http.request"} <= canonical
 
 
 def test_run_cancel_endpoint_persists_signal(client, tmp_path):

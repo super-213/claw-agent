@@ -152,6 +152,7 @@ export type ChatRunStatus =
   | 'error';
 
 export type ChatStreamEvent =
+  | { type: 'task_changed'; task_ids: string[]; revision: number; [key: string]: unknown }
   | {
       type: 'step';
       stage?: string;

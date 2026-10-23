@@ -1,3 +1,4 @@
+import type { TaskInvocation } from './tasks';
 import { formRequest, jsonRequest, streamRequest } from './client';
 import type { ChatStreamEvent, MessageMedia, SessionDetail } from './types';
 
@@ -7,6 +8,8 @@ export interface ChatPayload {
   attachments?: MessageMedia[];
   images?: MessageMedia[];
   signal?: AbortSignal;
+  invocation?: TaskInvocation;
+  requestId?: string;
 }
 
 export interface RunApprovalPayload {
@@ -20,11 +23,13 @@ interface UploadResponse {
   media: MessageMedia[];
 }
 
-const toWirePayload = ({ sessionId, message, attachments = [], images = [] }: ChatPayload) => ({
+const toWirePayload = ({ sessionId, message, attachments = [], images = [], invocation, requestId }: ChatPayload) => ({
   session_id: sessionId,
   message,
   attachments,
   images,
+  invocation,
+  request_id: requestId,
 });
 
 export const chatApi = {

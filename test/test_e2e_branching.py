@@ -424,6 +424,14 @@ class TestE2EBranchingWorkflow:
             assert response.status_code == 200
             branch1_id = response.get_json()["branch_node_id"]
 
+            # The active empty placeholder cannot branch again until it has a
+            # conversation. Return to the existing populated branch first.
+            response = client.post(
+                f"/api/sessions/{session_id}/switch",
+                json={"target_node_id": "n4"},
+            )
+            assert response.status_code == 200
+
             # Create second branch at n1
             response = client.post(
                 f"/api/sessions/{session_id}/branch",

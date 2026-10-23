@@ -57,6 +57,7 @@ class ConfigManager:
         "token_encoding": "cl100k_base",
         "home_data_dir": ".data/home",
         "home_timezone": "Asia/Shanghai",
+        "home_reminder_delivery_enabled": False,
         "home_scheduler_interval_seconds": 60,
         "home_notification_quiet_start": "22:00",
         "home_notification_quiet_end": "07:00",
@@ -136,6 +137,8 @@ class ConfigManager:
             config["shell_require_sandbox"] = shell_require_sandbox.strip().lower() in {
                 "1", "true", "yes", "on"
             }
+
+        config["home_reminder_delivery_enabled"] = os.getenv("HOME_REMINDER_DELIVERY_ENABLED", "false").lower() in {"1", "true", "yes"}
 
         if home_data_dir := os.getenv("HOME_DATA_DIR"):
             config["home_data_dir"] = home_data_dir
