@@ -74,7 +74,7 @@ def register_knowledge_tools(registry, service, user_provider, context_provider,
         ['collection', 'identity', 'version'])
     register('knowledge_document_save', '用户明确要求保存时，将当前对话的真实附件保存为个人资料。只能从运行时附件清单选择 path；区分 ready/partial/failed，失败不能声称已可检索。',
         {'path': string, 'title': string, 'object_name': string, 'operation_index': {'type': 'integer'}}, ['path'])
-    register('knowledge_record_save', '用户明确要求记住时，保存家庭事实、发生记录或个人偏好。保留原始来源。待办/提醒必须使用 family_task 工具与草稿确认，不用此工具代替事项；含未来安排时分别处理。相同对象更正先查询，再 update，避免重复事实。',
+    register('knowledge_record_save', '用户明确要求记住时，保存家庭事实、发生记录或个人偏好。保留原始来源。待办/提醒必须使用事项创建工具，支持自然语言创建，缺必要信息才保留草稿；不用此工具代替事项；含未来安排时分别处理。相同对象更正先查询，再 update，避免重复事实。',
         {'title': string, 'content': string, 'kind': {'type': 'string', 'enum': ['fact', 'event', 'preference']},
          'object_name': string, 'operation_index': {'type': 'integer'}}, ['title', 'content'])
     register('knowledge_update', '按用户明确要求更正记录或标记过时，先读取真实 ID 与 version。新增发生事件用 save，不覆盖旧事件。共享范围由管理界面选择。',

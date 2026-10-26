@@ -24,6 +24,21 @@ class FamilyTaskService:
     def now(self):
         return self.clock().astimezone(self.zone)
 
+    def created_in_request(self, user, request_id):
+        """Read creation receipts from the operation ledger, even if tool text was truncated."""
+        actor = self.members.actor(user)
+        doc = self.store.snapshot()
+        tasks = {}
+        for key, operation in doc['operations'].items():
+            owner, source_request, _index = json.loads(key)
+            if owner != user['id'] or source_request != request_id:
+                continue
+            for created in operation['result'].get('tasks', []):
+                current = doc['tasks'].get(created['id'])
+                if current and can_read(current, actor, self.now().date()):
+                    tasks[current['id']] = deepcopy(current)
+        return list(tasks.values())
+
     def _envelope(self, doc, now, **data):
         return {'as_of': now.isoformat(), 'timezone': self.timezone_name,
                 'revision': doc['revision'], **data}
@@ -108,6 +123,15 @@ class FamilyTaskService:
                 if not isinstance(item, dict) or set(item) - allowed:
                     raise TaskError('invalid_task_fields')
                 data = deepcopy(item)
+                # Native tools often provide a full timestamp alone. Derive the
+                # calendar day in the household timezone before validating it.
+                if data.get('due_at') and not data.get('due_date'):
+                    try:
+                        timestamp = datetime.fromisoformat(data['due_at'])
+                        if timestamp.tzinfo:
+                            data['due_date'] = timestamp.astimezone(self.zone).date().isoformat()
+                    except (TypeError, ValueError):
+                        pass  # _validate_definition returns the canonical error.
                 for field in ('space_type', 'temporal_type', 'actionable', 'completion_mode'):
                     selected = invocation.get(field, 'all' if field == 'completion_mode' else True if field == 'actionable' else None)
                     if field in data and data[field] != selected:

@@ -438,12 +438,6 @@ export function ChatWorkspace({
       }
       if (event.type === 'tool_start') {
         updateStream(targetSessionId as string, { status: 'running_tool' });
-        const output = event.tool_result?.output as Record<string, unknown> | undefined;
-        if (event.success === false && output?.draft) {
-          const values = Array.isArray(output.draft) ? output.draft : [output.draft];
-          const items = values.filter((value): value is { title: string } => Boolean(value && typeof value.title === 'string'));
-          if (items.length) setTaskDraft({ sessionId: targetSessionId as string, items, message: String(output.message || '请选择空间和性质，补充所需信息后再保存。') });
-        } else if (event.success !== false && output?.task_changed) setTaskDraft(null);
         const name = event.tool_call?.name || '工具';
         setStatusText(`正在调用 ${name}...`);
         appendSynthetic({
@@ -455,6 +449,12 @@ export function ChatWorkspace({
       }
       if (event.type === 'task_changed' || (event.type === 'tool_result' && event.success !== false && event.tool_call?.name?.startsWith('family_'))) window.dispatchEvent(new CustomEvent('task_changed'));
       if (event.type === 'tool_result') {
+        const output = event.tool_result?.output as Record<string, unknown> | undefined;
+        if (event.success === false && output?.draft) {
+          const values = Array.isArray(output.draft) ? output.draft : [output.draft];
+          const items = values.filter((value): value is { title: string } => Boolean(value && typeof value.title === 'string'));
+          if (items.length) setTaskDraft({ sessionId: targetSessionId as string, items, message: String(output.message || '请补充事项所需信息后再保存。') });
+        } else if (event.success !== false && output?.task_changed) setTaskDraft(null);
         const name = event.tool_call?.name || '工具';
         setStatusText(event.success === false ? `${name} 执行失败` : `${name} 执行完成`);
         appendSynthetic({

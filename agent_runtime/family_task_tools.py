@@ -29,6 +29,10 @@ def register_family_task_tools(registry, service, user_provider, context_provide
         if session.get('owner_user_id') and session['owner_user_id'] != user['id']:
             shared = True
         invocation = context.get('invocation')
+        if name.endswith('_memo_create') and not invocation:
+            from services.task_commands import infer_task_invocation
+            invocation = infer_task_invocation(context.get('raw_input', ''),
+                'timed' if name == 'family_timed_memo_create' else 'undated')
         def protect_private():
             if shared:
                 raise TaskError('private_session_required', '请进入个人会话处理私人事项。', status=403)
@@ -81,7 +85,8 @@ def register_family_task_tools(registry, service, user_provider, context_provide
         if name in {'family_task_draft_get', 'family_task_draft_discard'}:
             with service.store.transaction() as doc:
                 draft = doc['drafts'].get(ref_key)
-                if not draft or draft['expires_at'] < service.now().isoformat():
+                if (not draft or draft['expires_at'] < service.now().isoformat()
+                        or (draft.get('user_message_id') and draft['user_message_id'] not in context.get('active_message_ids', []))):
                     raise TaskError('draft_not_found', status=404)
                 if (draft.get('invocation') or {}).get('space_type') != 'household':
                     protect_private()
@@ -105,12 +110,19 @@ def register_family_task_tools(registry, service, user_provider, context_provide
         index = args.get('operation_index', 0)
         if name.endswith('_memo_create'):
             temporal = 'timed' if name == 'family_timed_memo_create' else 'undated'
+            pending = context.get('pending_draft')
+            if pending and (pending.get('expires_at', '') < service.now().isoformat()
+                    or (pending.get('user_message_id') and pending['user_message_id'] not in context.get('active_message_ids', []))):
+                raise TaskError('draft_not_found', '草稿已过期或不在当前分支，请重新提供事项。', status=404)
+            if pending and invocation and not invocation.get('body'):
+                args['items'] = deepcopy(pending['items'])
             if not invocation:
                 # A draft is durable but is never counted as a task.
                 with service.store.transaction() as doc:
                     doc['references'].pop(ref_key, None)
                     doc['drafts'][ref_key] = {'items': args['items'], 'expires_at':
-                        (service.now() + timedelta(minutes=30)).isoformat(), 'user_id': user['id']}
+                        (service.now() + timedelta(minutes=30)).isoformat(), 'user_id': user['id'],
+                        'user_message_id': context.get('user_message_id')}
                 raise TaskError('explicit_selection_required', '请选择 / 日程、/ 备忘、/ 家庭日程 或 / 家庭备忘后保存。', draft=args['items'])
             if temporal != invocation['temporal_type']:
                 raise TaskError('invocation_conflict')
@@ -126,8 +138,11 @@ def register_family_task_tools(registry, service, user_provider, context_provide
                 if error.code in {'schedule_date_required', 'unsupported_recurrence', 'memo_time_choice_required', 'member_unavailable'}:
                     with service.store.transaction() as doc:
                         doc['drafts'][ref_key] = {'items': args['items'], 'invocation': invocation,
-                            'expires_at': (service.now() + timedelta(minutes=30)).isoformat(), 'user_id': user['id']}
+                            'expires_at': (service.now() + timedelta(minutes=30)).isoformat(), 'user_id': user['id'],
+                            'user_message_id': context.get('user_message_id')}
                 raise
+            with service.store.transaction() as doc:
+                doc['drafts'].pop(ref_key, None)
         else:
             action = name.removeprefix('family_task_')
             if shared and action == 'update' and (args.get('patch') or {}).get('space_type') == 'personal':
@@ -177,7 +192,7 @@ def register_family_task_tools(registry, service, user_provider, context_provide
     register('family_member_resolve', 'Resolve a family member name; ambiguous results require a selected stable member tag.',
              {'text': {'type': 'string'}}, ['text'])
     for temporal, label in [('timed', '日程，日期或每周周期必填'), ('undated', '无时效备忘，禁止生效日期')]:
-        register(f'family_{temporal}_memo_create', f'创建{label}。只能使用当前显式命令标签；没有标签返回待确认草稿。批量整体保存。不会通知他人。',
+        register(f'family_{temporal}_memo_create', f'创建{label}。用户自然语言明确要求记录/安排即可调用，无需斜杠标签；默认个人，明确家庭共享时才共享。日期按本次当地时间解析，due_at 必须含时区。缺必要信息保留草稿；成功回执后才能说已保存。批量整体保存。不会通知他人。',
             {'items': {'type': 'array', 'items': ITEM_SCHEMA}, 'operation_index': {'type': 'integer'}}, ['items'])
     register('family_task_list', '从权威账本查询清单，绝不能依靠聊天记忆回答。默认我的事项；家庭共享用 household。', {
         'view': {'type': 'string', 'enum': ['mine', 'own', 'assigned', 'delegated', 'household', 'visible']},

@@ -141,7 +141,7 @@ with sync_playwright() as p:
     page.get_by_label('和家庭 Agent 对话').fill(sent_text)
     page.get_by_role('button', name='发送', exact=True).click()
     expect(page.locator('.message.user').filter(has_text=sent_text)).to_have_count(1)
-    expect(page.get_by_text('示例日程已记录。', exact=True).first).to_be_visible(timeout=15000)
+    expect(page.get_by_text('已保存以下事项：', exact=True).first).to_be_visible(timeout=15000)
     assert len(sent) == 1, sent
     print('Chat draft restoration and single workbench send passed', flush=True)
 

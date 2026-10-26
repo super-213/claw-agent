@@ -86,12 +86,12 @@ with sync_playwright() as p:
  page=c.new_page();page.clock.set_fixed_time(datetime(2026,10,23,4,tzinfo=timezone.utc));errs=[];page.on('pageerror',lambda e:errs.append(str(e)))
  page.goto(origin+'/home');page.locator('.home-attention-row').first.wait_for()
  before=c.request.get(origin+'/api/home/tasks?view=visible&status=open').json()['total']
- page.get_by_label('和家庭 Agent 对话').fill('/ 日程 今天新增示例')
+ page.get_by_label('和家庭 Agent 对话').fill('帮我创建日程，今天新增示例')
  page.get_by_role('button',name='发送',exact=True).click()
  d=page.locator('.chat-workspace');expect(d).to_be_visible()
  expect(d.locator('.composer')).to_have_css('background-color', 'rgb(199, 233, 255)')
  expect(d.locator('.composer-input')).to_be_visible()
- expect(d.get_by_text('示例日程已记录。',exact=True).first).to_be_visible(timeout=15000)
+ expect(d.get_by_text('已保存以下事项：',exact=True).first).to_be_visible(timeout=15000)
  # The initial send can replace the provisional route while the job is accepted.
  # Measure the settled conversation rather than a node being detached mid-check.
  expect(d.locator('.composer-input')).to_be_visible()

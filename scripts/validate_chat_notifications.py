@@ -88,7 +88,7 @@ try:
             time.sleep(.1)
         assert state['status'] == 'succeeded', state
         detail = context.request.get(origin + '/api/sessions/' + job['session_id']).json()
-        assert any(message.get('content') == '示例日程已记录。' for message in detail['messages']), detail
+        assert any(message.get('content', '').startswith('已保存以下事项：') for message in detail['messages']), detail
         for _ in range(100):
             if capture.exists() and capture.read_text().strip():
                 break
@@ -103,7 +103,7 @@ try:
         page = context.new_page()
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(origin + notices[0]['url'])
-        expect(page.get_by_text('示例日程已记录。', exact=True).first).to_be_visible()
+        expect(page.get_by_text('已保存以下事项：', exact=True).first).to_be_visible()
         expect(page.locator('.composer-input')).to_be_enabled()
         page.screenshot(path=str(OUT / 'reopened-result.png'))
 

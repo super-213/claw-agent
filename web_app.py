@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from dataclasses import asdict, replace
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import re
@@ -63,7 +65,7 @@ from agent_runtime.family_task_tools import register_family_task_tools
 from services.family_member_service import FamilyMemberService
 from services.family_task_service import FamilyTaskService
 from services.family_task_api import task_router
-from services.task_commands import normalize_invocation
+from services.task_commands import normalize_invocation, infer_task_invocation, FUTURE_TEXT
 from services.task_legacy_adapter import TaskLegacyAdapter
 from services.task_store import TaskStore, TaskError
 from services.knowledge_service import KnowledgeService
@@ -759,6 +761,7 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
         user_id=user_id,
     )
     orchestrator.family_task_context = task_context
+    orchestrator.system_prompt_override = agent_prompt
     def execution_context():
         run = orchestrator.run or {}
         context = dict(run.get('family_task_context') or task_context or {})
@@ -792,7 +795,19 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
                 raise TaskError('forbidden', status=403)
         return context
     if user_id:
+        from services.task_chat import guard_task_answer, CREATE_TOOLS
         register_family_task_tools(bound_registry, family_tasks, lambda: user_store.get_user(user_id), execution_context)
+        def finalize_task_answer(content, messages, retries):
+            run = orchestrator.run or {}
+            context = run.get('family_task_context') or task_context or {}
+            results = [step['tool_result'] for step in run.get('steps', [])
+                       if (step.get('tool_result') or {}).get('name') in CREATE_TOOLS]
+            saved = None
+            if any(result.get('status') == 'success' for result in results):
+                saved = family_tasks.created_in_request(user_store.get_user(user_id), context.get('request_id') or run.get('id'))
+            return guard_task_answer(content, messages, context, retries, saved_tasks=saved, creation_results=results,
+                member_names={member['member_id']: member['display_name'] for member in family_members.list()})
+        orchestrator.task_answer_guard = finalize_task_answer
         register_knowledge_tools(bound_registry, knowledge, lambda: user_store.get_user(user_id), execution_context, _knowledge_resolve_file)
         orchestrator.knowledge_context_filter = lambda messages: knowledge.current_tool_context(messages, user_store.get_user(user_id))
         orchestrator.knowledge_answer_finalizer = lambda content, messages: knowledge.finalize_answer(user_store.get_user(user_id), content, messages)
@@ -2016,13 +2031,52 @@ def _task_chat_context(payload, user, session_id):
     except TaskError as error:
         if error.code in {'unresolved_mentions', 'invalid_mentions'}:
             from datetime import timedelta
-            import json
             actor = family_members.actor(user)
             with family_tasks.store.transaction() as doc:
                 doc['drafts'][json.dumps([session_id, branch_id, actor])] = {
                     'raw_input': raw, 'items': [], 'user_id': user['id'],
                     'expires_at': (family_tasks.now() + timedelta(minutes=30)).isoformat()}
         raise
+    pending_draft = None
+    shared = (session.get('sharing') or {}).get('scope', 'private') != 'private' or session.get('owner_user_id') != user['id']
+    # Bare shortcuts and ordinary confirmations continue the current branch's
+    # durable draft, preserving its original date instead of asking for a tag.
+    draft_confirmation = re.fullmatch(r'(?:好的?[，, ]*)?(?:保存|保存吧|确定|确认|就提醒我自己|提醒我自己|就我自己|个人日程|个人备忘|家庭日程|家庭备忘)[。！! ]*', raw)
+    draft_date = (not invocation and (FUTURE_TEXT.search(raw) or raw.startswith('今天'))
+        and re.match(r'^(?:那就|就|时间是|定在|改到)?(?:今天|明天|后天|今晚|每周|下周|周[一二三四五六日天]|\d)', raw)
+        and not re.search(r'天气|怎么|什么|如何|查询|[？?]|吗', raw))
+    if invocation or draft_confirmation or draft_date:
+        actor = family_members.actor(user)
+        draft = family_tasks.store.snapshot()['drafts'].get(json.dumps([session_id, branch_id, actor]))
+        active_ids = {node['node_id'] for node in path}
+        if (draft and draft.get('expires_at', '') >= family_tasks.now().isoformat()
+                and (not draft.get('user_message_id') or draft['user_message_id'] in active_ids)
+                and (not shared or (draft.get('invocation') or {}).get('space_type') == 'household')
+                and (not invocation or not invocation.get('body')
+                     or invocation['body'] == '、'.join(item['title'] for item in draft.get('items', [])))):
+            pending_draft = draft
+            if invocation:
+                invocation['body'] = ''
+            if not invocation:
+                invocation = deepcopy(draft.get('invocation'))
+                if not invocation:
+                    timed = any(any(item.get(field) for field in ('due_date', 'due_at', 'recurrence')) for item in draft.get('items', []))
+                    command = '日程' if timed else '备忘'
+                    invocation = normalize_invocation('/ ' + command)
+                selected = next((command for command in ('家庭日程', '家庭备忘', '个人日程', '个人备忘') if command in raw), None)
+                if selected:
+                    invocation = normalize_invocation('/ ' + selected.removeprefix('个人'))
+                elif '自己' in raw:
+                    invocation = normalize_invocation('/ ' + ('日程' if invocation['temporal_type'] == 'timed' else '备忘'))
+                if draft_date:
+                    command = ('家庭' if invocation['space_type'] == 'household' else '') + '日程'
+                    invocation = {**invocation, 'command': command, 'temporal_type': 'timed', 'body': raw,
+                                  'selection_source': 'draft_continuation'}
+                else:
+                    invocation['body'] = ''
+                    invocation['selection_source'] = 'draft_confirmation'
+    if not invocation:
+        invocation = infer_task_invocation(raw)
     if invocation:
         family_members.actor(user)
         family_members.validate([m['member_id'] for m in invocation.get('mentions', [])])
@@ -2054,7 +2108,8 @@ def _task_chat_context(payload, user, session_id):
             raise TaskError('invalid_task_ref')
         family_tasks.get(user, task_ref['task_id'])
     return {'user_id': user['id'], 'session_id': session_id,
-            'branch_id': branch_id, 'invocation': invocation, 'task_ref': task_ref, 'object_context': object_context,
+            'branch_id': branch_id, 'invocation': invocation, 'pending_draft': pending_draft,
+            'task_ref': task_ref, 'object_context': object_context,
             'request_id': payload.get('request_id') or uuid.uuid4().hex,
             'raw_input': raw, 'as_of': family_tasks.now().isoformat(),
             'explicit_recurrence_update': bool(re.search(r'(这件事|改|设|变|重复|记录).{0,30}每周|每周.{0,30}(改|设|记录)', raw)),

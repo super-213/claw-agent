@@ -368,6 +368,8 @@ class AgentOrchestrator:
     ) -> AsyncIterator[Dict[str, Any]]:
         """Native function-calling loop with budgets, approvals and checkpoints."""
         iteration = 0
+        task_guard_retries = 0
+        self._task_answer_feedback = None
         while True:
             budget_reason = self._budget_reason(iteration)
             if budget_reason:
@@ -403,6 +405,11 @@ class AgentOrchestrator:
                 "tool_count": len(schemas),
             })
             response: AgentModelResponse
+            task_guard = getattr(self, 'task_answer_guard', None)
+            task_context = (self.run or {}).get('family_task_context') or self.family_task_context or {}
+            from services.task_commands import CREATE_TEXT
+            defer_task_output = bool(task_guard and (task_context.get('invocation')
+                or task_context.get('pending_draft') or CREATE_TEXT.search(task_context.get('raw_input', ''))))
             try:
                 remaining_runtime = self._remaining_runtime()
                 if stream_model and hasattr(self.llm_client, "astream_with_tools"):
@@ -410,12 +417,13 @@ class AgentOrchestrator:
                     async with asyncio.timeout(remaining_runtime):
                         async for item in self.llm_client.astream_with_tools(messages, schemas):
                             if item.get("type") == "content_delta":
-                                yield {
-                                    "type": "model_delta",
-                                    "stage": "model",
-                                    "iteration": iteration,
-                                    "delta": item.get("delta") or "",
-                                }
+                                if not defer_task_output:
+                                    yield {
+                                        "type": "model_delta",
+                                        "stage": "model",
+                                        "iteration": iteration,
+                                        "delta": item.get("delta") or "",
+                                    }
                             elif item.get("type") == "done":
                                 response = item["response"]
                 else:
@@ -459,6 +467,17 @@ class AgentOrchestrator:
             finalize = getattr(self, 'knowledge_answer_finalizer', None)
             if finalize and not response.tool_calls and response.content.strip():
                 response.content = await asyncio.to_thread(finalize, response.content, messages)
+            if task_guard and not response.tool_calls:
+                response.content, feedback = await asyncio.to_thread(task_guard,
+                    response.content, self.conversation.get_messages(), task_guard_retries)
+                if feedback:
+                    task_guard_retries += 1
+                    self._task_answer_feedback = feedback
+                    yield {'type': 'step', 'stage': 'task_verification', 'message': '正在核实事项是否已保存', 'iteration': iteration}
+                    continue
+            if task_guard and any(call.name in {'family_timed_memo_create', 'family_undated_memo_create'} for call in response.tool_calls):
+                # Creation has not executed yet; do not persist a premature receipt.
+                response.content = ''
             tool_payloads = [call.as_openai() for call in response.tool_calls]
             self.conversation.add_assistant_message(
                 response.content,
@@ -665,6 +684,7 @@ class AgentOrchestrator:
                 )
 
             assert result is not None
+            task_changed = result.output.get('task_changed') if result.success and isinstance(result.output, dict) else None
             if self.artifact_store:
                 result = self.artifact_store.externalize(result, max_chars=self.max_tool_output_chars)
             if self.run_store and self.run and self.run.get("id"):
@@ -682,8 +702,8 @@ class AgentOrchestrator:
                         active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
                         if self.active_skill_allowed_tools is not None else None,
                     )
-            if result.success and isinstance(result.output, dict) and result.output.get('task_changed'):
-                events.append(result.output['task_changed'])
+            if task_changed:
+                events.append(task_changed)
             content = result.model_content(self.max_tool_output_chars)
             self.conversation.add_tool_message(call.id, call.name, content)
             await self._checkpoint()
@@ -1155,6 +1175,11 @@ class AgentOrchestrator:
             messages = await self.context_compressor.build_messages_async(self.conversation)
         else:
             messages = self.conversation.get_messages()
+        # Stored system nodes are historical data. Apply the current application
+        # policy to model input without rewriting the session's tree/history.
+        current_prompt = getattr(self, 'system_prompt_override', None)
+        if current_prompt and messages and messages[0].get('role') == 'system':
+            messages = [{**messages[0], 'content': current_prompt}, *messages[1:]]
         if knowledge_history:
             messages = fresh_knowledge_context(messages)
             # Remove whole old turns to preserve native tool-call/result groups.
@@ -1171,9 +1196,18 @@ class AgentOrchestrator:
         task_context = (self.run or {}).get('family_task_context') or self.family_task_context
         if task_context:
             dynamic_system.append({'role': 'system', 'content':
-                '本次事项显式选择（不得覆盖；未选择必须先返回草稿）：' + json.dumps(task_context.get('invocation'), ensure_ascii=False) +
+                '本次事项选择（标签或用户自然语言，服务端确定的空间和性质不得覆盖）：' + json.dumps(task_context.get('invocation'), ensure_ascii=False) +
                 '\n本次当地时间：' + str(task_context.get('as_of')) +
-                '\n事项必须调用 family_task 工具查询或执行。每周完成仅完成本期；不发送消息或通知。'})
+                '\n用户自然语言明确要求记录/安排/提醒即可创建，无需输入 / 标签或重复确认。默认个人；只有明确要求家庭共享才用家庭空间。'
+                '例如“帮我记一下，明天这个时候叫我去上海”应直接调用 family_timed_memo_create。'
+                'due_at 使用带时区的 ISO 时间；“明天此时”依据本次当地时间，缺少日期才询问。'
+                '\n事项必须调用 family_task 工具查询或执行。只有本轮创建工具成功返回才可说已保存，历史回复不是保存证据。'
+                '保存后立即可见，不是到期才显示。每周完成仅完成本期；不发送消息或通知。'})
+            if task_context.get('pending_draft'):
+                dynamic_system.append({'role': 'system', 'content': '用户正在接续本分支待保存草稿，原日期和内容如下，请调用创建工具保存，不重复要求标签：' +
+                    json.dumps(task_context['pending_draft'], ensure_ascii=False)})
+        if getattr(self, '_task_answer_feedback', None):
+            dynamic_system.append({'role': 'system', 'content': self._task_answer_feedback})
         if task_context and task_context.get('object_context'):
             dynamic_system.append({'role': 'system', 'content':
                 '用户从家庭视图选择的对象（仅为定位数据，所有读取和写入仍需工具校验权限）：' +
