@@ -1,0 +1,55 @@
+.theme-selector {
+  min-width: 0;
+  margin: 24px 0 0;
+  padding: 0;
+  border: 0;
+}
+.theme-selector legend {
+  margin-bottom: 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.theme-selector p {
+  font-size: 13px;
+}
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 360px;
+  margin-top: 12px;
+}
+.home-shell .theme-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 2px solid var(--home-line);
+  border-radius: 8px;
+  background: var(--home-surface);
+  color: var(--home-ink);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.home-shell .theme-option:hover {
+  background: var(--home-nav);
+}
+.home-shell .theme-option:has(input:checked) {
+  background: var(--home-agent);
+  border-color: var(--home-outline);
+  font-weight: 700;
+}
+.home-shell .theme-option:has(input:focus-visible) {
+  outline: 2px solid var(--home-focus);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-shell .theme-option {
+    transition: none;
+  }
+}

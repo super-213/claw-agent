@@ -30,6 +30,7 @@ export default [
         URLSearchParams: 'readonly',
         HTMLElement: 'readonly',
         Event: 'readonly',
+        StorageEvent: 'readonly',
         Navigator: 'readonly',
         ServiceWorkerRegistration: 'readonly',
         Notification: 'readonly',

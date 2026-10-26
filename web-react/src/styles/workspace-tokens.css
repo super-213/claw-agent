@@ -24,25 +24,23 @@
   --home-widget-fridge: #c8f3c2;
   --home-widget-medicine: #e4cdfa;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --home-page: #191a1c;
-    --home-surface: #252629;
-    --home-ink: #f4f1e8;
-    --home-muted: #c2bfb8;
-    --home-line: #494a4d;
-    --home-agent: #213e50;
-    --home-schedule: #49412b;
-    --home-calendar: #2b372c;
-    --home-nav: #263127;
-    --home-knowledge: #44365d;
-    --home-success: #294d31;
-    --home-danger: #ffb6a7;
-    --home-focus: #95caff;
-    --home-shadow: 4px 4px 0 #050505;
-    --home-outline: #d8d4c8;
-    --home-widget-today: #49482a;
-    --home-widget-fridge: #2c4432;
-    --home-widget-medicine: #44365d;
-  }
+:root[data-theme="dark"] {
+  --home-page: #191a1c;
+  --home-surface: #252629;
+  --home-ink: #f4f1e8;
+  --home-muted: #c2bfb8;
+  --home-line: #494a4d;
+  --home-agent: #213e50;
+  --home-schedule: #49412b;
+  --home-calendar: #2b372c;
+  --home-nav: #263127;
+  --home-knowledge: #44365d;
+  --home-success: #294d31;
+  --home-danger: #ffb6a7;
+  --home-focus: #95caff;
+  --home-shadow: 4px 4px 0 #050505;
+  --home-outline: #d8d4c8;
+  --home-widget-today: #49482a;
+  --home-widget-fridge: #2c4432;
+  --home-widget-medicine: #44365d;
 }

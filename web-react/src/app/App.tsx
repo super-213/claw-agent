@@ -6,6 +6,7 @@ import { useMobileViewport } from '../features/pwa/useMobileViewport';
 import { LoginPage } from '../features/auth/LoginPage';
 import { useAppStore } from '../stores/appStore';
 import { useDialog } from '../components/ui/useDialog';
+import { initializeTheme } from '../stores/themeStore';
 
 function Reauthenticate({ onClose }: { onClose: () => void }) {
   const { ref, dismiss } = useDialog(true, onClose);
@@ -20,6 +21,7 @@ export function App() {
   const userId = useAppStore(state => state.currentUser?.id);
   const [expired, setExpired] = useState(false);
   useMobileViewport();
+  useEffect(() => initializeTheme(), []);
 
   useEffect(() => {
     const onUnauthorized = () => {

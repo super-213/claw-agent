@@ -2,6 +2,16 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Restore the theme before styles load to avoid flashing the system theme.
+      (() => {
+        let preference = 'auto';
+        try { preference = localStorage.getItem('claw-theme') || 'auto'; } catch {}
+        document.documentElement.dataset.theme = preference === 'light' || preference === 'dark'
+          ? preference
+          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#2f6f73" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
