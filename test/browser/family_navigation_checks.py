@@ -12,16 +12,83 @@ origin = os.environ['HOME010_WEB_ORIGIN']
 out = Path(os.environ['HOME010_SCREENSHOTS'])
 out.mkdir(parents=True, exist_ok=True)
 
+
+def check_chat_sidebar(page, width):
+    mobile = width <= 860
+    if mobile:
+        page.get_by_role('button', name='打开历史对话', exact=True).click()
+    sidebar = page.locator('.sidebar')
+    expect(sidebar).to_be_visible()
+    expect(sidebar.get_by_role('link', name='返回工作台', exact=True)).to_have_count(0)
+    # No hover/focus is needed to reveal older conversations.
+    page.mouse.move(width - 10, 10)
+    page.locator('.composer-input').evaluate('(el) => el.blur()')
+    rows = sidebar.locator('.session-item')
+    assert rows.count() >= 13
+    styles = rows.evaluate_all('''els => els.map(el => {
+        const s = getComputedStyle(el), r = el.getBoundingClientRect();
+        return {opacity: s.opacity, transform: s.transform, pointer: s.pointerEvents,
+                top: r.top, bottom: r.bottom};
+    })''')
+    for index, row in enumerate(styles):
+        assert row['opacity'] == '1' and row['transform'] == 'none', (width, index, row)
+        assert row['pointer'] != 'none', (width, index, row)
+        if index:
+            assert 0 <= row['top'] - styles[index - 1]['bottom'] <= 10, (width, styles)
+    sidebar.locator('.brand-menu-trigger').click()
+    menu = page.get_by_role('dialog', name='账号与管理', exact=True)
+    expect(menu).to_be_visible()
+    bounds, menu_bounds = sidebar.bounding_box(), menu.bounding_box()
+    assert menu_bounds['x'] >= bounds['x'], (width, menu_bounds, bounds)
+    assert menu_bounds['x'] + menu_bounds['width'] <= bounds['x'] + bounds['width'], (width, menu_bounds, bounds)
+    assert menu_bounds['y'] + menu_bounds['height'] <= bounds['y'] + bounds['height'], (width, menu_bounds, bounds)
+    # Every action must be inside the menu and actually reachable, including the right column.
+    for action in menu.locator('a, button').all():
+        expect(action).to_be_in_viewport()
+        assert action.evaluate('''el => {
+            const r = el.getBoundingClientRect();
+            return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        }'''), (width, action.inner_text())
+    page.screenshot(path=str(out / f'chat-account-{width}.png'))
+    menu.get_by_role('button', name='设置', exact=True).click()
+    settings = page.locator('.skill-modal').filter(has_text='模型与 Home Assistant 设置')
+    expect(settings).to_be_visible()
+    settings.get_by_role('button', name='关闭', exact=True).click()
+    expect(settings).to_have_count(0)
+    if not mobile:
+        sidebar.locator('.brand-menu-trigger').click()
+        page.keyboard.press('Escape')
+        expect(menu).to_have_count(0)
+    # Scroll to and open the oldest entry: clipped/disabled stacked cards failed here.
+    title = rows.last.locator('.session-title-text').inner_text()
+    rows.last.locator('.session-open').click()
+    expect(page.locator('.topbar-title')).to_have_text(title)
+    expect(page.locator('.composer-input')).to_be_enabled()
+    if mobile:
+        expect(sidebar).not_to_have_class('sidebar open')
+        page.wait_for_load_state('networkidle')
+        page.get_by_role('button', name='打开历史对话', exact=True).click()
+        page.get_by_role('button', name='关闭历史对话', exact=True).click()
+        expect(sidebar).not_to_have_class('sidebar open')
+        page.wait_for_function("document.querySelector('.sidebar').getBoundingClientRect().right <= 0")
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(channel='chrome', headless=True)
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, locale='zh-CN')
     # Keep layout checks independent of external font service availability.
     context.route('https://fonts.googleapis.com/**', lambda route: route.abort())
     context.route('https://fonts.gstatic.com/**', lambda route: route.abort())
+    context.route('**/api/config/models', lambda route: route.fulfill(json={'models': []}))
     response = context.request.post(origin + '/api/auth/login', data={
         'username': 'home010', 'password': 'Home010-test',
     })
     assert response.ok, response.text()
+    for index in range(13):
+        response = context.request.post(origin + '/api/sessions', data={
+            'title': f'示例·历史对话 {index + 1}：较长标题也不应撑开侧栏',
+        })
+        assert response.ok, response.text()
     page = context.new_page()
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
@@ -93,8 +160,10 @@ with sync_playwright() as p:
         page.screenshot(path=str(out / f'family-{width}.png'), full_page=True)
         nav.get_by_role('link', name='对话', exact=True).click()
         expect(page.locator('.composer-input')).to_be_enabled()
+        check_chat_sidebar(page, width)
         page.screenshot(path=str(out / f'chat-{width}.png'))
     page.emulate_media(color_scheme='dark', reduced_motion='reduce')
+    check_chat_sidebar(page, 1440)
     page.screenshot(path=str(out / 'chat-dark.png'))
     assert not errors, errors
     print('Five viewport widths, dark mode, and no browser runtime errors passed', flush=True)

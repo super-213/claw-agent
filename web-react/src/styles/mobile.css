@@ -113,24 +113,8 @@
     margin-bottom: 0;
   }
 
-  .account-popover {
-    left: 44px;
-    min-width: 224px;
-    max-width: calc(88vw - 70px);
-  }
-
   .sidebar-actions {
     padding: 14px 14px 0;
-  }
-
-  .history-panel {
-    flex: 0 0 144px;
-    min-height: 0;
-  }
-
-  .history-panel.expanded {
-    flex: 1 1 auto;
-    min-height: 190px;
   }
 
   .history-toggle {
@@ -139,15 +123,8 @@
   }
 
   .session-list {
-    flex: 0 0 104px;
-    min-height: 0;
     padding: 0 10px 12px;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .history-panel.expanded .session-list {
-    flex: 1 1 auto;
-    overflow-y: auto;
   }
 
   .skill-list {

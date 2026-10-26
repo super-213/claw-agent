@@ -53,7 +53,6 @@
 .chat-workspace .brand-name span { color: inherit; }
 .chat-workspace .brand-tag { color: var(--home-muted); font-size: 12px; margin-top: 3px; }
 .chat-workspace .sidebar-actions { padding: 6px 16px 16px; display: grid; gap: 12px; }
-.chat-workspace .chat-home-link { display: flex; gap: 8px; align-items: center; color: var(--home-muted); font-size: 13px; min-height: 36px; padding: 0 8px; text-decoration: none; }
 .chat-workspace .new-btn { border: 1.5px solid var(--home-ink); background: var(--home-ink); color: var(--home-surface); border-radius: 10px; box-shadow: 2px 2px 0 var(--home-muted); font-size: 14px; min-height: 44px; font-weight: 700; }
 .chat-workspace .new-btn:hover { transform: translate(-1px,-1px); }
 .chat-workspace .new-btn:active { transform: translate(1px,1px); box-shadow: none; }

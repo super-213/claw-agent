@@ -17,6 +17,7 @@
 
 .brand-area {
   border-bottom: 1px solid var(--separator-soft);
+  flex-shrink: 0;
   padding: 24px 20px 18px;
   position: relative;
 }
@@ -67,6 +68,7 @@
   top: 14px;
   transition: background 160ms ease, color 160ms ease;
   width: 34px;
+  z-index: 13;
 }
 
 .sidebar-close:hover {
@@ -107,25 +109,11 @@
 
 .history-panel {
   display: flex;
-  flex: 0 0 156px;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
-  transition: flex-basis 220ms ease, min-height 220ms ease;
-}
-
-.history-panel.expanded {
-  flex: 1 1 auto;
-  min-height: 220px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .history-panel:hover,
-  .history-panel:focus-within {
-    flex: 1 1 auto;
-    min-height: 220px;
-  }
 }
 
 .history-toggle {
@@ -135,6 +123,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   display: grid;
+  flex-shrink: 0;
   font-size: 11px;
   font-weight: 700;
   gap: 8px;
@@ -146,8 +135,7 @@
   width: 100%;
 }
 
-.history-toggle:hover,
-.history-panel.expanded .history-toggle {
+.history-toggle:hover {
   background: color-mix(in srgb, var(--surface-muted) 58%, transparent);
   color: var(--text-primary);
 }
@@ -158,39 +146,14 @@
   font-weight: 600;
 }
 
-.history-toggle svg {
-  transition: transform 180ms ease;
-}
-
-.history-panel.expanded .history-toggle svg,
-.history-panel:hover .history-toggle svg,
-.history-panel:focus-within .history-toggle svg {
-  transform: rotate(180deg);
-}
-
 .session-list {
-  flex: 0 0 112px;
-  overflow: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   padding: 0 10px 16px;
   position: relative;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--text-tertiary) 38%, transparent) transparent;
-  transition: flex-basis 220ms ease;
-}
-
-.history-panel.expanded .session-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .history-panel:hover .session-list,
-  .history-panel:focus-within .session-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
 }
 
 .session-item {
@@ -201,7 +164,7 @@
   overflow: visible;
   padding: 10px 11px;
   position: relative;
-  transition: background 150ms ease, border-color 150ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 220ms ease;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 180ms ease;
 }
 
 .session-item::before {
@@ -210,77 +173,6 @@
 
 .session-item:hover {
   background: color-mix(in srgb, var(--surface-muted) 74%, transparent);
-}
-
-.history-panel:not(.expanded) .session-item {
-  background: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
-  box-shadow: var(--shadow-hairline), 0 10px 28px rgba(0, 0, 0, 0.08);
-  left: 10px;
-  margin: 0;
-  position: absolute;
-  right: 10px;
-  top: 0;
-  transform-origin: 14px 50%;
-}
-
-.history-panel:not(.expanded) .session-item:nth-child(1) {
-  opacity: 1;
-  transform: translateY(0) rotate(-0.8deg) scale(1);
-  z-index: 5;
-}
-
-.history-panel:not(.expanded) .session-item:nth-child(2) {
-  opacity: 0.78;
-  pointer-events: none;
-  transform: translateY(30px) translateX(2px) rotate(1.4deg) scale(0.985);
-  z-index: 4;
-}
-
-.history-panel:not(.expanded) .session-item:nth-child(3) {
-  opacity: 0.54;
-  pointer-events: none;
-  transform: translateY(58px) translateX(-3px) rotate(-2deg) scale(0.965);
-  z-index: 3;
-}
-
-.history-panel:not(.expanded) .session-item:nth-child(4) {
-  opacity: 0.24;
-  pointer-events: none;
-  transform: translateY(82px) translateX(4px) rotate(2.2deg) scale(0.945);
-  z-index: 2;
-}
-
-.history-panel:not(.expanded) .session-item:nth-child(n+5) {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(96px) scale(0.94);
-}
-
-.history-panel.expanded .session-item {
-  box-shadow: none;
-  left: auto;
-  margin-bottom: 4px;
-  opacity: 1;
-  pointer-events: auto;
-  position: relative;
-  right: auto;
-  top: auto;
-  transform: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .history-panel:not(.expanded):hover .session-item,
-  .history-panel:not(.expanded):focus-within .session-item {
-    box-shadow: none;
-    left: auto;
-    margin-bottom: 4px;
-    opacity: 1;
-    pointer-events: auto;
-    position: relative;
-    right: auto;
-    top: auto;
-    transform: none;
-  }
 }
 
 .session-item.active {
@@ -598,7 +490,7 @@
 .brand-head {
   margin-bottom: 14px;
   position: relative;
-  width: fit-content;
+  width: 100%;
   z-index: 12;
 }
 
@@ -634,25 +526,15 @@
   box-shadow: var(--shadow-popover);
   display: grid;
   gap: 12px;
-  left: 50px;
-  min-width: 230px;
+  left: 0;
+  right: 0;
+  min-width: 0;
+  max-height: calc(100dvh - 110px - env(safe-area-inset-top, 0px));
+  overflow-y: auto;
   padding: 12px;
   position: absolute;
-  top: 0;
+  top: calc(100% + 8px);
   z-index: 20;
-}
-
-.account-popover::before {
-  background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
-  border-bottom: 1px solid var(--separator);
-  border-left: 1px solid var(--separator);
-  content: '';
-  height: 10px;
-  left: -6px;
-  position: absolute;
-  top: 15px;
-  transform: rotate(45deg);
-  width: 10px;
 }
 
 .account-popover-head {
@@ -789,21 +671,13 @@
   white-space: nowrap;
 }
 
-.history-panel,
-.history-panel.expanded {
-  flex: 1 1 auto;
-  min-height: 170px;
-  overflow: hidden;
-}
-
 .history-toggle {
   cursor: default;
   min-height: 32px;
   padding: 0 16px;
 }
 
-.history-toggle:hover,
-.history-panel.expanded .history-toggle {
+.history-toggle:hover {
   background: transparent;
   color: var(--text-tertiary);
 }
@@ -817,30 +691,13 @@
   text-align: center;
 }
 
-.session-list,
-.history-panel.expanded .session-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+.session-list {
   padding: 0 10px 14px;
-}
-
-.history-panel:not(.expanded) .session-item,
-.history-panel.expanded .session-item {
-  background: transparent;
-  box-shadow: none;
-  left: auto;
-  margin-bottom: 5px;
-  opacity: 1;
-  pointer-events: auto;
-  position: relative;
-  right: auto;
-  top: auto;
-  transform: none;
 }
 
 .session-item {
   border-radius: 11px;
+  margin-bottom: 5px;
   padding: 11px 10px 11px 12px;
 }
 

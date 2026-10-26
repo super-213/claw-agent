@@ -180,7 +180,6 @@ export function SessionSidebar({
           <div className="brand-tag">家庭 AI 助手</div>
         </div>
         <div className="sidebar-actions">
-          <Link className="chat-home-link" to="/home"><Home size={17} />返回工作台</Link>
           <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
             <Plus size={16} />
             新建对话
