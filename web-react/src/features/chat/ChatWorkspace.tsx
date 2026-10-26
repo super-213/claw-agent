@@ -1,9 +1,8 @@
 import { TaskDraftChooser, type TaskDraft } from '../tasks/TaskDraftChooser';
 import { commandFromText, invocationFor, requestId, type TaskInvocation } from '../../api/tasks';
-import { ArrowLeft, GitFork, Info } from 'lucide-react';
+import { ArrowLeft, GitFork, Info, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { authApi } from '../../api/auth';
 import { ApiError } from '../../api/client';
 import { AcceptedJobError, chatApi, isViewingChat, type ChatJob } from '../../api/chat';
 import { configApi } from '../../api/config';
@@ -74,12 +73,21 @@ export function ChatWorkspace({
   const setCurrentSessionId = useAppStore((state) => state.setCurrentSessionId);
   const setMessages = useAppStore((state) => state.setMessages);
   const setSessionMessages = useAppStore((state) => state.setSessionMessages);
-  const setCurrentUser = useAppStore((state) => state.setCurrentUser);
   const beginStream = useAppStore((state) => state.beginStream);
   const updateStream = useAppStore((state) => state.updateStream);
   const endStream = useAppStore((state) => state.endStream);
   const setStatusText = useAppStore((state) => state.setStatusText);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('claw-chat-sidebar-collapsed') === 'true'; }
+    catch { return false; }
+  });
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try { localStorage.setItem('claw-chat-sidebar-collapsed', String(next)); }
+    catch { /* The toggle still works when storage is unavailable. */ }
+  };
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalKind>(initialModal);
@@ -587,12 +595,6 @@ export function ChatWorkspace({
     await refreshCurrent();
   };
 
-  const logout = async () => {
-    await authApi.logout().catch(() => undefined);
-    setCurrentUser(null);
-    navigate('/login', { replace: true });
-  };
-
   const insertSkill = (name: string) => {
     const prefix = `调用 ${name} skill `;
     setDraft((current) => (current.trimStart() ? prefix + current.trimStart() : prefix));
@@ -604,11 +606,12 @@ export function ChatWorkspace({
   const branchSummary = tree ? `${tree.nodes.length} 节点` : '未载入';
 
   return (
-    <div className={`app chat-workspace ${standalone ? 'chat-standalone' : 'chat-overlay-app'}`} data-session-id={currentSessionId || undefined}>
+    <div className={`app chat-workspace ${standalone ? `chat-standalone${sidebarCollapsed ? ' history-collapsed' : ''}` : 'chat-overlay-app'}`} data-session-id={currentSessionId || undefined}>
       {standalone && <HomeNav view="chat" />}
       {standalone ? (
         <SessionSidebar
           open={mobileSidebarOpen}
+          collapsed={sidebarCollapsed}
           sessions={sessions}
           skills={skills}
           currentSessionId={currentSessionId}
@@ -630,9 +633,6 @@ export function ChatWorkspace({
             setStatusText(`技能 ${data.skills?.length || 0}`);
             setTimeout(() => setStatusText('就绪'), 1200);
           }}
-          onOpenConfig={() => setModal('settings')}
-          onOpenUsers={() => setModal('users')}
-          onLogout={logout}
         />
       ) : null}
 
@@ -640,7 +640,15 @@ export function ChatWorkspace({
         <div className="topbar">
           <div className="topbar-left">
             {standalone ? (
-              <MobileMenuButton open={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(true)} />
+              <>
+                <button className="history-panel-toggle" type="button"
+                  aria-label={sidebarCollapsed ? '展开历史对话' : '收起历史对话'}
+                  title={sidebarCollapsed ? '展开历史对话' : '收起历史对话'}
+                  aria-expanded={!sidebarCollapsed} aria-controls="chat-session-sidebar" onClick={toggleSidebar}>
+                  {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+                </button>
+                <MobileMenuButton open={mobileSidebarOpen} onClick={() => setMobileSidebarOpen(true)} />
+              </>
             ) : (
               <button className="chat-overlay-back" type="button" onClick={onClose} aria-label="返回家庭工作台">
                 <ArrowLeft size={18} />
@@ -648,7 +656,7 @@ export function ChatWorkspace({
               </button>
             )}
             <div className="topbar-heading">
-              <div className="topbar-eyebrow">{standalone ? '家庭 AI 助手' : objectContext ? `关于：${objectContext.title}` : '家庭 Agent'}</div>
+              <div className="topbar-eyebrow">{standalone ? '对话' : objectContext ? `关于：${objectContext.title}` : '家庭 Agent'}</div>
               <h1 className="topbar-title">{topbarTitle}</h1>
             </div>
           </div>
