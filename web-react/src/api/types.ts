@@ -259,6 +259,9 @@ export interface HomeInventoryItem {
 }
 
 export interface HomeInventoryDoc {
+  today?: string;
+  timezone?: string;
+  as_of?: string;
   version?: number;
   updated_at?: string;
   items: HomeInventoryItem[];

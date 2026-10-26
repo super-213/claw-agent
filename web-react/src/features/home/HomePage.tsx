@@ -1,718 +1,520 @@
 import {
-  ArrowRight,
-  Bell,
-  CalendarDays,
-  Camera,
-  Check,
-  Clock3,
-  FileText,
-  Home,
-  Inbox,
-  ListTodo,
-  MapPin,
-  MessageCircle,
-  Mic,
-  PackagePlus,
-  Pill,
-  RefreshCw,
-  Settings,
-  ShoppingBasket,
-  Trash2,
-  Users,
-  Utensils,
-  type LucideIcon,
-} from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowRight, CalendarDays, Check } from 'lucide-react';
 import { configApi } from '../../api/config';
-import { homeApi } from '../../api/home';
+import { homeApi, type InventoryLocation } from '../../api/home';
 import { sessionsApi } from '../../api/sessions';
-import type { HomeInventoryItem, HomeNotification, HomeTaskSummary } from '../../api/types';
-import { isAdmin, useAppStore } from '../../stores/appStore';
-import { formatTime, formatTokens } from '../../utils/format';
+import { tasksApi, type TaskDefinition } from '../../api/tasks';
+import type { HomeInventoryItem } from '../../api/types';
+import { useDialog } from '../../components/ui/useDialog';
 import { ChatWorkspace } from '../chat/ChatWorkspace';
-import { TaskBoard } from '../tasks/TaskBoard';
-import { tasksApi, type TaskSummary } from '../../api/tasks';
 import { ConfigModal } from '../settings/ConfigModal';
+import { TaskBoard } from '../tasks/TaskBoard';
+import { isAdmin, useAppStore } from '../../stores/appStore';
+import { buildAttention, type Attention } from './attention';
+import { InventoryView } from './InventoryView';
+import { useHomeData } from './useHomeData';
+import { MoreView } from './MoreView';
+import { HomeNav } from './HomeNav';
+import { AgentCommandBar } from './AgentCommandBar';
+import { HomeWidgets } from './HomeWidgets';
+import { ScheduleCalendar } from './ScheduleCalendar';
+import { HomeDialog } from '../../components/ui/HomeDialog';
+import type { WidgetSize } from './widgetLayout';
+import { AttentionList } from './AttentionList';
+import './home.css';
 
-const statusLabel: Record<string, string> = {
-  open: '未完成',
-  information: '信息记录',
-  scheduled: '已排程',
-  snoozed: '已延后',
-  completed: '已完成',
-  cancelled: '已取消',
-  sent: '已发送',
-  failed: '失败',
-};
-
-const channelLabel: Record<string, string> = {
-  in_app: '站内',
-  web_push: '推送',
-  email: '邮件',
-  webhook: 'Webhook',
-};
-
-const familyNavItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
-  { label: '今日概览', href: '#today', icon: Home },
-  { label: '空间与物品', href: '#inventory', icon: MapPin },
-  { label: '事项清单', href: '#reminders', icon: ListTodo },
-  { label: '家庭时间线', href: '#timeline', icon: CalendarDays },
-  { label: '文件', href: '#files', icon: FileText },
-];
-
-const objectShortcuts: Array<{ label: string; meta: string; icon: LucideIcon; draft: string }> = [
-  { label: '冰箱', meta: '食品、保质期、补货', icon: Utensils, draft: '查看冰箱里需要关注的物品。' },
-  { label: '药箱', meta: '药品、用量、提醒', icon: Pill, draft: '帮我检查药箱和用药提醒。' },
-  { label: '购物清单', meta: '低库存、采购计划', icon: ShoppingBasket, draft: '根据低库存生成一份购物清单。' },
-  { label: '账单文件', meta: '缴费、票据、归档', icon: FileText, draft: '整理最近需要处理的家庭账单。' },
-  { label: '家庭成员', meta: '任务归属、协作', icon: Users, draft: '查看每个家庭成员待处理的事项。' },
-];
-
-const quickActions: Array<{ label: string; icon: LucideIcon; draft: string }> = [
-  { label: '记录冰箱物品', icon: PackagePlus, draft: '我要记录一件冰箱物品：' },
-  { label: '记录备忘', icon: Bell, draft: '/ 备忘 ' },
-  { label: '拍照识别', icon: Camera, draft: '我想上传图片，让你识别并记录家庭物品。' },
-  { label: '查看我的事项', icon: ListTodo, draft: '列出我的事项清单。' },
-];
-
-const agentHeadingPhrases = [
-  '先告诉 Agent 要处理什么',
-  '把家庭琐事直接交给 Agent',
-  '说出需求，Agent 会接着处理',
-  '从一句话开始安排家里的事',
-  '让 Agent 帮你整理今天的家务',
-];
-
-const agentSubtitlePhrases = [
-  '记录物品、记录事项、查库存或查询事项，都从这里开始。',
-  '可以直接说“/ 日程 明天倒垃圾”，也可以让 Agent 整理购物清单。',
-  '不用先找功能入口，把要做的事用自然语言说出来。',
-  'Agent 会把对话转成日程、备忘、库存和家庭记录。',
-  '从一句话进入任务，再回到家庭工作台查看结果。',
-];
-
-const randomDifferentIndex = (length: number, currentIndex: number) => {
-  if (length <= 1) return 0;
-  const next = Math.floor(Math.random() * (length - 1));
-  return next >= currentIndex ? next + 1 : next;
+type ObjectContext = {
+  type: 'inventory_item' | 'family_task';
+  id: string;
+  title: string;
+  source: string;
+  location?: string;
 };
 
 export function HomePage() {
-  const sessions = useAppStore((state) => state.sessions);
-  const currentSessionId = useAppStore((state) => state.currentSessionId);
-  const currentUser = useAppStore((state) => state.currentUser);
-  const config = useAppStore((state) => state.config);
-  const setSessions = useAppStore((state) => state.setSessions);
-  const setConfig = useAppStore((state) => state.setConfig);
-
-  const [items, setItems] = useState<HomeInventoryItem[]>([]);
-  const [expiring, setExpiring] = useState<HomeInventoryItem[]>([]);
-  const [notifications, setNotifications] = useState<HomeNotification[]>([]);
-  const [summary, setSummary] = useState<HomeTaskSummary | null>(null);
-  const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [now, setNow] = useState(() => new Date());
-  const [commandDraft, setCommandDraft] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const view = location.pathname.includes('/items')
+    ? 'items'
+    : location.pathname.includes('/tasks')
+      ? 'tasks'
+      : location.pathname.includes('/more')
+        ? 'more'
+        : 'today';
+  const currentUser = useAppStore((s) => s.currentUser);
+  const sessions = useAppStore((s) => s.sessions);
+  const setSessions = useAppStore((s) => s.setSessions);
+  const config = useAppStore((s) => s.config);
+  const setConfig = useAppStore((s) => s.setConfig);
+  const { inventories, tasks, memos, refresh } = useHomeData();
+  const [draft, setDraft] = useState('');
+  const [notice, setNotice] = useState('');
+  const [rowError, setRowError] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [small, setSmall] = useState(
+    () => window.matchMedia('(max-width: 767px)').matches,
+  );
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const calendarDestination = useRef<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [headingPhraseIndex, setHeadingPhraseIndex] = useState(() => Math.floor(Math.random() * agentHeadingPhrases.length));
-  const [headingText, setHeadingText] = useState('');
-  const [subtitleIndex, setSubtitleIndex] = useState(() => Math.floor(Math.random() * agentSubtitlePhrases.length));
-  const [subtitleVisible, setSubtitleVisible] = useState(true);
-
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMounted, setChatMounted] = useState(false);
-  const [overlaySessionId, setOverlaySessionId] = useState<string | null>(null);
-  const [draftSeed, setDraftSeed] = useState<{ id: number; text: string } | null>(null);
-  const draftSeedId = useRef(0);
-  const overlayHistoryPushed = useRef(false);
-
-  const [itemDraft, setItemDraft] = useState({ name: '', quantity: '', unit: '个', expires_at: '', zone: '冷藏层' });
-
+  const [chatSession, setChatSession] = useState<string | null>(null);
+  const [draftSeed, setDraftSeed] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
+  const [objectContext, setObjectContext] = useState<ObjectContext | null>(
+    null,
+  );
+  const [tasksMounted, setTasksMounted] = useState(view === 'tasks');
+  useEffect(() => {
+    setChatOpen(false);
+    setChatMounted(false);
+    setChatSession(null);
+    setObjectContext(null);
+    setNotice('');
+    setRowError('');
+    setDraft('');
+  }, [currentUser?.id]);
+  const priorPath = useRef(location.pathname);
+  const scrollPositions = useRef<Record<string, number>>({});
+  const closeChat = useCallback(() => {
+    setChatOpen(false);
+    void refresh();
+    window.dispatchEvent(new CustomEvent('task_changed'));
+  }, [refresh]);
+  const chatDialog = useDialog(chatOpen, closeChat);
+  const openChat = (
+    text?: string,
+    sessionId?: string,
+    context?: ObjectContext,
+  ) => {
+    setObjectContext(context || null);
+    if (text !== undefined) setDraftSeed({ id: Date.now(), text });
+    if (sessionId) setChatSession(sessionId);
+    setChatMounted(true);
+    setChatOpen(true);
+  };
+  const taskAgent = (task: TaskDefinition) =>
+    openChat(`请帮我处理事项“${task.title}”。`, undefined, {
+      type: 'family_task',
+      id: task.id,
+      title: task.title,
+      source: location.pathname + location.search,
+    });
+  const itemAgent = (item: HomeInventoryItem) =>
+    openChat(`请帮我处理物品“${item.name}”。`, undefined, {
+      type: 'inventory_item',
+      id: item.id,
+      title: item.name,
+      location: item.location,
+      source: location.pathname + location.search,
+    });
   useEffect(() => {
     document.body.classList.add('home-route');
-    return () => {
-      document.body.classList.remove('home-route');
-      document.body.classList.remove('home-chat-open');
-    };
+    return () => document.body.classList.remove('home-route');
   }, []);
-
   useEffect(() => {
-    document.body.classList.toggle('home-chat-open', chatOpen);
-    return () => {
-      document.body.classList.remove('home-chat-open');
-    };
-  }, [chatOpen]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 60_000);
-    return () => window.clearInterval(timer);
+    const media = window.matchMedia('(max-width: 767px)');
+    const change = () => setSmall(media.matches);
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
   }, []);
-
   useEffect(() => {
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const updateMotionPreference = () => setReducedMotion(motionQuery.matches);
-    updateMotionPreference();
-    motionQuery.addEventListener('change', updateMotionPreference);
-    return () => motionQuery.removeEventListener('change', updateMotionPreference);
-  }, []);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setHeadingText(agentHeadingPhrases[headingPhraseIndex]);
-      return undefined;
+    if (view === 'tasks') setTasksMounted(true);
+    if (priorPath.current !== location.pathname) {
+      window.scrollTo(0, scrollPositions.current[location.pathname] || 0);
+      priorPath.current = location.pathname;
     }
-
-    const phrase = agentHeadingPhrases[headingPhraseIndex];
-    let charIndex = 0;
-    let timer = 0;
-    let cancelled = false;
-    setHeadingText('');
-
-    const schedule = (callback: () => void, delay: number) => {
-      timer = window.setTimeout(callback, delay);
-    };
-
-    const deletePreviousCharacter = () => {
-      if (cancelled) return;
-      charIndex -= 1;
-      setHeadingText(phrase.slice(0, Math.max(0, charIndex)));
-      if (charIndex > 0) {
-        schedule(deletePreviousCharacter, 38);
-        return;
-      }
-      schedule(() => {
-        setHeadingPhraseIndex((current) => randomDifferentIndex(agentHeadingPhrases.length, current));
-      }, 260);
-    };
-
-    const typeNextCharacter = () => {
-      if (cancelled) return;
-      charIndex += 1;
-      setHeadingText(phrase.slice(0, charIndex));
-      if (charIndex < phrase.length) {
-        schedule(typeNextCharacter, 72);
-        return;
-      }
-      schedule(deletePreviousCharacter, 2200);
-    };
-
-    schedule(typeNextCharacter, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [headingPhraseIndex, reducedMotion]);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setSubtitleVisible(true);
-      return undefined;
-    }
-
-    const fadeOutTimer = window.setTimeout(() => setSubtitleVisible(false), 3600);
-    const swapTimer = window.setTimeout(() => {
-      setSubtitleIndex((current) => randomDifferentIndex(agentSubtitlePhrases.length, current));
-      setSubtitleVisible(true);
-    }, 4100);
-
-    return () => {
-      window.clearTimeout(fadeOutTimer);
-      window.clearTimeout(swapTimer);
-    };
-  }, [subtitleIndex, reducedMotion]);
-
-  useEffect(() => {
-    if (!reducedMotion) return undefined;
-    const timer = window.setInterval(() => {
-      setHeadingPhraseIndex((current) => randomDifferentIndex(agentHeadingPhrases.length, current));
-      setSubtitleIndex((current) => randomDifferentIndex(agentSubtitlePhrases.length, current));
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [reducedMotion]);
-
-  const loadRecentSessions = useCallback(async () => {
-    const data = await sessionsApi.list();
-    setSessions(data);
-    return data;
-  }, [setSessions]);
-
-  const loadConfig = useCallback(async () => {
-    if (!isAdmin(currentUser)) return;
-    const data = await configApi.get().catch(() => null);
-    if (data) setConfig(data);
-  }, [currentUser, setConfig]);
-
-  const load = useCallback(async () => {
-    const [inventoryData, expiringData, notificationData, summaryData, taskData] = await Promise.all([
-      homeApi.inventory(), homeApi.expiring(3), homeApi.notifications().catch(() => ({ notifications: [] })),
-      homeApi.taskSummary().catch(() => null), tasksApi.summary().catch(() => null),
-    ]);
-    setItems(inventoryData.items || []); setExpiring(expiringData.items || []);
-    setNotifications(notificationData.notifications || []); setSummary(summaryData); setTaskSummary(taskData);
-  }, []);
-
-  useEffect(() => {
-    void load().catch((error) => setMessage(error.message || '读取家庭数据失败'));
-    const refreshTasks = () => { if (document.visibilityState === 'visible') void load().catch(() => undefined); };
-    const timer = window.setInterval(refreshTasks, 60_000);
-    window.addEventListener('task_changed', refreshTasks);
-    window.addEventListener('focus', refreshTasks);
-    void loadRecentSessions().catch(() => undefined);
-    return () => { window.clearInterval(timer); window.removeEventListener('task_changed', refreshTasks); window.removeEventListener('focus', refreshTasks); };
-  }, [load, loadRecentSessions]);
-
-  const openConversation = useCallback(
-    ({ sessionId, draft }: { sessionId?: string; draft?: string } = {}) => {
-      setChatMounted(true);
-      if (sessionId) setOverlaySessionId(sessionId);
-      if (typeof draft === 'string') {
-        draftSeedId.current += 1;
-        setDraftSeed({ id: draftSeedId.current, text: draft });
-      }
-      if (!chatOpen && typeof window !== 'undefined' && !overlayHistoryPushed.current) {
-        window.history.pushState({ homeChatOverlay: true }, '', window.location.href);
-        overlayHistoryPushed.current = true;
-      }
-      setChatOpen(true);
-    },
-    [chatOpen],
+  }, [location.pathname, view]);
+  const today =
+    tasks.data?.today ||
+    Object.values(inventories).find((query) => query.data?.today)?.data?.today;
+  const allItems = Object.values(inventories).flatMap(
+    (query) => query.data?.items || [],
   );
-
-  const closeConversation = useCallback(() => {
-    if (typeof window !== 'undefined' && overlayHistoryPushed.current) {
-      window.history.back();
-      return;
-    }
-    setChatOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!chatOpen) return;
-    const onPopState = () => {
-      overlayHistoryPushed.current = false;
-      setChatOpen(false);
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [chatOpen]);
-
-  useEffect(() => {
-    if (!chatOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeConversation();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [chatOpen, closeConversation]);
-
-  const lowStock = useMemo(
-    () => items.filter((item) => item.status === 'low' || (typeof item.quantity === 'number' && item.quantity <= 1)),
-    [items],
+  const attention = buildAttention(
+    tasks.data?.rows || [],
+    allItems,
+    today || '0000-01-01',
   );
-
-  const recentSessions = useMemo(() => sessions.slice(0, 6), [sessions]);
-  const recentActivities = useMemo(() => {
-    const notificationActivities = notifications.slice(0, 4).map((item) => ({
-      id: `notification-${item.id}`,
-      title: item.title,
-      meta: `${item.status || '通知'} · ${item.created_at ? formatTime(item.created_at) : '刚刚'}`,
-    }));
-    const inventoryActivities = items
-      .filter((item) => item.updated_at)
-      .slice(0, 3)
-      .map((item) => ({
-        id: `item-${item.id}`,
-        title: `${item.name} 已更新`,
-        meta: `${item.zone || '未分区'} · ${formatTime(item.updated_at)}`,
-      }));
-    return [...notificationActivities, ...inventoryActivities].slice(0, 6);
-  }, [items, notifications]);
-
-  const todayLabel = useMemo(
-    () =>
-      new Intl.DateTimeFormat('zh-CN', {
+  const limit = small ? 3 : 5;
+  const all = params.get('attention') === 'all';
+  const loading =
+    tasks.isPending ||
+    Object.values(inventories).some((query) => query.isPending);
+  const failed =
+    tasks.isError || Object.values(inventories).some((query) => query.isError);
+  const exact = !loading && !failed && tasks.data?.historyComplete;
+  const status = loading
+    ? '正在整理需要关注的事…'
+    : !exact
+      ? '先看看已读取的事项'
+      : attention.length
+        ? `有 ${attention.length} 件事需要关注`
+        : '今天暂无待处理事项';
+  const dateLabel = today
+    ? new Intl.DateTimeFormat('zh-CN', {
         month: 'long',
         day: 'numeric',
         weekday: 'long',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(now),
-    [now],
-  );
-
-  const statusCards = useMemo(
-    () => [
-      {
-        label: '今日事项',
-        value: (taskSummary?.counts.today || 0),
-        detail: (taskSummary?.counts.open || 0) ? `${(taskSummary?.counts.open || 0)} 个待处理` : '今天没有待处理事项',
-        icon: Clock3,
-        draft: '查看今天要处理的事项。',
-      },
-      {
-        label: '快过期',
-        value: expiring.length,
-        detail: expiring.length ? '3 天内需要处理' : '暂无临期物品',
-        icon: Utensils,
-        draft: '查看 3 天内快过期的家庭物品。',
-      },
-      {
-        label: '低库存',
-        value: lowStock.length,
-        detail: lowStock.length ? '可生成购物清单' : '库存状态正常',
-        icon: ShoppingBasket,
-        draft: '根据低库存生成一份购物清单。',
-      },
-      {
-        label: '无日期备忘',
-        value: taskSummary?.counts.undated || 0,
-        detail: '没有日期也可以逐条完成',
-        icon: Inbox,
-        draft: '列出我的备忘清单。',
-      },
-    ],
-    [expiring.length, lowStock.length, taskSummary],
-  );
-
-  const addItem = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!itemDraft.name.trim()) return;
-    setBusy(true);
-    try {
-      await homeApi.addInventoryItem({
-        name: itemDraft.name.trim(),
-        quantity: itemDraft.quantity ? Number(itemDraft.quantity) : null,
-        unit: itemDraft.unit,
-        zone: itemDraft.zone,
-        expires_at: itemDraft.expires_at || null,
-      });
-      setItemDraft({ name: '', quantity: '', unit: '个', expires_at: '', zone: '冷藏层' });
-      setMessage('冰箱清单已更新');
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startNewConversation = async (draft = '') => {
-    setBusy(true);
-    try {
-      const session = await sessionsApi.create();
-      await loadRecentSessions();
-      openConversation({ sessionId: session.id, draft });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submitCommand = (event: FormEvent) => {
-    event.preventDefault();
-    const draft = commandDraft.trim();
-    openConversation({ draft });
-    if (draft) setCommandDraft('');
-  };
-
+        timeZone: 'UTC',
+      }).format(new Date(`${today}T12:00:00Z`))
+    : '今天';
   const openSettings = () => {
     setSettingsOpen(true);
-    void loadConfig();
+    if (isAdmin(currentUser))
+      void configApi
+        .get()
+        .then(setConfig)
+        .catch((e) => setRowError(e.message));
   };
-
-  return (
-    <main className="home-shell" aria-label="家庭 Agent 主工作台">
-      <aside className="home-family-nav" aria-label="家庭导航">
-        <div className="home-family-brand">
-          <div className="home-family-mark">
-            <Home size={19} />
-          </div>
-          <div>
-            <strong>家庭 Agent</strong>
-            <span>{todayLabel}</span>
-          </div>
-        </div>
-
-        <nav className="home-family-menu" aria-label="家庭功能">
-          {familyNavItems.map((item) => (
-            <a href={item.href} key={item.label}>
-              <item.icon size={16} />
-              <span>{item.label}</span>
-            </a>
-          ))}
-        </nav>
-
-        <section className="home-recent-sessions" aria-label="最近对话">
-          <div className="home-sidebar-head">
-            <span>最近对话</span>
-            <strong>{sessions.length}</strong>
-          </div>
-          <button className="home-new-chat" type="button" disabled={busy} onClick={() => void startNewConversation()}>
-            <MessageCircle size={15} />
-            新建 Agent 对话
+  const go = (path: string) => {
+    scrollPositions.current[location.pathname] = window.scrollY;
+    navigate(path);
+  };
+  const run = async (entry: Attention) => {
+    setBusy(entry.id);
+    setRowError('');
+    try {
+      if (entry.kind === 'item')
+        await homeApi.consumeInventoryItem(
+          entry.item.id,
+          undefined,
+          entry.item.location as InventoryLocation,
+        );
+      else {
+        const row = entry.row;
+        const claim = !row.occurrence?.assignee_ids.length;
+        await tasksApi.change(
+          row.task.id,
+          claim ? 'claim' : 'complete',
+          {
+            expected_version: claim
+              ? row.task.version
+              : row.occurrence!.version,
+          },
+          claim ? undefined : row.occurrence!.id,
+        );
+      }
+      setNotice(
+        entry.kind === 'item'
+          ? `${entry.item.name} 已标记用完`
+          : entry.row.occurrence?.assignee_ids.length === 0
+            ? '已认领，可在事项中继续处理'
+            : entry.row.occurrence!.assignee_ids.length > 1 &&
+                entry.row.occurrence!.completion_mode === 'all'
+              ? '已完成我的部分，其他成员的进度已保留'
+              : `已完成：${entry.title}`,
+      );
+      await refresh();
+      window.dispatchEvent(new CustomEvent('task_changed'));
+    } catch (e) {
+      setRowError((e as Error).message || '操作失败，请重试');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    openChat(draft.trim() || undefined);
+    setDraft('');
+  };
+  const renderAttention = (size: WidgetSize) => {
+    const previewLimit = size === 'large' ? limit : Math.min(limit, 3);
+    return (
+      <section className="home-attention" aria-labelledby="attention-heading">
+        <div className="home-section-head">
+          <h2 id="attention-heading">需要关注</h2>
+          <button
+            type="button"
+            onClick={() =>
+              setParams(all ? {} : { attention: 'all' }, {
+                replace: true,
+              })
+            }
+          >
+            {all ? '收起预览' : '查看全部'}
           </button>
-          <div className="home-session-list">
-            {recentSessions.length ? (
-              recentSessions.map((session) => (
-                <button
-                  className={`home-session-item${session.id === currentSessionId ? ' active' : ''}`}
-                  type="button"
-                  key={session.id}
-                  onClick={() => openConversation({ sessionId: session.id })}
-                >
-                  <span>{session.title || '新对话'}</span>
-                  <small>
-                    {formatTime(session.updated_at || session.created_at)} · {formatTokens(session.token_usage?.total_tokens)} tok
-                  </small>
-                </button>
-              ))
-            ) : (
-              <div className="home-sidebar-empty">暂无会话</div>
-            )}
-          </div>
-        </section>
-      </aside>
-
-      <section className="home-dashboard-main">
-        <header className="home-topbar" id="today">
-          <div className="home-title-block">
-            <span className="home-kicker">主工作台</span>
-            <h1>家庭工作台</h1>
-            <p>{todayLabel} · 今日事项、物品状态和最近协作集中在这里。</p>
-          </div>
-          <nav className="home-nav" aria-label="家庭页面操作">
-            <button className="icon-button" type="button" title="刷新" disabled={busy} onClick={() => void load()}>
-              <RefreshCw size={18} />
-            </button>
-            <Link to="/chat" className="home-nav-link home-nav-chat">
-              <MessageCircle size={15} />
-              对话
-            </Link>
-            <Link to="/dashboard" className="home-nav-link">
-              看板
-            </Link>
-            <button type="button" className="home-nav-link" onClick={openSettings}>
-              <Settings size={15} />
-              设置
-            </button>
-          </nav>
-        </header>
-
-        {message ? <pre className="home-message">{message}</pre> : null}
-
-        <section className="home-agent-stage" aria-labelledby="home-agent-title">
-          <div className="home-agent-heading">
-            <span className="home-kicker">Agent 对话</span>
-            <h2 id="home-agent-title" aria-label={agentHeadingPhrases[headingPhraseIndex]}>
-              <span>{headingText}</span>
-              <span className="home-typewriter-caret" aria-hidden="true" />
-            </h2>
-            <p className={`home-agent-copy${subtitleVisible ? ' visible' : ''}`}>{agentSubtitlePhrases[subtitleIndex]}</p>
-          </div>
-          <form className="home-agent-command" onSubmit={submitCommand}>
-            <MessageCircle size={20} />
-            <input
-              aria-label="和家庭 Agent 对话"
-              value={commandDraft}
-              placeholder="例如：/ 日程 明天倒垃圾"
-              onChange={(event) => setCommandDraft(event.target.value)}
-            />
-            <button className="home-agent-mic" type="button" title="语音输入" onClick={() => openConversation({ draft: '语音记录：' })}>
-              <Mic size={18} />
-            </button>
-            <button className="home-agent-submit" type="submit">
-              <span>开始对话</span>
-              <ArrowRight size={17} />
-            </button>
-          </form>
-          <div className="home-agent-prompts" aria-label="常用 Agent 指令">
-            {quickActions.map((action) => (
-              <button type="button" key={action.label} onClick={() => openConversation({ draft: action.draft })}>
-                <action.icon size={16} />
-                <span>{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="home-status-strip" aria-label="今日家庭状态">
-          {statusCards.map((card) => (
-            <button type="button" key={card.label} onClick={() => openConversation({ draft: card.draft })}>
-              <card.icon size={17} />
-              <span>
-                <strong>{card.value}</strong>
-                <small>{card.label}</small>
-              </span>
-              <em>{card.detail}</em>
-            </button>
-          ))}
-        </section>
-
-        <section className="home-object-strip" aria-label="常用对象">
-          {objectShortcuts.map((item) => (
-            <button type="button" key={item.label} onClick={() => openConversation({ draft: item.draft })}>
-              <item.icon size={17} />
-              <span>
-                <strong>{item.label}</strong>
-                <small>{item.meta}</small>
-              </span>
-            </button>
-          ))}
-        </section>
-
-        <div className="home-workbench">
-          <section className="home-section home-primary-pane" id="inventory">
-            <div className="home-section-head">
-              <div>
-                <h2>冰箱清单</h2>
-                <p>{items.length ? `共 ${items.length} 项，按到期和状态维护。` : '当前冰箱清单为空。'}</p>
-              </div>
-              <span>{expiring.length} 项 3 天内到期</span>
-            </div>
-            <form className="home-inline-form" onSubmit={(event) => void addItem(event)}>
-              <input aria-label="物品" value={itemDraft.name} placeholder="物品" onChange={(event) => setItemDraft({ ...itemDraft, name: event.target.value })} />
-              <input
-                aria-label="数量"
-                value={itemDraft.quantity}
-                placeholder="数量"
-                inputMode="decimal"
-                onChange={(event) => setItemDraft({ ...itemDraft, quantity: event.target.value })}
-              />
-              <select aria-label="单位" value={itemDraft.unit} onChange={(event) => setItemDraft({ ...itemDraft, unit: event.target.value })}>
-                <option value="个">个</option>
-                <option value="盒">盒</option>
-                <option value="瓶">瓶</option>
-                <option value="斤">斤</option>
-                <option value="kg">kg</option>
-                <option value="片">片</option>
-              </select>
-              <input aria-label="到期日期" type="date" value={itemDraft.expires_at} onChange={(event) => setItemDraft({ ...itemDraft, expires_at: event.target.value })} />
-              <button type="submit" disabled={busy} title="添加物品">
-                <PackagePlus size={16} />
-                添加
-              </button>
-            </form>
-            <div className="home-table" role="table" aria-label="冰箱清单">
-              <div className="home-row head" role="row">
-                <span>物品</span>
-                <span>数量</span>
-                <span>到期</span>
-                <span>状态</span>
-                <span>操作</span>
-              </div>
-              {items.map((item) => (
-                <div className={`home-row${expiring.some((entry) => entry.id === item.id) ? ' urgent' : ''}`} role="row" key={item.id}>
-                  <span>
-                    <strong>{item.name}</strong>
-                    <small>
-                      {item.category || '其他'} · {item.zone || '未分区'}
-                    </small>
-                  </span>
-                  <span>
-                    {item.quantity ?? '未知'}
-                    {item.unit}
-                  </span>
-                  <span>{item.expires_at || '未记录'}</span>
-                  <span>{item.status || 'available'}</span>
-                  <span className="row-actions">
-                    <button type="button" title="标记用完" onClick={() => void homeApi.consumeInventoryItem(item.id).then(load)}>
-                      <Check size={15} />
-                    </button>
-                    <button type="button" title="删除" onClick={() => void homeApi.deleteInventoryItem(item.id).then(load)}>
-                      <Trash2 size={15} />
-                    </button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <TaskBoard key={currentUser?.id} />
-
-          <section className="home-section home-insights-pane" id="files">
-            <div className="home-section-head">
-              <div>
-                <h2>任务统计</h2>
-                <p>后台看板同口径任务汇总。</p>
-              </div>
-            </div>
-            <div className="home-stat-line">
-              {(summary?.status_distribution || []).map((item) => (
-                <div key={String(item.label)}>
-                  <span>{statusLabel[String(item.label)] || String(item.label)}</span>
-                  <strong>{Number(item.value || 0)}</strong>
-                </div>
-              ))}
-            </div>
-            <div className="home-stat-line">
-              {(summary?.channel_distribution || []).map((item) => (
-                <div key={String(item.label)}>
-                  <span>{channelLabel[String(item.label)] || String(item.label)}</span>
-                  <strong>{Number(item.value || 0)}</strong>
-                </div>
-              ))}
-            </div>
-            <div className="home-alerts">
-              {(summary?.alerts || []).map((alert) => (
-                <div key={String(alert.id || alert.title)}>
-                  <strong>{String(alert.title || '提示')}</strong>
-                  <span>{String(alert.message || '')}</span>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
+        <AttentionList
+          entries={all ? attention : attention.slice(0, previewLimit)}
+          actor={tasks.data?.actor || null}
+          today={today || ''}
+          busy={busy}
+          onOpen={go}
+          onRun={run}
+        />
+        {!loading && !attention.length && (
+          <p className="home-empty">
+            {failed
+              ? '可从下方入口继续查看与记录。'
+              : '眼下没有需要处理的事，随时记下新的安排。'}
+          </p>
+        )}
+        {loading && !attention.length && (
+          <p className="home-empty" role="status">
+            正在读取家庭事项与物品…
+          </p>
+        )}
+        {!all && attention.length > previewLimit && (
+          <button
+            className="home-remaining"
+            type="button"
+            onClick={() => setParams({ attention: 'all' }, { replace: true })}
+          >
+            还有 {attention.length - previewLimit} 件 · 查看全部{' '}
+            <ArrowRight size={15} />
+          </button>
+        )}
       </section>
-
-      <aside className="home-detail-panel" aria-label="详情与说明">
-        <section className="home-section"><h2>事项说明</h2><p>事项保存在独立清单中。使用 / 空格选择空间与性质，用 @ 空格选择负责人。</p><p>成员通过主动询问或打开工作台查看，不发送通知。</p></section>
-
-        <section className="home-section" id="timeline">
-          <div className="home-section-head">
-            <div>
-              <h2>最近活动</h2>
-              <p>家庭时间线摘要。</p>
+    );
+  };
+  const isToday = view === 'today';
+  return (
+    <main className="home-shell" aria-label="家庭 Agent">
+      <div className="home-app">
+        <HomeNav
+          view={view}
+          onLeave={() => {
+            scrollPositions.current[location.pathname] = window.scrollY;
+          }}
+          onRecent={() => go('/home/more?section=sessions')}
+        />
+        <div className="home-content">
+          <header className="home-topbar">
+            <div className="home-topbar-heading">
+              {isToday ? (
+                <>
+                  <button
+                    type="button"
+                    className="home-date-button"
+                    onClick={() => setCalendarOpen(true)}
+                  >
+                    <CalendarDays size={16} />
+                    {dateLabel}
+                  </button>
+                  <h1>{status}</h1>
+                </>
+              ) : (
+                <h1>
+                  {{ items: '家庭物品', tasks: '事项清单', more: '更多' }[view]}
+                </h1>
+              )}
             </div>
-          </div>
-          <div className="home-timeline">
-            {recentActivities.length ? (
-              recentActivities.map((activity) => (
-                <div key={activity.id}>
-                  <span />
-                  <strong>{activity.title}</strong>
-                  <small>{activity.meta}</small>
+            <button
+              type="button"
+              className="home-avatar"
+              onClick={() => go('/home/more?section=account')}
+              aria-label="账号与设置"
+            >
+              {(
+                currentUser?.display_name ||
+                currentUser?.username ||
+                '我'
+              ).slice(0, 1)}
+            </button>
+          </header>
+          {isToday && (
+            <div className="home-today-grid">
+              <div className="home-today-main">
+                <AgentCommandBar
+                  draft={draft}
+                  onChange={setDraft}
+                  onSubmit={submit}
+                  onCreateTask={() => go('/home/tasks?create=1')}
+                  onCreateItem={() => go('/home/items?create=1')}
+                />
+                <div className="home-dashboard-feedback">
+                  {failed && (
+                    <p className="home-error" role="alert">
+                      部分数据暂时无法读取，已保留上次内容。
+                      <button type="button" onClick={() => void refresh()}>
+                        重试
+                      </button>
+                    </p>
+                  )}
+                  {tasks.data && !tasks.data.historyComplete && (
+                    <p role="status">
+                      历史整理中，当前数量尚不完整。
+                      <button type="button" onClick={() => void refresh()}>
+                        继续整理
+                      </button>
+                    </p>
+                  )}
+                  {rowError && <p role="alert">{rowError}</p>}
+                  {notice && (
+                    <p className="home-feedback" role="status">
+                      <Check size={17} />
+                      {notice}
+                    </p>
+                  )}
                 </div>
-              ))
-            ) : (
-              <p className="home-sidebar-empty">暂无活动</p>
-            )}
-          </div>
-        </section>
-      </aside>
-
-      {chatMounted ? (
-        <div className={`home-chat-overlay${chatOpen ? ' open' : ''}`} aria-hidden={!chatOpen}>
-          <div className="home-chat-scrim" onClick={closeConversation} />
-          <section className="home-chat-layer" role="dialog" aria-modal={chatOpen} aria-label="对话覆盖层">
+                <HomeWidgets
+                  key={currentUser?.id}
+                  userId={currentUser?.id || 'guest'}
+                  items={allItems}
+                  inventoryReady={(location) =>
+                    location
+                      ? Boolean(
+                          inventories[location as InventoryLocation]?.data,
+                        )
+                      : Object.values(inventories).every(
+                          (query) => !!query.data,
+                        )
+                  }
+                  inventoryFailed={(location) =>
+                    location
+                      ? Boolean(
+                          inventories[location as InventoryLocation]?.isError,
+                        )
+                      : Object.values(inventories).some(
+                          (query) => query.isError,
+                        )
+                  }
+                  taskRows={tasks.data?.rows || []}
+                  actor={tasks.data?.actor || null}
+                  today={today || ''}
+                  tasksReady={!!tasks.data}
+                  tasksFailed={tasks.isError}
+                  memoFailed={memos.isError}
+                  memoCount={
+                    memos.data?.counts.undated ??
+                    (memos.isError ? null : undefined)
+                  }
+                  attentionCount={exact ? attention.length : undefined}
+                  onOpen={go}
+                  renderAttention={renderAttention}
+                />
+              </div>
+              <ScheduleCalendar today={today} onOpen={go} />
+            </div>
+          )}
+          {view === 'items' && <InventoryView onAgent={itemAgent} />}
+          {tasksMounted && (
+            <div hidden={view !== 'tasks'}>
+              <TaskBoard
+                key={currentUser?.id}
+                createInitially={view === 'tasks' && params.has('create')}
+                selectedTaskId={view === 'tasks' ? params.get('task') : null}
+                preset={
+                  view === 'tasks' &&
+                  ['today', 'memos'].includes(params.get('preset') || '')
+                    ? (params.get('preset') as 'today' | 'memos')
+                    : undefined
+                }
+                initialView={
+                  params.get('scope') === 'visible' ? 'visible' : undefined
+                }
+                initialPeriod={params.get('period') || undefined}
+                selectedDate={params.get('date') || undefined}
+                onDateClear={() => {
+                  const next = new URLSearchParams(params);
+                  next.delete('date');
+                  next.delete('period');
+                  setParams(next, { replace: true });
+                }}
+                onDetailClose={() => {
+                  const next = new URLSearchParams(params);
+                  next.delete('task');
+                  next.delete('create');
+                  setParams(next, { replace: true });
+                }}
+                onAgent={taskAgent}
+              />
+            </div>
+          )}
+          {view === 'more' && (
+            <MoreView
+              section={params.get('section')}
+              onSettings={openSettings}
+              onOpenChat={(sessionId) => openChat(undefined, sessionId)}
+              onNewChat={async () => {
+                const session = await sessionsApi.create();
+                setSessions(await sessionsApi.list());
+                openChat('', session.id);
+              }}
+              sessions={sessions}
+              loadSessions={() => sessionsApi.list().then(setSessions)}
+            />
+          )}
+        </div>
+        <HomeNav
+          view={view}
+          mobile
+          onLeave={() => {
+            scrollPositions.current[location.pathname] = window.scrollY;
+          }}
+          onRecent={() => go('/home/more?section=sessions')}
+        />
+      </div>
+      {chatMounted && (
+        <div
+          className="home-chat-overlay"
+          hidden={!chatOpen}
+          aria-hidden={!chatOpen}
+          {...(!chatOpen ? { inert: '' } : {})}
+        >
+          <div className="home-chat-scrim" onClick={chatDialog.dismiss} />
+          <div
+            className="home-chat-layer"
+            ref={chatDialog.ref}
+            role="dialog"
+            aria-modal={chatOpen}
+            aria-label="家庭 Agent 对话"
+            tabIndex={-1}
+          >
             <ChatWorkspace
               mode="overlay"
               active={chatOpen}
-              requestedSessionId={overlaySessionId}
+              requestedSessionId={chatSession}
               draftSeed={draftSeed}
-              onClose={closeConversation}
-              onSessionChange={setOverlaySessionId}
+              objectContext={objectContext}
+              onClose={chatDialog.dismiss}
+              onSessionChange={setChatSession}
             />
-          </section>
+          </div>
         </div>
-      ) : null}
-
+      )}
+      {calendarOpen && (
+        <HomeDialog
+          title="家庭日历"
+          onClose={() => {
+            setCalendarOpen(false);
+            if (calendarDestination.current) {
+              go(calendarDestination.current);
+              calendarDestination.current = null;
+            }
+          }}
+        >
+          {(dismiss) => (
+            <ScheduleCalendar
+              today={today}
+              compact
+              onOpen={(path) => {
+                calendarDestination.current = path;
+                dismiss();
+              }}
+            />
+          )}
+        </HomeDialog>
+      )}
       <ConfigModal
         open={settingsOpen}
         config={config}
         onClose={() => setSettingsOpen(false)}
-        onSaved={(nextConfig) => {
-          setConfig(nextConfig);
-          setMessage('设置已保存');
+        onSaved={(next) => {
+          setConfig(next);
+          setNotice('设置已保存');
         }}
       />
     </main>

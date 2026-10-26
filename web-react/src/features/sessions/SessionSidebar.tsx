@@ -1,7 +1,8 @@
-import { BarChart3, Bot, Home, LogOut, Menu, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { BarChart3, Bot, Home, LogOut, Menu, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { SessionSummary, Skill, User } from '../../api/types';
-import { formatTime, formatTokens } from '../../utils/format';
+import { formatTime } from '../../utils/format';
+import { useDialog } from '../../components/ui/useDialog';
 import { isAdmin } from '../../stores/appStore';
 
 interface SessionSidebarProps {
@@ -62,8 +63,17 @@ export function SessionSidebar({
         ...sessions.filter((session) => session.id !== currentSessionId),
       ]
     : sessions;
-  const busyCount = orderedSessions.filter((session) => busySessionIds.has(session.id)).length;
-  const currentSession = orderedSessions.find((session) => session.id === currentSessionId) || orderedSessions[0];
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 860px)').matches);
+  const { ref: sidebarRef, dismiss } = useDialog(open && isMobile, onCloseMobile);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 860px)');
+    const update = () => setIsMobile(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (sidebarRef.current) sidebarRef.current.inert = isMobile && !open;
+  }, [isMobile, open, sidebarRef]);
 
   useEffect(() => {
     if (!accountMenuOpen) return;
@@ -84,10 +94,10 @@ export function SessionSidebar({
   }, [accountMenuOpen]);
 
   return (
-    <>
-      <aside className={`sidebar${open ? ' open' : ''}`} aria-label="历史对话">
+    <div className="sidebar-layer" ref={sidebarRef}>
+      <div className={`sidebar${open ? ' open' : ''}`} role={isMobile && open ? "dialog" : "complementary"} aria-modal={isMobile && open ? true : undefined} aria-label="历史对话" tabIndex={-1}>
         <div className="brand-area">
-          <button className="sidebar-close" type="button" aria-label="关闭历史对话" onClick={onCloseMobile}>
+          <button className="sidebar-close" type="button" aria-label="关闭历史对话" onClick={dismiss}>
             <X size={18} />
           </button>
           <div className="brand-head" ref={accountMenuRef}>
@@ -158,42 +168,20 @@ export function SessionSidebar({
                     <span>退出</span>
                   </button>
                 </div>
-                <div className="sys-status">
-                  <div className="dot" />
-                  <span>System Online</span>
-                </div>
               </div>
             ) : null}
           </div>
           <div className="brand-name">
             <span>Claw</span> Agent
           </div>
-          <div className="brand-tag">AI 工作台</div>
-          <div className="workspace-summary" aria-label="工作台概览">
-            <div>
-              <span>会话</span>
-              <strong>{sessions.length}</strong>
-            </div>
-            <div>
-              <span>运行</span>
-              <strong>{busyCount}</strong>
-            </div>
-            <div>
-              <span>技能</span>
-              <strong>{skills.length}</strong>
-            </div>
-          </div>
+          <div className="brand-tag">家庭 AI 助手</div>
         </div>
         <div className="sidebar-actions">
+          <a className="chat-home-link" href="/home"><Home size={17} />返回首页</a>
           <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
             <Plus size={16} />
             新建对话
           </button>
-        </div>
-        <div className="current-context" aria-label="当前上下文">
-          <span>当前会话</span>
-          <strong>{currentSession?.title || '新对话'}</strong>
-          <small>{currentSession ? `${formatTime(currentSession.updated_at || currentSession.created_at)} · ${formatTokens(currentSession.token_usage?.total_tokens)} tok` : '等待创建'}</small>
         </div>
         <div className="history-panel">
           <div className="history-toggle" id="session-history-heading">
@@ -204,24 +192,26 @@ export function SessionSidebar({
             {orderedSessions.map((session) => {
               const busy = busySessionIds.has(session.id);
               const sharing = session.sharing || { scope: 'private' };
-              const scopeLabel = sharing.scope === 'all' ? 'ALL' : sharing.scope === 'selected' ? 'SHARED' : '';
+              const scopeLabel = sharing.scope === 'all' ? '全员共享' : sharing.scope === 'selected' ? '共享' : '';
               const menuOpen = menuSessionId === session.id;
               return (
                 <div
                   key={session.id}
                   className={`session-item${session.id === currentSessionId ? ' active' : ''}${menuOpen ? ' menu-open' : ''}${busy ? ' busy' : ''}`}
-                  onClick={() => void onOpenSession(session.id)}
                 >
-                  <div className="session-content">
-                    <div className="session-title">
-                      {session.title || '新对话'}
-                      {scopeLabel ? <span className="session-scope">{scopeLabel}</span> : null}
-                      {busy ? <span className="session-busy-dot" title="生成中" /> : null}
-                    </div>
-                    <div className="session-time">
-                      {formatTime(session.updated_at || session.created_at)} · {formatTokens(session.token_usage?.total_tokens)} tok
-                    </div>
-                  </div>
+                  <button type="button" className="session-open" aria-current={session.id === currentSessionId ? "page" : undefined} onClick={() => void onOpenSession(session.id)}>
+                    <MessageCircle size={16} aria-hidden="true" />
+                    <span className="session-content">
+                      <span className="session-title">
+                        <span className="session-title-text">{session.title || '新对话'}</span>
+                        {scopeLabel ? <span className="session-scope">{scopeLabel}</span> : null}
+                        {busy ? <span className="session-busy-dot" title="生成中" /> : null}
+                      </span>
+                      <span className="session-time">
+                        {formatTime(session.updated_at || session.created_at)}
+                      </span>
+                    </span>
+                  </button>
                   <button
                     className="session-more"
                     type="button"
@@ -258,11 +248,11 @@ export function SessionSidebar({
         </div>
 
         <div className="sidebar-utilities">
-          <section className="sidebar-section skill-panel" aria-label="技能">
-            <div className="sidebar-section-head">
-              <span>技能</span>
+          <details className="sidebar-section skill-panel">
+            <summary className="sidebar-section-head">
+              <span><Wrench size={15} /> 技能</span>
               <strong>{skills.length}</strong>
-            </div>
+            </summary>
             <div className="skill-toolbar">
               <button className="skill-add-btn" type="button" onClick={onOpenSkillModal}>
                 <Wrench size={14} />
@@ -283,11 +273,11 @@ export function SessionSidebar({
                 <div className="skill-empty">暂无技能</div>
               )}
             </div>
-          </section>
+          </details>
         </div>
-      </aside>
-      <div className={`sidebar-backdrop${open ? ' open' : ''}`} aria-hidden="true" onClick={onCloseMobile} />
-    </>
+      </div>
+      <div className={`sidebar-backdrop${open ? ' open' : ''}`} aria-hidden="true" onClick={dismiss} />
+    </div>
   );
 }
 

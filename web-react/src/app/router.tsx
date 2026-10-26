@@ -10,12 +10,23 @@ export const routes: RouteObject[] = [
   {
     element: <ProtectedRoute />,
     children: [
-      { path: '/', element: <HomePage /> },
+      {
+        element: <HomePage />,
+        children: [
+          { path: '/', element: null },
+          { path: '/home', element: null },
+          { path: '/home/items', element: null },
+          { path: '/home/tasks', element: null },
+          { path: '/home/more', element: null },
+          { path: '/home/reminders/:reminderId', element: null },
+        ],
+      },
       { path: '/chat', element: <ChatWorkspace /> },
       { path: '/sessions/:sessionId', element: <ChatWorkspace /> },
-      { path: '/sessions/:sessionId/tree', element: <ChatWorkspace initialTreeOpen /> },
-      { path: '/home', element: <HomePage /> },
-      { path: '/home/reminders/:reminderId', element: <HomePage /> },
+      {
+        path: '/sessions/:sessionId/tree',
+        element: <ChatWorkspace initialTreeOpen />,
+      },
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/settings', element: <ChatWorkspace initialModal="settings" /> },
       { path: '/plugins', element: <ChatWorkspace initialModal="plugins" /> },

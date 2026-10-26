@@ -43,29 +43,15 @@ const isEmptyBranchPlaceholder = (message: Message): boolean =>
   !message.attachments?.length &&
   Boolean(message.node_id && message.parent_id);
 
-function LlmHeader({
-  iteration,
-  model = 'model',
-  messageCount = 0,
-  stateText = 'done',
-  done = true,
-}: {
-  iteration: number;
-  model?: string;
-  messageCount?: number;
-  stateText?: string;
-  done?: boolean;
-}) {
+function AssistantHeader({ iteration, done = true }: { iteration: number; done?: boolean }) {
   return (
     <div className={`llm-req-header${done ? ' done' : ''}`}>
-      <span className="req-tag">LLM</span>
-      <span className="req-iter">#{iteration}</span>
-      <span className="req-model">{model}</span>
-      <span className="req-msgs">{messageCount} msgs</span>
-      <span className="req-state">
-        <span className="dot" />
-        <span className="req-state-text">{stateText}</span>
-      </span>
+      <span className="req-tag">Agent</span>
+      {!done ? <span className="req-state"><span className="dot" />正在回复</span> : null}
+      <details className="message-run-info">
+        <summary>回复详情</summary>
+        <span>处理步骤 {iteration} · {done ? '回复已完成' : '正在回复'}</span>
+      </details>
     </div>
   );
 }
@@ -117,6 +103,8 @@ function BranchAction({
 function ToolCard({ iteration, command, output = '', success = null, returnCode = null, running = false, badge = 'SHELL' }: ToolCardProps) {
   const resolved = success ?? (returnCode == null ? null : Number(returnCode) === 0);
   const text = output || '';
+  const toolName = command.split(/\s/)[0];
+  const label = ({ family_task_get: '查询事项', family_task_list: '查看事项', family_timed_memo_create: '记录日程', family_undated_memo_create: '记录备忘' } as Record<string, string>)[toolName] || '工具执行';
   const parts = [];
   if (returnCode != null) parts.push({ key: 'rc', value: String(returnCode), className: 'rc' });
   if (text) parts.push({ key: 'size', value: formatBytes(new Blob([text]).size), className: '' });
@@ -125,33 +113,28 @@ function ToolCard({ iteration, command, output = '', success = null, returnCode 
     <div className="message-row tool-call-row">
       <div className={`tool-call-card${running ? ' running' : ''}${resolved === false ? ' failure' : ''}${resolved === true ? ' success' : ''}`}>
         <div className="tool-call-head">
-          <span className="tool-badge">{badge}</span>
+          <span className="tool-badge">{badge === 'TOOL' ? '工具' : badge}</span>
           <span className="tool-iter">#{iteration}</span>
           <span className="tool-status">
             <span className="dot" />
-            <span className="tool-status-text">{running ? 'running' : resolved === false ? 'failed' : 'done'}</span>
+            <span className="tool-status-text">{running ? '处理中' : resolved === false ? '执行失败' : resolved === true ? '执行成功' : '已返回'}</span>
           </span>
         </div>
-        <div className="tool-call-command">{command}</div>
-        {text ? (
-          <div className="tool-call-output-wrap open">
-            <button type="button" className="tool-call-output-toggle">
-              <span className="toggle-label">output</span>
-              <span className="caret">▾</span>
-            </button>
-            <pre className="tool-call-output">{text}</pre>
-          </div>
-        ) : null}
-        {parts.length ? (
-          <div className="tool-call-meta">
-            {parts.map((part) => (
-              <span key={part.key}>
-                <span className="meta-key">{part.key}</span>
-                <span className={`meta-val ${part.className}`}>{part.value}</span>
-              </span>
-            ))}
-          </div>
-        ) : null}
+        <details className="tool-execution-details">
+          <summary>{label} · 查看执行详情</summary>
+          <div className="tool-call-command">{command}</div>
+          {text ? <pre className="tool-call-output">{text}</pre> : null}
+          {parts.length ? (
+            <div className="tool-call-meta">
+              {parts.map((part) => (
+                <span key={part.key}>
+                  <span className="meta-key">{part.key}</span>
+                  <span className={`meta-val ${part.className}`}>{part.value}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </details>
       </div>
     </div>
   );
@@ -160,14 +143,13 @@ function ToolCard({ iteration, command, output = '', success = null, returnCode 
 function IterationDivider({ iteration }: { iteration: number }) {
   return (
     <div className="iteration-divider">
-      <span>iteration #{iteration}</span>
+      <span>处理步骤 {iteration}</span>
     </div>
   );
 }
 
 function MessageRow({
   message,
-  index,
   iteration,
   label,
   showHeader,
@@ -176,7 +158,6 @@ function MessageRow({
   branchCreationLocked,
 }: {
   message: Message;
-  index: number;
   iteration: number;
   label?: string;
   showHeader?: boolean;
@@ -190,18 +171,29 @@ function MessageRow({
   const nodeId = message.node_id;
   const highlightClass = contextNodes.has(nodeId || '') ? ' context-highlight context-highlight-full' : '';
 
+  if (view.role === 'process' || view.role === 'protocol') {
+    return (
+      <div className={`message-row ${view.role}-row${highlightClass}`} data-node-id={nodeId || undefined}>
+        <details className="chat-process-record">
+          <summary>{view.role === 'process' ? '处理记录' : '通信记录'}</summary>
+          <div className={`message ${view.role}`}><MessageContent message={message} /></div>
+        </details>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`message-row ${view.role}-row${highlightClass}`}
       data-node-id={nodeId || undefined}
       data-branchable={isFinal && nodeId ? 'true' : undefined}
     >
-      {showHeader ? <LlmHeader iteration={iteration} messageCount={index} /> : <div className="msg-label">{label || view.label}</div>}
+      {showHeader ? <AssistantHeader iteration={iteration} /> : <div className="msg-label">{label || (view.role === 'user' ? '你' : view.label)}</div>}
       {view.flow ? <ProtocolFlow flow={view.flow} /> : null}
       <div className={`message ${view.role}`}>
         <MessageContent message={message} />
       </div>
-      {formatUsage(message.usage) ? <div className="msg-usage">{formatUsage(message.usage)}</div> : null}
+      {formatUsage(message.usage) ? <details className="msg-usage"><summary>用量详情</summary><span>{formatUsage(message.usage)}</span></details> : null}
       {isFinal ? (
         <BranchAction
           nodeId={nodeId}
@@ -240,7 +232,8 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
         let success: boolean | null = null;
         if (resultMessage?.content) {
           try {
-            success = JSON.parse(resultMessage.content).status === 'success';
+            const result = JSON.parse(resultMessage.content);
+            success = result.status === 'success' ? true : ['error', 'failed'].includes(result.status) ? false : null;
           } catch {
             success = null;
           }
@@ -269,7 +262,6 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
         <MessageRow
           key={`${msg.node_id || index}-assistant`}
           message={msg}
-          index={index}
           iteration={iteration}
           showHeader
           onCreateBranch={onCreateBranch}
@@ -284,7 +276,6 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
       <MessageRow
         key={`${msg.node_id || index}-message`}
         message={msg}
-        index={index}
         iteration={iteration}
         onCreateBranch={onCreateBranch}
         branchActionStates={branchActionStates}
@@ -324,7 +315,7 @@ export function RunningToolCard({ iteration, command }: { iteration: number; com
 export function ProcessRow({ title, detail }: { title: string; detail?: string }) {
   return (
     <div className="message-row process-row">
-      <div className="msg-label">// Model Process</div>
+      <div className="msg-label">处理记录</div>
       <div className="message process">{detail ? `${title}\n${detail}` : title}</div>
     </div>
   );
@@ -333,7 +324,7 @@ export function ProcessRow({ title, detail }: { title: string; detail?: string }
 export function StreamingAssistantRow({ iteration, content }: { iteration: number; content: string }) {
   return (
     <div className="message-row assistant-row streaming-row">
-      <LlmHeader iteration={iteration} stateText="streaming" done={false} />
+      <AssistantHeader iteration={iteration} done={false} />
       <div className="message assistant streaming">
         <div className="message-text">{content}</div>
       </div>

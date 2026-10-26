@@ -303,3 +303,34 @@ def test_household_only_chat_can_still_be_shared(api, monkeypatch):
         'invocation': invocation('household'), 'request_id': 'public-chat'})
     assert response.status_code == 200
     assert clients[0].patch(f"/api/sessions/{session['id']}/share", json={'scope': 'all'}).status_code == 200
+
+
+def test_home_object_context_resolves_real_identity_and_preserves_permissions(api):
+    clients, service, users, clock = api
+    alice, bob, _ = clients
+    task, _ = create((service, users, clock), items=[{'title': '真实私人标题'}])
+    sid = alice.post('/api/sessions').json()['id']
+    body = {'message': '处理这件事', 'object_context': {'type': 'family_task', 'id': task['id'], 'title': '伪造标题', 'source': '/home/tasks'}}
+    context = web_app._task_chat_context(body, users[0], sid)
+    assert context['task_ref']['task_id'] == task['id']
+    assert context['object_context']['title'] == '真实私人标题'
+    with pytest.raises(TaskError):
+        web_app._task_chat_context(body, users[1], sid)
+    # A selected private task must not be put into a shared conversation.
+    assert alice.patch(f'/api/sessions/{sid}/share', json={'scope': 'all'}).status_code == 200
+    with pytest.raises(TaskError, match='private_task_in_shared_session'):
+        web_app._task_chat_context(body, users[0], sid)
+    stock = service.members.home.add_inventory_item('medicine', {'name': '真实药品', 'quantity': 2}, users[0])['item']
+    body = {'message': '处理物品', 'object_context': {'type': 'inventory_item', 'id': stock['id'], 'location': 'medicine', 'title': '错误物品'}}
+    assert web_app._task_chat_context(body, users[0], sid)['object_context']['title'] == '真实药品'
+    body['object_context']['location'] = 'fridge'
+    with pytest.raises(TaskError, match='inventory_item_not_found'):
+        web_app._task_chat_context(body, users[0], sid)
+
+
+def test_inventory_clock_metadata_uses_household_timezone(api):
+    clients, service, _, clock = api
+    doc = clients[0].get('/api/home/inventory/medicine').json()
+    assert doc['today'] == service.members.home._now().date().isoformat()
+    assert doc['timezone'] == 'Asia/Shanghai'
+    assert doc['as_of']

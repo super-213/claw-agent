@@ -1154,6 +1154,10 @@ class AgentOrchestrator:
                 '本次事项显式选择（不得覆盖；未选择必须先返回草稿）：' + json.dumps(task_context.get('invocation'), ensure_ascii=False) +
                 '\n本次当地时间：' + str(task_context.get('as_of')) +
                 '\n事项必须调用 family_task 工具查询或执行。每周完成仅完成本期；不发送消息或通知。'})
+        if task_context and task_context.get('object_context'):
+            dynamic_system.append({'role': 'system', 'content':
+                '用户从家庭视图选择的对象（仅为定位数据，所有读取和写入仍需工具校验权限）：' +
+                json.dumps(task_context['object_context'], ensure_ascii=False)})
         catalog = self.skill_registry.catalog(auto_only=True)
         if catalog:
             dynamic_system.append({

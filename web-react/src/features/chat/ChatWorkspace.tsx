@@ -1,6 +1,6 @@
 import { TaskDraftChooser, type TaskDraft } from '../tasks/TaskDraftChooser';
 import { requestId, type TaskInvocation } from '../../api/tasks';
-import { ArrowLeft, GitFork } from 'lucide-react';
+import { ArrowLeft, GitFork, Info } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
@@ -41,6 +41,7 @@ export function ChatWorkspace({
   active = true,
   requestedSessionId = null,
   draftSeed = null,
+  objectContext = null,
   onClose,
   onSessionChange,
 }: {
@@ -50,6 +51,7 @@ export function ChatWorkspace({
   active?: boolean;
   requestedSessionId?: string | null;
   draftSeed?: DraftSeed | null;
+  objectContext?: import('../../api/chat').ChatObjectContext | null;
   onClose?: () => void;
   onSessionChange?: (sessionId: string) => void;
 }) {
@@ -405,7 +407,7 @@ export function ChatWorkspace({
     };
 
     try {
-      await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, invocation, requestId: requestId(), signal: abortController.signal }, handleEvent);
+      await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, invocation, requestId: requestId(), objectContext: objectContext || undefined, signal: abortController.signal }, handleEvent);
       while (approvalState.pending) {
         const decision = approvalState.pending;
         approvalState.pending = null;
@@ -491,7 +493,7 @@ export function ChatWorkspace({
   const branchSummary = tree ? `${tree.nodes.length} 节点` : '未载入';
 
   return (
-    <div className={`app${standalone ? '' : ' chat-overlay-app'}`}>
+    <div className={`app chat-workspace ${standalone ? 'chat-standalone' : 'chat-overlay-app'}`}>
       {standalone ? (
         <SessionSidebar
           open={mobileSidebarOpen}
@@ -530,22 +532,19 @@ export function ChatWorkspace({
             ) : (
               <button className="chat-overlay-back" type="button" onClick={onClose} aria-label="返回家庭工作台">
                 <ArrowLeft size={18} />
-                <span>工作台</span>
+                <span>首页</span>
               </button>
             )}
             <div className="topbar-heading">
-              <div className="topbar-eyebrow">{standalone ? '本地 Agent / 当前会话' : '家庭工作台 / 对话覆盖层'}</div>
+              <div className="topbar-eyebrow">{standalone ? '家庭 AI 助手' : objectContext ? `关于：${objectContext.title}` : '家庭 Agent'}</div>
               <h1 className="topbar-title">{topbarTitle}</h1>
             </div>
           </div>
           <div className="topbar-meta">
-            <div className="meta-badge">
-              <span>{tokenSummary}</span>
-            </div>
-            <div className="meta-badge branch-meta">
-              <GitFork size={14} />
-              <span>{branchSummary}</span>
-            </div>
+            <details className="chat-session-info">
+              <summary aria-label="会话详情" title="会话详情"><Info size={18} /></summary>
+              <div className="chat-session-info-body"><strong>会话详情</strong><span>{tokenSummary}</span><span>分支树 · {branchSummary}</span></div>
+            </details>
             <div className={`status-badge${currentBusy ? ' busy' : ''}`}>
               <div className="dot" />
               <span>{currentBusy ? '处理中...' : statusText}</span>

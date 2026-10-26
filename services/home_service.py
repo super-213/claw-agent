@@ -91,8 +91,10 @@ class HomeDataService:
                     if item.get("expires_at") and self._parse_date(str(item["expires_at"])) <= cutoff
                 ]
             result["locations"][loc] = {**data, "items": items}
+        clock = {"today": self._now().date().isoformat(), "timezone": self.timezone_name, "as_of": self._now_iso()}
+        result.update(clock)
         if location:
-            return result["locations"][location]
+            return {**result["locations"][location], **clock}
         return result
 
     def expiring_items(self, *, days: int = 3, location: str | None = None) -> dict[str, Any]:

@@ -98,3 +98,32 @@ describe('MessageList auto-scroll behavior', () => {
     view.unmount();
   });
 });
+
+
+it('keeps execution arguments and output behind an accessible disclosure', () => {
+  const view = renderMessageList([
+    { role: 'assistant', content: '', node_id: 'call', tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'family_task_get', arguments: '{"task_id":"t"}' } }] },
+    { role: 'tool', content: '{"status":"success","output":{"title":"真实事项"}}', tool_call_id: 'call-1', name: 'family_task_get' },
+  ]);
+  const disclosure = view.container.querySelector('details')!;
+  expect(disclosure.open).toBe(false);
+  expect(disclosure.querySelector('summary')?.textContent).toContain('查询事项');
+  expect(disclosure.querySelector('pre')?.textContent).toContain('真实事项');
+  disclosure.open = true;
+  expect(disclosure.open).toBe(true);
+  view.unmount();
+});
+
+it('folds process records while keeping their content and the assistant reply accessible', () => {
+  const view = renderMessageList([
+    { role: 'process', content: '已完成事项查询', node_id: 'process-1' },
+    { role: 'assistant', content: '**周末清单**已经整理好了。', node_id: 'assistant-1' },
+  ]);
+  const record = view.container.querySelector<HTMLDetailsElement>('.chat-process-record')!;
+  expect(record.open).toBe(false);
+  expect(record.querySelector('summary')?.textContent).toBe('处理记录');
+  expect(record.textContent).toContain('已完成事项查询');
+  expect(view.container.querySelector('[data-node-id="process-1"]')).toBeTruthy();
+  expect(view.container.querySelector('.message.final strong')?.textContent).toBe('周末清单');
+  view.unmount();
+});

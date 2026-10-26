@@ -123,6 +123,7 @@ class ChatRequest(BaseModel):
     invocation: dict[str, Any] | None = None
     request_id: str | None = None
     task_ref: dict[str, Any] | None = None
+    object_context: dict[str, Any] | None = None
 
 
 class RunApprovalRequest(BaseModel):
@@ -1941,13 +1942,31 @@ def _task_chat_context(payload, user, session_id):
         if any(m['label'] not in {current_members[m['member_id']]['display_name'], *current_members[m['member_id']].get('aliases', [])}
                for m in invocation.get('mentions', [])):
             raise TaskError('member_label_changed', '成员姓名已变化，请重新选择标签。')
+    object_context = payload.get('object_context')
+    if object_context:
+        if not isinstance(object_context, dict) or object_context.get('type') not in {'family_task', 'inventory_item'} or not isinstance(object_context.get('id'), str):
+            raise TaskError('invalid_object_context')
+        if object_context['type'] == 'family_task':
+            selected = family_tasks.get(user, object_context['id'])['task']
+            shared = (session.get('sharing') or {}).get('scope', 'private') != 'private' or session.get('owner_user_id') != user['id']
+            if shared and selected['space_type'] == 'personal':
+                raise TaskError('private_task_in_shared_session', '请在个人会话中处理私人事项。')
+            payload['task_ref'] = {'task_id': selected['id']}
+            object_context = {**object_context, 'title': selected['title']}
+        else:
+            inventory = home_service.list_inventory(location=object_context.get('location') or 'fridge')
+            selected = next((item for item in inventory['items'] if item['id'] == object_context['id']), None)
+            if not selected:
+                raise TaskError('inventory_item_not_found')
+            object_context = {**object_context, 'title': selected['name'], 'location': selected['location']}
+        object_context = {key: object_context.get(key) for key in ('type', 'id', 'title', 'location', 'source')}
     task_ref = payload.get('task_ref')
     if task_ref:
         if not isinstance(task_ref, dict) or not task_ref.get('task_id'):
             raise TaskError('invalid_task_ref')
         family_tasks.get(user, task_ref['task_id'])
     return {'user_id': user['id'], 'session_id': session_id,
-            'branch_id': branch_id, 'invocation': invocation, 'task_ref': task_ref,
+            'branch_id': branch_id, 'invocation': invocation, 'task_ref': task_ref, 'object_context': object_context,
             'request_id': payload.get('request_id') or uuid.uuid4().hex,
             'raw_input': raw, 'as_of': family_tasks.now().isoformat(),
             'explicit_recurrence_update': bool(re.search(r'(这件事|改|设|变|重复|记录).{0,30}每周|每周.{0,30}(改|设|记录)', raw)),
@@ -1977,7 +1996,7 @@ async def chat(
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
         task_context = _task_chat_context(payload_data, user, session_id)
         auto_skills: list[str] = []
-        if not task_context["invocation"] and not images and not attachments:
+        if not task_context["invocation"] and not task_context.get("object_context") and not images and not attachments:
             route = await intent_router.route(user_message, user, session_id)
             if route.action == "direct_response" and route.reply:
                 messages = await asyncio.to_thread(
@@ -2294,7 +2313,7 @@ async def chat_stream(
 
     task_context = _task_chat_context(payload_data, user, session_id)
     auto_skills: list[str] = []
-    if not task_context["invocation"] and not images and not attachments:
+    if not task_context["invocation"] and not task_context.get("object_context") and not images and not attachments:
         route = await intent_router.route(user_message, user, session_id)
         if route.action == "direct_response" and route.reply:
             async def direct_intent_stream():

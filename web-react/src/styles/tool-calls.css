@@ -246,3 +246,6 @@
   flex: 1;
   height: 1px;
 }
+
+.tool-execution-details > summary { cursor: pointer; min-height: 44px; padding: 10px 14px; font-size: 13px; overflow-wrap: anywhere; }
+.tool-execution-details .tool-call-output { display: block; max-height: 320px; overflow: auto; margin: 0; }

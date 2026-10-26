@@ -50,8 +50,8 @@ export function MessageList({
             <Bot size={25} />
           </div>
           <div className="empty-copy">
-            <strong>Claw Agent</strong>
-            <span>输入任务，开始新的工作流。</span>
+            <strong>今天，有什么需要帮忙？</strong>
+            <span>记下一件事、安排日程，或问问家里的物品。</span>
           </div>
         </div>
         {visibleMessages.length ? (

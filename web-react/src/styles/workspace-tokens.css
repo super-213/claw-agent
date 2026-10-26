@@ -1,0 +1,48 @@
+/* 010: functional colors identify areas; state colors describe real outcomes. */
+:root {
+  --home-page: #f8f5ec;
+  --home-surface: #fff;
+  --home-ink: #242424;
+  --home-muted: #62615e;
+  --home-line: #dedbd2;
+  --home-agent: #c7e9ff;
+  --home-schedule: #ffe48d;
+  --home-calendar: #e6f4d6;
+  --home-nav: #eef6e6;
+  --home-knowledge: #d8c8ff;
+  --home-success: #b8e8b0;
+  --home-danger: #a02d21;
+  --home-focus: #235fba;
+  --home-shadow: 4px 4px 0 #242424;
+  --home-radius: 12px;
+  /* Structural outlines stay distinct from quiet list separators. */
+  --home-outline: #242424;
+  --home-border: 3px;
+  --home-control-border: 2px;
+  --home-control-shadow: 3px 3px 0 var(--home-outline);
+  --home-widget-today: #f0f9a8;
+  --home-widget-fridge: #c8f3c2;
+  --home-widget-medicine: #e4cdfa;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --home-page: #191a1c;
+    --home-surface: #252629;
+    --home-ink: #f4f1e8;
+    --home-muted: #c2bfb8;
+    --home-line: #494a4d;
+    --home-agent: #213e50;
+    --home-schedule: #49412b;
+    --home-calendar: #2b372c;
+    --home-nav: #263127;
+    --home-knowledge: #44365d;
+    --home-success: #294d31;
+    --home-danger: #ffb6a7;
+    --home-focus: #95caff;
+    --home-shadow: 4px 4px 0 #050505;
+    --home-outline: #d8d4c8;
+    --home-widget-today: #49482a;
+    --home-widget-fridge: #2c4432;
+    --home-widget-medicine: #44365d;
+  }
+}
