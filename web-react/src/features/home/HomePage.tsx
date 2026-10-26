@@ -30,6 +30,7 @@ import { ScheduleCalendar } from './ScheduleCalendar';
 import { HomeDialog } from '../../components/ui/HomeDialog';
 import type { WidgetSize } from './widgetLayout';
 import { AttentionList } from './AttentionList';
+import { KnowledgeView } from '../knowledge/KnowledgeView';
 import './home.css';
 
 type ObjectContext = {
@@ -46,6 +47,10 @@ export function HomePage() {
   const [params, setParams] = useSearchParams();
   const view = location.pathname.includes('/items')
     ? 'items'
+    : location.pathname.includes('/library')
+      ? 'library'
+      : location.pathname.includes('/memories')
+        ? 'memories'
     : location.pathname.includes('/tasks')
       ? 'tasks'
       : location.pathname.includes('/more')
@@ -133,7 +138,7 @@ export function HomePage() {
   }, []);
   useEffect(() => {
     if (view === 'tasks') setTasksMounted(true);
-    if (view === 'tasks' || view === 'items') {
+    if (view === 'tasks' || view === 'items' || view === 'library' || view === 'memories') {
       rememberFamilySection(currentUser?.id || 'guest', view);
     }
   }, [currentUser?.id, view]);
@@ -316,7 +321,7 @@ export function HomePage() {
                 </>
               ) : (
                 <h1>
-                  {{ items: '家庭', tasks: '家庭', more: '更多' }[view]}
+                  {{ items: '家庭', tasks: '家庭', library: '家庭', memories: '家庭', more: '更多' }[view]}
                 </h1>
               )}
             </div>
@@ -333,7 +338,7 @@ export function HomePage() {
               ).slice(0, 1)}
             </button>
           </header>
-          {(view === 'tasks' || view === 'items') && (
+          {(view === 'tasks' || view === 'items' || view === 'library' || view === 'memories') && (
             <FamilyNav section={view} onOpen={go} />
           )}
           {isToday && (
@@ -412,6 +417,7 @@ export function HomePage() {
             </div>
           )}
           {view === 'items' && <InventoryView onAgent={itemAgent} showCreateAction={false} />}
+          {(view === 'library' || view === 'memories') && <KnowledgeView key={`${currentUser?.id}-${view}`} collection={view === 'library' ? 'documents' : 'records'} />}
           {tasksMounted && (
             <div hidden={view !== 'tasks'}>
               <TaskBoard

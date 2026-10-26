@@ -23,7 +23,7 @@ export function AgentCommandBar({
       <form onSubmit={onSubmit}>
         <input
           aria-label="和家庭 Agent 对话"
-          placeholder="记一件事，或问问家里的安排…"
+          placeholder="看张图、读份文件，或记住家里的事…"
           value={draft}
           onChange={(e) => onChange(e.target.value)}
         />

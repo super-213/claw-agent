@@ -16,11 +16,12 @@ export function HomeNav({ view, mobile = false, onLeave }: {
   mobile?: boolean;
   onLeave?: () => void;
 }) {
-  const activeView = view === 'items' || view === 'tasks' ? 'family' : view;
+  const familyView = ['items', 'tasks', 'library', 'memories'].includes(view);
+  const activeView = familyView ? 'family' : view;
   const userId = useAppStore((state) => state.currentUser?.id || 'guest');
   const links = menu.map((item) => (
     <Link key={item.path} to={item.view === 'family'
-      ? (view === 'items' || view === 'tasks' ? `/home/${view}` : familyPath(userId))
+      ? (familyView ? `/home/${view}` : familyPath(userId))
       : item.path}
       aria-current={activeView === item.view ? 'page' : undefined} onClick={onLeave}>
       <item.icon size={mobile ? 20 : 21} />

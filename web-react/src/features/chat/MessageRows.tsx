@@ -104,7 +104,7 @@ function ToolCard({ iteration, command, output = '', success = null, returnCode 
   const resolved = success ?? (returnCode == null ? null : Number(returnCode) === 0);
   const text = output || '';
   const toolName = command.split(/\s/)[0];
-  const label = ({ family_task_get: '查询事项', family_task_list: '查看事项', family_timed_memo_create: '记录日程', family_undated_memo_create: '记录备忘' } as Record<string, string>)[toolName] || '工具执行';
+  const label = ({ family_task_get: '查询事项', family_task_list: '查看事项', family_timed_memo_create: '记录日程', family_undated_memo_create: '记录备忘', knowledge_search: '查找资料与记忆', knowledge_get: '读取记录', knowledge_source: '核对来源', knowledge_document_save: '保存生活资料', knowledge_record_save: '记住生活信息', knowledge_update: '更新记录' } as Record<string, string>)[toolName] || '工具执行';
   const parts = [];
   if (returnCode != null) parts.push({ key: 'rc', value: String(returnCode), className: 'rc' });
   if (text) parts.push({ key: 'size', value: formatBytes(new Blob([text]).size), className: '' });

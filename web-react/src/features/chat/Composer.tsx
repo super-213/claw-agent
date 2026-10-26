@@ -153,7 +153,7 @@ export function Composer({
             aria-controls={menuId}
             aria-activedescendant={activeOptionId}
             className="composer-input"
-            placeholder="输入 / 空格选择日程或备忘，@ 空格选择成员"
+            placeholder="发张图片、问问文件，或说“帮我记住…”"
             rows={1}
             enterKeyHint="enter"
             value={draft}
@@ -167,6 +167,7 @@ export function Composer({
           />
           <button
             className="send-btn"
+            aria-label="发送"
             title="发送 (Enter)"
             type="button"
             disabled={disabled || uploading || (!draft.trim() && !media.length)}

@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react';
 import type { Message, MessageMedia } from '../../api/types';
 import { formatBytes, imageSourceFrom, isImageAttachment, messageImageAlt, safeImageSrc } from '../../utils/format';
 import { markdownToHtml } from '../../utils/markdown';
+import { SaveAttachment } from '../knowledge/SaveAttachment';
 
 const collectMessageImages = (msg: Message) => {
   const images = Array.isArray(msg.images) ? msg.images : [];
@@ -70,6 +71,9 @@ export function MessageContent({ message }: { message: Message }) {
           ))}
         </div>
       ) : null}
+      {message.role === 'user' && [...(message.images || []), ...(message.attachments || [])]
+        .filter((media): media is MessageMedia => typeof media !== 'string')
+        .map((media, index) => <SaveAttachment key={`${media.path || media.url}-${index}`} media={media} message={message} />)}
     </>
   );
 }

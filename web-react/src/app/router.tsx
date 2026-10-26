@@ -20,6 +20,8 @@ export const routes: RouteObject[] = [
           { path: '/home/items', element: null },
           { path: '/home/tasks', element: null },
           { path: '/home/more', element: null },
+          { path: '/home/library', element: null },
+          { path: '/home/memories', element: null },
           { path: '/home/reminders/:reminderId', element: null },
         ],
       },

@@ -2,12 +2,13 @@ import { Navigate } from 'react-router-dom';
 import { createElement } from 'react';
 import { useAppStore } from '../../stores/appStore';
 
-export type FamilySection = 'tasks' | 'items';
+export type FamilySection = 'tasks' | 'items' | 'library' | 'memories';
 const storageKey = (userId: string) => `claw.home.family.v1.${userId}`;
 
 export function familyPath(userId: string) {
   try {
-    return localStorage.getItem(storageKey(userId)) === 'items' ? '/home/items' : '/home/tasks';
+    const section = localStorage.getItem(storageKey(userId));
+    return section && ['items', 'library', 'memories'].includes(section) ? `/home/${section}` : '/home/tasks';
   } catch {
     return '/home/tasks';
   }

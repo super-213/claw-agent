@@ -51,7 +51,7 @@ export function MessageList({
           </div>
           <div className="empty-copy">
             <strong>今天，有什么需要帮忙？</strong>
-            <span>记下一件事、安排日程，或问问家里的物品。</span>
+            <span>发张图片、读份说明书，或记住家里的事。</span>
           </div>
         </div>
         {visibleMessages.length ? (

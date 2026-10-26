@@ -63,6 +63,9 @@ class HybridIntentRouter:
         if not normalized:
             return IntentRouteResult(action="general_chat", source="empty")
 
+        if re.search(r'说明书|资料|记忆|保存|存一下|之前|上次|备用钥匙|滤芯', normalized):
+            return IntentRouteResult(action='general_chat', source='knowledge_tools')
+
         if re.search(r'^/ |备忘|日程|清单|事项|记下|记住|每周|提醒|告诉.+要|这件事|做完|标记.*完成', normalized):
             return IntentRouteResult(action='general_chat', source='family_task_tools')
 

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { BarChart3, Bot, Home, LogOut, Menu, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
+import { BarChart3, BookOpen, Brain, Bot, Home, LogOut, Menu, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { SessionSummary, Skill, User } from '../../api/types';
 import { formatTime } from '../../utils/format';
@@ -120,6 +120,8 @@ export function SessionSidebar({
                   <small>{currentUser?.role || 'guest'}</small>
                 </div>
                 <div className="account-action-grid" aria-label="账号操作">
+                  <Link className="dashboard-btn" to="/home/library" onClick={() => setAccountMenuOpen(false)}><BookOpen size={14} /><span>资料</span></Link>
+                  <Link className="dashboard-btn" to="/home/memories" onClick={() => setAccountMenuOpen(false)}><Brain size={14} /><span>记忆</span></Link>
                   <Link className="dashboard-btn" to="/home/family" title="家庭信息" onClick={() => setAccountMenuOpen(false)}>
                     <Home size={14} />
                     <span>家庭</span>

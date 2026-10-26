@@ -63,6 +63,18 @@ bash ~/claw-agent-new/deploy/pi-update.sh
 前端构建产物可以跨平台复制，Python 依赖必须在树莓派上安装。
 
 
+## 011 生活资料与记忆
+
+资料与记忆首次使用时创建在 `HOME_DATA_DIR/knowledge/`，包含 `knowledge.json`、锁文件、日内元数据备份与 `blobs/` 原文件副本。部署更新继续保留整个 `.data` 和 `files`；自定义家庭目录也必须一起备份。无需迁移旧事项和旧工作记忆，新资料由用户明确保存。
+
+图片和扫描页面复用已配置模型服务及视觉模型选择，需要安装 `requirements.txt` 中的 Pillow、PyMuPDF 和办公文档依赖。单次消息附件提取限制与长期资料索引限制相互独立；处理失败或达到上限会在资料详情标明，可以重新处理。
+
+用户不需要绑定家庭成员即可使用个人资料和记忆；共享给家庭前需要管理员完成既有的显式成员绑定。资料副本通过认证的 `/api/knowledge/documents/{id}/file` 下载，不要把 `HOME_DATA_DIR` 配置为静态目录。
+
+删除和替换会删除资料库中对应的旧文件副本，历史元数据备份并不包含可恢复的文件副本。完整恢复应使用同一时点的整个 `knowledge/` 目录备份；恢复旧备份会恢复当时的共享范围与历史内容，恢复后需核对。删除不清除原上传文件、已有聊天或离线备份。
+
+浏览器验收运行 `python scripts/validate_knowledge.py`，使用临时账号、临时存储和模型桩；真实模型验收分别运行 `python scripts/evaluate_knowledge.py` 与 `python scripts/evaluate_knowledge_chat.py`，使用合成材料并消耗当前模型服务额度。
+
 ## 009 家庭事项上线与回滚
 
 当前家庭产品模式不主动发送通知。配置默认值为：

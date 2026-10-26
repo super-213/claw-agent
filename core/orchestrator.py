@@ -28,6 +28,7 @@ from .context_compressor import ContextCompressor
 from services.llm_client import LLMClient
 from skills.registry import SkillRegistry
 from utils.parser import InputParser
+from services.knowledge_context import has_knowledge, fresh_knowledge_context
 
 
 class AgentOrchestrator:
@@ -455,6 +456,9 @@ class AgentOrchestrator:
                 "finish_reason": response.finish_reason,
             })
 
+            finalize = getattr(self, 'knowledge_answer_finalizer', None)
+            if finalize and not response.tool_calls and response.content.strip():
+                response.content = await asyncio.to_thread(finalize, response.content, messages)
             tool_payloads = [call.as_openai() for call in response.tool_calls]
             self.conversation.add_assistant_message(
                 response.content,
@@ -586,7 +590,7 @@ class AgentOrchestrator:
             ledger = dict(((self.run or {}).get("tool_ledger") or {}).get(call.id) or {})
             if ledger.get("fingerprint") and ledger.get("fingerprint") != fingerprint:
                 result = ToolResult(call.id, call.name, "error", error="tool_call_id_reused_with_different_arguments")
-            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and not call.name.startswith("family_"):
+            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and not call.name.startswith(("family_", "knowledge_")):
                 cached = ledger["result"]
                 result = ToolResult(
                     call_id=str(cached.get("call_id") or call.id),
@@ -1092,6 +1096,9 @@ class AgentOrchestrator:
     def _persist_working_memory(self, final_content: str) -> None:
         if not self.memory_store or not self.run or not final_content.strip():
             return
+        if has_knowledge(self.conversation.get_messages()):
+            # Library-derived facts have independent deletion, version and ACL lifecycles.
+            return
         goal = str(self.run.get("goal") or "").strip()
         content = f"目标：{goal[:1000]}\n结果：{final_content.strip()[:3000]}"
         try:
@@ -1131,6 +1138,7 @@ class AgentOrchestrator:
     async def _build_model_context(self) -> tuple[List[Dict[str, Any]], List[str]]:
         """构建模型请求上下文，并返回本轮 assistant 需要记录的上下文节点。"""
         context_node_ids: List[str] = []
+        knowledge_history = has_knowledge(self.conversation.get_messages())
         if (self.conversation.branch_engine is not None
                 and self.conversation.active_node_id is not None):
             branch_messages = self.conversation.branch_engine.build_context(
@@ -1139,14 +1147,26 @@ class AgentOrchestrator:
             context_node_ids = [
                 msg["node_id"] for msg in branch_messages if "node_id" in msg
             ]
-            if self.context_compressor:
+            if self.context_compressor and not knowledge_history:
                 messages = await self.context_compressor.build_messages_async(self.conversation)
             else:
                 messages = branch_messages
-        elif self.context_compressor:
+        elif self.context_compressor and not knowledge_history:
             messages = await self.context_compressor.build_messages_async(self.conversation)
         else:
             messages = self.conversation.get_messages()
+        if knowledge_history:
+            messages = fresh_knowledge_context(messages)
+            # Remove whole old turns to preserve native tool-call/result groups.
+            if self.context_compressor:
+                while not self.context_compressor._within_budget(messages):
+                    users = [i for i, m in enumerate(messages) if m.get('role') == 'user']
+                    if len(users) < 2:
+                        break
+                    messages = [m for m in messages[:users[1]] if m.get('role') == 'system'] + messages[users[1]:]
+            validate = getattr(self, 'knowledge_context_filter', None)
+            if validate:
+                messages = await asyncio.to_thread(validate, messages)
         dynamic_system: List[Dict[str, Any]] = []
         task_context = (self.run or {}).get('family_task_context') or self.family_task_context
         if task_context:
@@ -1169,7 +1189,7 @@ class AgentOrchestrator:
                     + "\n".join(f"- {row['summary']}" for row in catalog)
                 ),
             })
-        if self.memory_store and self.run:
+        if self.memory_store and self.run and not knowledge_history:
             session_id = str(self.run.get("session_id") or "")
             scopes = [("session", session_id)]
             if self.user_id and not (task_context or {}).get("shared"):

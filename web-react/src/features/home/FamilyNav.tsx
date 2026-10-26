@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ListTodo, Package, Plus } from 'lucide-react';
+import { BookOpen, Brain, ListTodo, Package, Plus } from 'lucide-react';
 import { HomeDialog } from '../../components/ui/HomeDialog';
 import type { FamilySection } from './familyNavigation';
 
@@ -27,10 +27,12 @@ export function FamilyNav({ section, onOpen }: {
         <Link to="/home/items" aria-current={section === 'items' ? 'page' : undefined}>
           <Package size={18} />物品
         </Link>
+        <Link to="/home/library" aria-current={section === 'library' ? 'page' : undefined}><BookOpen size={18} />资料</Link>
+        <Link to="/home/memories" aria-current={section === 'memories' ? 'page' : undefined}><Brain size={18} />记忆</Link>
       </nav>
-      <button type="button" className="home-primary" onClick={() => setAdding(true)}>
+      {(section === 'tasks' || section === 'items') && <button type="button" className="home-primary" onClick={() => setAdding(true)}>
         <Plus size={18} />添加
-      </button>
+      </button>}
       {adding && (
         <HomeDialog title="添加家庭记录" onClose={() => {
           setAdding(false);

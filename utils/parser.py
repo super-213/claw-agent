@@ -21,6 +21,9 @@ class InputParser:
     @staticmethod
     def needs_realtime_search(text: str) -> bool:
         """检测用户输入是否包含实时查询意图"""
+        if re.search(r'记录|资料|说明书|记住|钥匙|滤芯|上传|保修单', text) and not re.search(
+                r'天气|股价|汇率|新闻|热搜|价格|行情|官网|联网|上网|互联网|公开|网页|版本|发布', text):
+            return False
         return bool(InputParser._REALTIME_PATTERN.search(text))
     
     @staticmethod
