@@ -1,0 +1,72 @@
+/* Dark-only finishing rules; the reference-based light palette stays in place. */
+:root[data-theme="dark"] body {
+  background: var(--app-bg);
+}
+
+:root[data-theme="dark"] :is(input, textarea)::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .home-shell .home-primary {
+  background: var(--home-focus);
+  border-color: var(--home-focus);
+  color: var(--home-page);
+}
+
+:root[data-theme="dark"] .home-shell .home-primary:hover:not(:disabled) {
+  background: #bad5ec;
+  border-color: #bad5ec;
+}
+
+:root[data-theme="dark"] :is(.home-dialog, .home-widget.is-dragging) {
+  box-shadow: var(--home-shadow), 0 18px 48px #0005;
+}
+
+:root[data-theme="dark"] .chat-workspace :is(.message.user, .composer) {
+  border-color: var(--home-outline);
+}
+
+:root[data-theme="dark"] .chat-workspace .send-btn {
+  background: var(--home-focus);
+  border-color: var(--home-focus);
+  color: var(--home-page);
+  box-shadow: 2px 2px 0 var(--home-page);
+}
+
+:root[data-theme="dark"] :is(.modal-primary, .send-btn, .message.user) {
+  color: var(--app-bg);
+}
+
+/* Chat bubbles use tinted surfaces rather than the filled action color. */
+:root[data-theme="dark"] .chat-workspace .message.user {
+  color: var(--home-ink);
+}
+
+:root[data-theme="dark"] .dashboard-sidebar {
+  background: #1c2025;
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .dash-brand-mark {
+  background: var(--accent);
+  color: var(--app-bg);
+}
+
+:root[data-theme="dark"] .dash-brand-name {
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] :is(.dash-brand-sub, .freshness, .dash-nav-link) {
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .dash-nav-link.active {
+  background: #293b4b;
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] :is(.kpi-tile:first-child, .dashboard-priority-panel) {
+  background: linear-gradient(135deg, #293b4b, #252c35);
+  color: var(--text-primary);
+}

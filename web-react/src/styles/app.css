@@ -12,6 +12,7 @@
 @import './dashboard.css';
 @import '../features/chat/chat-workspace.css';
 @import '../features/pwa/pwa.css';
+@import './dark-theme.css';
 
 html,
 body,

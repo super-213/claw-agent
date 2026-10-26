@@ -21,15 +21,15 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0b0c0f;
-  --surface: rgba(27, 28, 32, 0.78);
-  --surface-solid: #1c1c1e;
-  --surface-muted: #242529;
-  --ink: #f5f5f7;
-  --ink-soft: #d1d1d6;
-  --ink-muted: #8e8e93;
-  --line: rgba(255, 255, 255, 0.1);
-  --line-strong: rgba(255, 255, 255, 0.18);
+  --page: var(--app-bg);
+  --surface: color-mix(in srgb, var(--surface-solid) 90%, transparent);
+  --surface-muted: #2b3037;
+  --ink: var(--text-primary);
+  --ink-soft: var(--text-secondary);
+  --ink-muted: var(--text-tertiary);
+  --line: var(--separator-soft);
+  --line-strong: var(--separator);
+  --teal: #93b9c3;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
 }
 

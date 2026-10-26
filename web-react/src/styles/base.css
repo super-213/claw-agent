@@ -52,28 +52,28 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --app-bg: #0f1715;
-  --surface: rgba(24, 36, 33, 0.78);
-  --surface-solid: #182421;
-  --surface-elevated: rgba(31, 48, 44, 0.92);
-  --surface-muted: #253633;
-  --text-primary: #f2f7f5;
-  --text-secondary: #b4c5c0;
-  --text-tertiary: #819691;
-  --separator: rgba(255, 255, 255, 0.13);
-  --separator-soft: rgba(255, 255, 255, 0.08);
-  --accent: #2dd4bf;
-  --success: #34d399;
-  --warning: #fb923c;
-  --danger: #ff453a;
-  --purple: #bf5af2;
-  --focus-ring: rgba(45, 212, 191, 0.28);
+  --app-bg: #17191c;
+  --surface: rgba(32, 35, 39, 0.9);
+  --surface-solid: #202327;
+  --surface-elevated: rgba(41, 45, 51, 0.97);
+  --surface-muted: #2b3037;
+  --text-primary: #eceef1;
+  --text-secondary: #b7bec8;
+  --text-tertiary: #9aa4b2;
+  --separator: #424a55;
+  --separator-soft: #343b44;
+  --accent: #a5c7e5;
+  --success: #9cc7ae;
+  --warning: #dfbf88;
+  --danger: #f0a49c;
+  --purple: #bcb0d9;
+  --focus-ring: rgba(165, 199, 229, 0.5);
   --shadow-popover: 0 20px 54px rgba(0, 0, 0, 0.42);
   --shadow-float: 0 18px 46px rgba(0, 0, 0, 0.34);
   --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --bg-1: #151517;
-  --ink-soft: #d1d1d6;
-  --line-strong: rgba(255, 255, 255, 0.18);
+  --bg-1: #1c1f23;
+  --ink-soft: var(--text-secondary);
+  --line-strong: var(--separator);
 }
 
 * {
