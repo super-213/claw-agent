@@ -8,6 +8,9 @@ origin=os.environ['HOME010_WEB_ORIGIN']
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  c=b.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,locale='zh-CN',timezone_id='America/Los_Angeles')
+ # Local layout checks must not depend on external font availability.
+ c.route('https://fonts.googleapis.com/**',lambda route:route.abort())
+ c.route('https://fonts.gstatic.com/**',lambda route:route.abort())
  c.request.post(origin+'/api/auth/login',data={'username':'home010','password':'Home010-test'})
  page=c.new_page();page.clock.set_fixed_time(datetime(2026,10,23,4,tzinfo=timezone.utc));errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto(origin+'/home');page.locator('.home-attention-row').first.wait_for()
@@ -32,9 +35,11 @@ with sync_playwright() as p:
  page.go_back();expect(page.get_by_role('dialog')).to_have_count(0)
  print('detail back passed',flush=True)
  # Expiring item, actual medicine location.
- page.locator('.home-bottom-nav').get_by_role('link',name='物品').click()
+ page.locator('.home-bottom-nav').get_by_role('link',name='家庭',exact=True).click()
+ page.get_by_role('navigation',name='家庭信息分类').get_by_role('link',name='物品',exact=True).click()
  page.get_by_role('button',name='药箱',exact=True).click()
- page.get_by_role('button',name='添加物品',exact=True).click()
+ page.get_by_role('button',name='添加',exact=True).click()
+ page.get_by_role('dialog',name='添加家庭记录').get_by_role('button',name='添加物品',exact=False).click()
  d=page.get_by_role('dialog',name='添加物品');expect(d).to_be_visible()
  d.get_by_label('名称',exact=True).fill('示例·手机添加的药品')
  d.get_by_label('数量',exact=True).fill('2')
@@ -55,26 +60,16 @@ with sync_playwright() as p:
  page.go_back();expect(d).not_to_be_visible()
  expect(page.get_by_text('已过期与三天内到期 · 2 项',exact=True)).to_be_visible()
  print('filter detail return passed',flush=True)
- # Keyboard, focus trapping, retained draft, and chat-created date refresh.
- page.locator('.home-bottom-nav').get_by_role('link',name='今日').click()
- page.get_by_label('和家庭 Agent 对话').fill('/ 日程 今天示例聊天新增')
- trigger=page.get_by_role('button',name='继续对话',exact=True);trigger.click()
- d=page.get_by_role('dialog',name='家庭 Agent 对话');expect(d).to_be_visible()
- page.wait_for_timeout(250);page.screenshot(path=str(out/'mobile-chat.png'),full_page=True)
- print('chat opened',flush=True)
- print('textareas',d.locator('textarea').count(),flush=True)
- for i in range(20):page.keyboard.press('Tab')
- assert d.evaluate('(e)=>e.contains(document.activeElement)')
- page.keyboard.press('Escape');expect(d).not_to_be_visible()
- assert trigger.evaluate('(e)=>e===document.activeElement')
- print('focus back passed',flush=True)
- trigger.click();expect(d).to_be_visible()
- # Complete command selection through actual composer UI.
- textarea=d.locator('textarea').last;expect(textarea).to_be_visible()
- print('draft',textarea.input_value(),flush=True)
- print('buttons',d.get_by_role('button').all_text_contents(),flush=True)
- page.screenshot(path=str(out/'mobile-chat-reopen.png'),full_page=True)
- print('errors',errors,flush=True)
+ # The primary conversation entry is available without typing first.
+ page.locator('.home-bottom-nav').get_by_role('link',name='对话',exact=True).click()
+ expect(page.locator('.composer-input')).to_be_enabled()
+ page.locator('.composer-input').fill('示例·尚未发送的草稿')
+ page.screenshot(path=str(out/'mobile-chat.png'),full_page=True)
+ page.locator('.home-bottom-nav').get_by_role('link',name='工作台',exact=True).click()
+ page.locator('.home-bottom-nav').get_by_role('link',name='对话',exact=True).click()
+ expect(page.locator('.composer-input')).to_have_value('示例·尚未发送的草稿')
+ assert not errors,errors
+ print('primary chat entry and retained draft passed',flush=True)
  b.close()
 
 from playwright.sync_api import sync_playwright, expect
@@ -84,20 +79,21 @@ origin=os.environ['HOME010_WEB_ORIGIN']
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  c=b.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,locale='zh-CN')
+ # Local layout checks must not depend on external font availability.
+ c.route('https://fonts.googleapis.com/**',lambda route:route.abort())
+ c.route('https://fonts.gstatic.com/**',lambda route:route.abort())
  c.request.post(origin+'/api/auth/login',data={'username':'home010','password':'Home010-test'})
  page=c.new_page();page.clock.set_fixed_time(datetime(2026,10,23,4,tzinfo=timezone.utc));errs=[];page.on('pageerror',lambda e:errs.append(str(e)))
  page.goto(origin+'/home');page.locator('.home-attention-row').first.wait_for()
  before=c.request.get(origin+'/api/home/tasks?view=visible&status=open').json()['total']
  page.get_by_label('和家庭 Agent 对话').fill('/ 日程 今天新增示例')
- page.get_by_role('button',name='继续对话',exact=True).click()
- d=page.get_by_role('dialog',name='家庭 Agent 对话');expect(d).to_be_visible()
- expect(d.locator('textarea')).to_have_value('/ 日程 今天新增示例')
+ page.get_by_role('button',name='发送',exact=True).click()
+ d=page.locator('.chat-workspace');expect(d).to_be_visible()
  assert d.locator('.composer').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(199, 233, 255)'
  assert d.locator('textarea').bounding_box()['height'] < 100
- d.locator('.send-btn').click()
  expect(d.get_by_text('示例日程已记录。',exact=True).first).to_be_visible(timeout=15000)
  page.wait_for_timeout(300);page.screenshot(path=str(out/'mobile-chat-complete.png'))
- d.get_by_role('button',name='返回家庭工作台').click();expect(d).not_to_be_visible()
+ page.locator('.home-bottom-nav').get_by_role('link',name='工作台',exact=True).click();expect(d).not_to_be_visible()
  page.get_by_role('button',name='查看全部',exact=True).click()
  expect(page.locator('.home-attention-row').filter(has_text='示例·聊天新增日程').first).to_be_visible()
  after=c.request.get(origin+'/api/home/tasks?view=visible&status=open').json()['total']
@@ -128,6 +124,9 @@ with sync_playwright() as p:
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  c=b.new_context(viewport={'width':1440,'height':900},locale='zh-CN',timezone_id='America/Los_Angeles')
+ # Local layout checks must not depend on external font availability.
+ c.route('https://fonts.googleapis.com/**',lambda route:route.abort())
+ c.route('https://fonts.gstatic.com/**',lambda route:route.abort())
  c.request.post(origin+'/api/auth/login',data={'username':'home010','password':'Home010-test'})
  page=c.new_page();page.clock.set_fixed_time(datetime(2026,10,23,4,tzinfo=timezone.utc));page.goto(origin+'/home')
  expect(page.locator('.home-calendar-days button')).to_have_count(42)
@@ -169,11 +168,11 @@ with sync_playwright() as p:
  # Presets reset the task view so calendar filters cannot leak into memo shortcuts.
  calendar.get_by_role('button',name='查看选中日期全部日程',exact=True).click()
  expect(page.get_by_text('日期：2026-10-23',exact=False)).to_be_visible()
- page.locator('.home-side-nav').get_by_role('link',name='今日',exact=True).click()
+ page.locator('.home-side-nav').get_by_role('link',name='工作台',exact=True).click()
  page.locator('[data-widget-kind="memos"]').get_by_role('button').click()
  expect(page.get_by_role('button',name='备忘',exact=True)).to_have_attribute('aria-pressed','true')
  expect(page.get_by_role('button',name='示例·买一把新的厨房剪刀',exact=True)).to_be_visible()
- page.locator('.home-side-nav').get_by_role('link',name='今日',exact=True).click()
+ page.locator('.home-side-nav').get_by_role('link',name='工作台',exact=True).click()
  # Narrow screens retain AI first and expose the same calendar from the date.
  page.set_viewport_size({'width':390,'height':844});page.wait_for_timeout(200)
  page.locator('.home-date-button').click()
@@ -193,6 +192,9 @@ with sync_playwright() as p:
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  c=b.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,locale='zh-CN')
+ # Local layout checks must not depend on external font availability.
+ c.route('https://fonts.googleapis.com/**',lambda route:route.abort())
+ c.route('https://fonts.gstatic.com/**',lambda route:route.abort())
  c.request.post(origin+'/api/auth/login',data={'username':'home010','password':'Home010-test'})
  page=c.new_page();page.clock.set_fixed_time(datetime(2026,10,23,4,tzinfo=timezone.utc));page.goto(origin+'/home')
  page.get_by_role('button',name='自定义',exact=True).click()
@@ -214,6 +216,9 @@ with sync_playwright() as p:
 with sync_playwright() as p:
  b=p.chromium.launch(channel='chrome',headless=True)
  c=b.new_context(viewport={'width':1440,'height':960},locale='zh-CN')
+ # Local layout checks must not depend on external font availability.
+ c.route('https://fonts.googleapis.com/**',lambda route:route.abort())
+ c.route('https://fonts.gstatic.com/**',lambda route:route.abort())
  c.request.post(origin+'/api/auth/login',data={'username':'home010','password':'Home010-test'})
  page=c.new_page();page.clock.set_fixed_time(datetime(2026,10,23,4,tzinfo=timezone.utc));errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
  page.goto(origin+'/chat')
@@ -225,7 +230,7 @@ with sync_playwright() as p:
  expect(page.locator('.tool-call-output').first).not_to_be_visible()
  assert page.locator('.composer-input').bounding_box()['y'] < 960
  assert page.locator('.brand-icon').evaluate('(e)=>getComputedStyle(e).borderTopWidth')=='0px'
- assert page.locator('.chat-workspace').evaluate('(e)=>getComputedStyle(e).gridTemplateColumns.split(" ")[0]')=='252px'
+ assert page.locator('.chat-workspace').evaluate('(e)=>getComputedStyle(e).gridTemplateColumns.split(" ").slice(0,2)')==['76px','252px']
  assert page.locator('.req-tag').first.evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgba(0, 0, 0, 0)'
  assert page.locator('.composer').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(199, 233, 255)'
  page.get_by_label('会话详情',exact=True).click()

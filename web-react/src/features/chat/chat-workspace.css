@@ -197,3 +197,39 @@
 @media (max-width: 860px) {
   .chat-workspace .tool-call-card { width: 100%; }
 }
+
+/* Keep the same primary navigation while reading and writing conversations. */
+.chat-workspace.chat-standalone {
+  grid-template-columns: 76px 252px minmax(0, 1fr);
+}
+.chat-navigation-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 20px;
+  background: var(--home-knowledge);
+  color: var(--home-ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.chat-navigation-notice button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px;
+  color: inherit;
+  border: 1px solid var(--home-line);
+  border-radius: 8px;
+  background: var(--home-surface);
+}
+@media (min-width: 768px) and (max-width: 860px) {
+  .chat-workspace.chat-standalone { grid-template-columns: 76px minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  body.chat-route .chat-workspace.chat-standalone {
+    grid-template-columns: minmax(0, 1fr);
+    height: calc(100dvh - 68px - env(safe-area-inset-bottom, 0px));
+  }
+  .chat-workspace .home-bottom-nav { z-index: 15; }
+}

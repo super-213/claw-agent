@@ -1,0 +1,101 @@
+.home-side-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 28px;
+  border: 0;
+  background: var(--home-nav);
+  border-radius: 16px;
+  margin: 8px 0 8px 8px;
+  padding: 20px 6px;
+  position: sticky;
+  top: 8px;
+  height: calc(100dvh - 32px);
+}
+.home-brand {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.home-brand svg {
+  width: 44px;
+  height: 44px;
+  padding: 9px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.home-side-nav nav {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 24px;
+}
+.home-side-nav nav a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-height: 65px;
+  padding: 10px 4px;
+  font-size: 12px;
+  border: var(--home-control-border) solid transparent;
+  border-radius: 8px;
+}
+.home-side-nav a[aria-current="page"] {
+  background: var(--home-agent);
+  border-color: var(--home-outline);
+  font-weight: 700;
+}
+
+.home-side-nav { color: var(--home-ink); }
+.home-side-nav a, .home-bottom-nav a {
+  color: var(--home-ink);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.home-side-nav a:hover, .home-bottom-nav a:hover {
+  background-color: color-mix(in srgb, var(--home-ink) 6%, transparent);
+}
+.home-side-nav a:focus-visible, .home-bottom-nav a:focus-visible {
+  outline: 3px solid var(--home-focus);
+  outline-offset: 3px;
+}
+.home-bottom-nav { display: none; }
+@media (max-width: 767px) {
+  .home-side-nav { display: none; }
+  .home-bottom-nav {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    background: var(--home-surface);
+    border-top: var(--home-control-border) solid var(--home-outline);
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .home-bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 50px;
+    border: var(--home-control-border) solid transparent;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .home-bottom-nav a[aria-current="page"] {
+    background: var(--home-agent);
+    border-color: var(--home-outline);
+    font-weight: 600;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-side-nav a, .home-bottom-nav a { transition: none; }
+}

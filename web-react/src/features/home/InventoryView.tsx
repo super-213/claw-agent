@@ -9,8 +9,10 @@ import { activeInventory, addDays, expiryLabel, locations } from './attention';
 
 export function InventoryView({
   onAgent,
+  showCreateAction = true,
 }: {
   onAgent: (item: HomeInventoryItem) => void;
+  showCreateAction?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
   const location: InventoryLocation =
@@ -83,13 +85,13 @@ export function InventoryView({
     <section className="home-section inventory-view">
       <div className="home-section-head">
         <h2>家庭物品</h2>
-        <button
+        {showCreateAction && <button
           type="button"
           className="home-primary"
           onClick={() => setEditing('new')}
         >
           添加物品
-        </button>
+        </button>}
       </div>
       <div className="task-tabs" aria-label="存放位置">
         {Object.entries(locations).map(([value, label]) => (

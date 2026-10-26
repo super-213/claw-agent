@@ -45,6 +45,7 @@ try:
     processes.append(subprocess.Popen(['npm', '--prefix', str(root / 'web-react'), 'run', 'dev', '--', '--host', '127.0.0.1', '--port', str(web_port), '--strictPort'], cwd=root, env=env, stdout=subprocess.DEVNULL, start_new_session=True))
     wait_ready(os.environ['HOME010_WEB_ORIGIN'])
     runpy.run_path(str(root / 'test/browser/home_workbench_checks.py'), run_name='__main__')
+    runpy.run_path(str(root / 'test/browser/family_navigation_checks.py'), run_name='__main__')
     print(f'010 browser validation passed. Screenshots: {output}')
 finally:
     for process in reversed(processes):

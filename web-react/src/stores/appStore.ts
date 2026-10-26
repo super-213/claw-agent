@@ -27,6 +27,14 @@ interface AppState {
   sessionMessages: Record<string, Message[]>;
   streams: Record<string, StreamState>;
   statusText: string;
+  homeDraft: string;
+  homeScrollPositions: Record<string, number>;
+  chatDrafts: Record<string, string>;
+  pendingChatMessage: { text: string } | null;
+  setHomeDraft: (draft: string) => void;
+  rememberHomeScroll: (path: string, offset: number) => void;
+  setChatDraft: (sessionId: string, draft: string) => void;
+  setPendingChatMessage: (message: { text: string } | null) => void;
   setCurrentUser: (user: User | null) => void;
   setSessions: (sessions: SessionSummary[]) => void;
   setSkills: (skills: Skill[]) => void;
@@ -50,7 +58,24 @@ export const useAppStore = create<AppState>((set) => ({
   sessionMessages: {},
   streams: {},
   statusText: '就绪',
-  setCurrentUser: (currentUser) => set({ currentUser }),
+  homeDraft: '',
+  homeScrollPositions: {},
+  chatDrafts: {},
+  pendingChatMessage: null,
+  setHomeDraft: (homeDraft) => set({ homeDraft }),
+  rememberHomeScroll: (path, offset) => set((state) => ({
+    homeScrollPositions: { ...state.homeScrollPositions, [path]: offset },
+  })),
+  setChatDraft: (sessionId, draft) => set((state) => ({
+    chatDrafts: { ...state.chatDrafts, [sessionId]: draft },
+  })),
+  setPendingChatMessage: (pendingChatMessage) => set({ pendingChatMessage }),
+  setCurrentUser: (currentUser) => set((state) => ({
+    currentUser,
+    ...(state.currentUser?.id !== currentUser?.id ? {
+      homeDraft: '', homeScrollPositions: {}, chatDrafts: {}, pendingChatMessage: null,
+    } : {}),
+  })),
   setSessions: (sessions) => set({ sessions }),
   setSkills: (skills) => set({ skills }),
   setConfig: (config) => set({ config }),

@@ -27,8 +27,8 @@ export function AgentCommandBar({
           value={draft}
           onChange={(e) => onChange(e.target.value)}
         />
-        <button className="home-primary" type="submit" aria-label="继续对话">
-          <span>继续对话</span>
+        <button className="home-primary" type="submit" aria-label="发送" disabled={!draft.trim()}>
+          <span>发送</span>
           <ArrowRight size={19} />
         </button>
       </form>

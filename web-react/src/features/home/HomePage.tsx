@@ -22,6 +22,8 @@ import { InventoryView } from './InventoryView';
 import { useHomeData } from './useHomeData';
 import { MoreView } from './MoreView';
 import { HomeNav } from './HomeNav';
+import { FamilyNav } from './FamilyNav';
+import { rememberFamilySection } from './familyNavigation';
 import { AgentCommandBar } from './AgentCommandBar';
 import { HomeWidgets } from './HomeWidgets';
 import { ScheduleCalendar } from './ScheduleCalendar';
@@ -55,7 +57,9 @@ export function HomePage() {
   const config = useAppStore((s) => s.config);
   const setConfig = useAppStore((s) => s.setConfig);
   const { inventories, tasks, memos, refresh } = useHomeData();
-  const [draft, setDraft] = useState('');
+  const draft = useAppStore((s) => s.homeDraft);
+  const setDraft = useAppStore((s) => s.setHomeDraft);
+  const rememberHomeScroll = useAppStore((s) => s.rememberHomeScroll);
   const [notice, setNotice] = useState('');
   const [rowError, setRowError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -83,10 +87,8 @@ export function HomePage() {
     setObjectContext(null);
     setNotice('');
     setRowError('');
-    setDraft('');
   }, [currentUser?.id]);
-  const priorPath = useRef(location.pathname);
-  const scrollPositions = useRef<Record<string, number>>({});
+  const scrollPath = location.pathname;
   const closeChat = useCallback(() => {
     setChatOpen(false);
     void refresh();
@@ -131,11 +133,16 @@ export function HomePage() {
   }, []);
   useEffect(() => {
     if (view === 'tasks') setTasksMounted(true);
-    if (priorPath.current !== location.pathname) {
-      window.scrollTo(0, scrollPositions.current[location.pathname] || 0);
-      priorPath.current = location.pathname;
+    if (view === 'tasks' || view === 'items') {
+      rememberFamilySection(currentUser?.id || 'guest', view);
     }
-  }, [location.pathname, view]);
+  }, [currentUser?.id, view]);
+  useEffect(() => {
+    window.scrollTo(0, useAppStore.getState().homeScrollPositions[scrollPath] || 0);
+    const remember = () => rememberHomeScroll(scrollPath, window.scrollY);
+    window.addEventListener('scroll', remember, { passive: true });
+    return () => window.removeEventListener('scroll', remember);
+  }, [rememberHomeScroll, scrollPath]);
   const today =
     tasks.data?.today ||
     Object.values(inventories).find((query) => query.data?.today)?.data?.today;
@@ -179,7 +186,7 @@ export function HomePage() {
         .catch((e) => setRowError(e.message));
   };
   const go = (path: string) => {
-    scrollPositions.current[location.pathname] = window.scrollY;
+    rememberHomeScroll(scrollPath, window.scrollY);
     navigate(path);
   };
   const run = async (entry: Attention) => {
@@ -226,8 +233,11 @@ export function HomePage() {
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    openChat(draft.trim() || undefined);
+    const text = draft.trim();
+    if (!text) return;
+    useAppStore.getState().setPendingChatMessage({ text });
     setDraft('');
+    go('/chat');
   };
   const renderAttention = (size: WidgetSize) => {
     const previewLimit = size === 'large' ? limit : Math.min(limit, 3);
@@ -286,9 +296,8 @@ export function HomePage() {
         <HomeNav
           view={view}
           onLeave={() => {
-            scrollPositions.current[location.pathname] = window.scrollY;
+            rememberHomeScroll(scrollPath, window.scrollY);
           }}
-          onRecent={() => go('/home/more?section=sessions')}
         />
         <div className="home-content">
           <header className="home-topbar">
@@ -307,7 +316,7 @@ export function HomePage() {
                 </>
               ) : (
                 <h1>
-                  {{ items: '家庭物品', tasks: '事项清单', more: '更多' }[view]}
+                  {{ items: '家庭', tasks: '家庭', more: '更多' }[view]}
                 </h1>
               )}
             </div>
@@ -324,6 +333,9 @@ export function HomePage() {
               ).slice(0, 1)}
             </button>
           </header>
+          {(view === 'tasks' || view === 'items') && (
+            <FamilyNav section={view} onOpen={go} />
+          )}
           {isToday && (
             <div className="home-today-grid">
               <div className="home-today-main">
@@ -399,10 +411,11 @@ export function HomePage() {
               <ScheduleCalendar today={today} onOpen={go} />
             </div>
           )}
-          {view === 'items' && <InventoryView onAgent={itemAgent} />}
+          {view === 'items' && <InventoryView onAgent={itemAgent} showCreateAction={false} />}
           {tasksMounted && (
             <div hidden={view !== 'tasks'}>
               <TaskBoard
+                showCreateAction={false}
                 key={currentUser?.id}
                 createInitially={view === 'tasks' && params.has('create')}
                 selectedTaskId={view === 'tasks' ? params.get('task') : null}
@@ -437,11 +450,11 @@ export function HomePage() {
             <MoreView
               section={params.get('section')}
               onSettings={openSettings}
-              onOpenChat={(sessionId) => openChat(undefined, sessionId)}
+              onOpenChat={(sessionId) => go(`/sessions/${sessionId}`)}
               onNewChat={async () => {
                 const session = await sessionsApi.create();
                 setSessions(await sessionsApi.list());
-                openChat('', session.id);
+                go(`/sessions/${session.id}`);
               }}
               sessions={sessions}
               loadSessions={() => sessionsApi.list().then(setSessions)}
@@ -452,9 +465,8 @@ export function HomePage() {
           view={view}
           mobile
           onLeave={() => {
-            scrollPositions.current[location.pathname] = window.scrollY;
+            rememberHomeScroll(scrollPath, window.scrollY);
           }}
-          onRecent={() => go('/home/more?section=sessions')}
         />
       </div>
       {chatMounted && (

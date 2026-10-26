@@ -4,12 +4,14 @@ import { LoginPage } from '../features/auth/LoginPage';
 import { ChatWorkspace } from '../features/chat/ChatWorkspace';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { HomePage } from '../features/home/HomePage';
+import { FamilyRedirect } from '../features/home/familyNavigation';
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage /> },
   {
     element: <ProtectedRoute />,
     children: [
+      { path: '/home/family', element: <FamilyRedirect /> },
       {
         element: <HomePage />,
         children: [

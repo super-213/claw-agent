@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { BarChart3, Bot, Home, LogOut, Menu, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Settings, Shield, Wrench, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { SessionSummary, Skill, User } from '../../api/types';
@@ -119,10 +120,10 @@ export function SessionSidebar({
                   <small>{currentUser?.role || 'guest'}</small>
                 </div>
                 <div className="account-action-grid" aria-label="账号操作">
-                  <a className="dashboard-btn" href="/home" title="家庭事务" onClick={() => setAccountMenuOpen(false)}>
+                  <Link className="dashboard-btn" to="/home/family" title="家庭信息" onClick={() => setAccountMenuOpen(false)}>
                     <Home size={14} />
                     <span>家庭</span>
-                  </a>
+                  </Link>
                   <a className="dashboard-btn" href="/dashboard" title="后台看板" onClick={() => setAccountMenuOpen(false)}>
                     <BarChart3 size={14} />
                     <span>看板</span>
@@ -177,7 +178,7 @@ export function SessionSidebar({
           <div className="brand-tag">家庭 AI 助手</div>
         </div>
         <div className="sidebar-actions">
-          <a className="chat-home-link" href="/home"><Home size={17} />返回首页</a>
+          <Link className="chat-home-link" to="/home"><Home size={17} />返回工作台</Link>
           <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
             <Plus size={16} />
             新建对话

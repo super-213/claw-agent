@@ -52,9 +52,21 @@ export function Composer({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
-  }, [draft]);
+    const resize = () => {
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    };
+    resize();
+    if (typeof ResizeObserver === 'undefined') return;
+    let width = el.getBoundingClientRect().width;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      resize();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [draft, disabled]);
 
   const send = async () => {
     const trimmed = draft.trimEnd();

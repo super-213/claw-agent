@@ -45,6 +45,7 @@ const codes = ['', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 
 export function TaskBoard({
   createInitially = false,
+  showCreateAction = true,
   selectedTaskId,
   onDetailClose,
   onAgent,
@@ -60,6 +61,7 @@ export function TaskBoard({
   selectedDate?: string;
   onDateClear?: () => void;
   createInitially?: boolean;
+  showCreateAction?: boolean;
   selectedTaskId?: string | null;
   onDetailClose?: () => void;
   onAgent?: (task: TaskDefinition) => void;
@@ -362,9 +364,9 @@ export function TaskBoard({
           <h2>事项清单</h2>
           <p>把要做的事，一件件记在这里。</p>
         </div>
-        <button type="button" onClick={() => setShowCreate(!showCreate)}>
+        {showCreateAction && <button type="button" onClick={() => setShowCreate(!showCreate)}>
           记录事项
-        </button>
+        </button>}
       </div>
       <div className="task-toolbar">
         <div className="home-segment" aria-label="事项范围">

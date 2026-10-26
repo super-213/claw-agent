@@ -1,7 +1,7 @@
 import { TaskDraftChooser, type TaskDraft } from '../tasks/TaskDraftChooser';
-import { requestId, type TaskInvocation } from '../../api/tasks';
+import { commandFromText, invocationFor, requestId, type TaskInvocation } from '../../api/tasks';
 import { ArrowLeft, GitFork, Info } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { ApiError } from '../../api/client';
@@ -21,6 +21,7 @@ import { MessageList } from './MessageList';
 import type { BranchActionState } from './MessageRows';
 import { isAdmin, selectCurrentSession, useAppStore } from '../../stores/appStore';
 import { formatTokens, isImageAttachment } from '../../utils/format';
+import { HomeNav } from '../home/HomeNav';
 
 type ModalKind = 'settings' | 'plugins' | 'users' | null;
 
@@ -84,7 +85,17 @@ export function ChatWorkspace({
   const [shareSessionId, setShareSessionId] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(initialTreeOpen);
   const [tree, setTree] = useState<BranchTree | null>(null);
-  const [draft, setDraft] = useState('');
+  const draftKey = currentSessionId || 'new';
+  const draft = useAppStore((state) => state.chatDrafts[draftKey] || '');
+  const setDraft = useCallback((value: string | ((current: string) => string)) => {
+    const state = useAppStore.getState();
+    state.setChatDraft(draftKey, typeof value === 'function'
+      ? value(state.chatDrafts[draftKey] || '') : value);
+  }, [draftKey]);
+  const pendingChatMessage = useAppStore((state) => state.pendingChatMessage);
+  const [readySessionId, setReadySessionId] = useState<string | null>(null);
+  const [bootError, setBootError] = useState('');
+  const appliedSeed = useRef<number | null>(null);
   const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   useEffect(() => setTaskDraft(null), [currentSessionId, currentUser?.id]);
   const [branchActionStates, setBranchActionStates] = useState<Record<string, BranchActionState>>({});
@@ -161,6 +172,7 @@ export function ChatWorkspace({
 
   const openSession = useCallback(
     async (sessionId: string, options: { pushRoute?: boolean } = {}) => {
+      setBootError('');
       setCurrentSessionId(sessionId);
       onSessionChange?.(sessionId);
       setMenuSessionId(null);
@@ -173,6 +185,7 @@ export function ChatWorkspace({
       const cachedMessages = state.sessionMessages[sessionId];
       const nextMessages = state.streams[sessionId] && cachedMessages ? cachedMessages : detail.messages || [];
       state.setSessionMessages(sessionId, nextMessages);
+      setReadySessionId(sessionId);
       setStatusText(useAppStore.getState().streams[sessionId] ? '处理中...' : '就绪');
       void loadTree(sessionId).catch(() => undefined);
       setMobileSidebarOpen(false);
@@ -202,6 +215,7 @@ export function ChatWorkspace({
     };
     void boot().catch((error) => {
       console.warn('[ChatWorkspace] boot:', error);
+      if (mounted) setBootError('暂时无法打开对话，请刷新重试。输入内容已保留。');
     });
     return () => {
       mounted = false;
@@ -217,9 +231,10 @@ export function ChatWorkspace({
   }, [initialModal]);
 
   useEffect(() => {
-    if (!draftSeed) return;
+    if (!draftSeed || !readySessionId || readySessionId !== currentSessionId || appliedSeed.current === draftSeed.id) return;
     setDraft(draftSeed.text);
-  }, [draftSeed]);
+    appliedSeed.current = draftSeed.id;
+  }, [currentSessionId, draftSeed, readySessionId, setDraft]);
 
   useEffect(() => {
     setBranchActionStates({});
@@ -270,7 +285,7 @@ export function ChatWorkspace({
     return result.media || [];
   }, []);
 
-  const sendMessage = async (text: string, media: MessageMedia[] = [], invocation?: TaskInvocation) => {
+  const sendMessage = useCallback(async (text: string, media: MessageMedia[] = [], invocation?: TaskInvocation) => {
     setBranchNotice(null);
     let targetSessionId = currentSessionId;
     if (!targetSessionId) {
@@ -435,7 +450,17 @@ export function ChatWorkspace({
       endStream(targetSessionId);
       setStatusText(Object.keys(useAppStore.getState().streams).length ? '后台生成中...' : '就绪');
     }
-  };
+  }, [beginStream, currentSessionId, endStream, loadSessions, loadTree, objectContext, onSessionChange, setCurrentSessionId, setDraft, setSessionMessages, setStatusText, streams, updateStream]);
+
+  useEffect(() => {
+    if (!standalone || !active || !pendingChatMessage || !readySessionId ||
+      readySessionId !== currentSessionId || currentBusy) return;
+    // Consume before sending so rerenders and StrictMode cannot send twice.
+    if (useAppStore.getState().pendingChatMessage !== pendingChatMessage) return;
+    useAppStore.getState().setPendingChatMessage(null);
+    const command = commandFromText(pendingChatMessage.text);
+    void sendMessage(pendingChatMessage.text, [], command ? invocationFor(command) : undefined);
+  }, [active, currentBusy, currentSessionId, pendingChatMessage, readySessionId, sendMessage, standalone]);
 
   const createBranchFromNode = async (nodeId: string) => {
     if (!currentSessionId) return;
@@ -494,6 +519,7 @@ export function ChatWorkspace({
 
   return (
     <div className={`app chat-workspace ${standalone ? 'chat-standalone' : 'chat-overlay-app'}`}>
+      {standalone && <HomeNav view="chat" />}
       {standalone ? (
         <SessionSidebar
           open={mobileSidebarOpen}
@@ -532,7 +558,7 @@ export function ChatWorkspace({
             ) : (
               <button className="chat-overlay-back" type="button" onClick={onClose} aria-label="返回家庭工作台">
                 <ArrowLeft size={18} />
-                <span>首页</span>
+                <span>返回</span>
               </button>
             )}
             <div className="topbar-heading">
@@ -561,6 +587,17 @@ export function ChatWorkspace({
           </div>
         </div>
 
+        {bootError && <p className="chat-navigation-notice" role="alert">{bootError}</p>}
+        {standalone && pendingChatMessage && (
+          <div className="chat-navigation-notice" role="status">
+            <span>{currentBusy ? '当前对话回复结束后将发送：' : '正在打开对话，准备发送：'}{pendingChatMessage.text}</span>
+            <button type="button" onClick={() => {
+              setDraft(pendingChatMessage.text);
+              useAppStore.getState().setPendingChatMessage(null);
+            }}>改为草稿</button>
+          </div>
+        )}
+
         <div className="main-content">
           <div className="chat-area">
             <MessageList
@@ -581,7 +618,7 @@ export function ChatWorkspace({
             ) : null}
             {taskDraft && taskDraft.sessionId === currentSessionId && <TaskDraftChooser draft={taskDraft}
               onChoose={(command, body) => { setDraft(`/ ${command} ${body}`); setTaskDraft(null); }} onDismiss={() => setTaskDraft(null)} />}
-            <Composer disabled={currentBusy} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
+            <Composer disabled={currentBusy || !readySessionId || readySessionId !== currentSessionId} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
           </div>
           <BranchTreePanel
             open={treeOpen}
@@ -592,6 +629,8 @@ export function ChatWorkspace({
           />
         </div>
       </main>
+
+      {standalone && <HomeNav view="chat" mobile />}
 
       <ConfigModal
         open={modal === 'settings'}

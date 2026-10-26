@@ -42,7 +42,7 @@ export function useDialog(open: boolean, onClose: () => void) {
     const focusable = () =>
       Array.from(
         node.querySelectorAll<HTMLElement>(
-          'button, a[href], input, select, textarea, [tabindex="0"]',
+          'button, a[href], input, select, textarea, summary, [tabindex="0"]',
         ),
       ).filter(
         (el) =>
