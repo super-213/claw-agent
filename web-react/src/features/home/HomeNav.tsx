@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Home, House, MoreHorizontal, MessageCircle } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { familyPath } from './familyNavigation';
+import { HomeAgentMenu } from './HomeAgentMenu';
 import './home-navigation.css';
 
 const menu = [
@@ -32,10 +33,7 @@ export function HomeNav({ view, mobile = false, onLeave }: {
     <nav className="home-bottom-nav" aria-label="手机主导航">{links}</nav>
   ) : (
     <aside className="home-side-nav">
-      <Link className="home-brand" to="/home" aria-label="家庭 Agent 工作台" onClick={onLeave}>
-        <Home size={23} />
-        <span>家庭<br />Agent</span>
-      </Link>
+      <HomeAgentMenu onLeave={onLeave} />
       <nav aria-label="主导航">{links}</nav>
     </aside>
   );

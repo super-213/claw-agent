@@ -11,17 +11,25 @@
   position: sticky;
   top: 8px;
   height: calc(100dvh - 32px);
+  z-index: 35;
 }
-.home-brand {
+.home-side-nav .home-brand {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   justify-items: center;
+  width: 100%;
+  padding: 0 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
   text-align: center;
+  font: inherit;
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
 }
-.home-brand svg {
+.home-brand .home-brand-icon {
   width: 44px;
   height: 44px;
   padding: 9px;
@@ -29,13 +37,55 @@
   border: 0;
   border-radius: 0;
 }
-.home-side-nav nav {
+.home-brand-chevron {
+  transition: transform 140ms ease;
+}
+.home-brand[aria-expanded="true"] .home-brand-chevron {
+  transform: rotate(90deg);
+}
+.home-agent-menu { position: relative; }
+.home-agent-popover {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 14px);
+  width: 236px;
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+  padding: 8px;
+  color: var(--home-ink);
+  background: var(--home-surface);
+  border: 1px solid var(--home-line);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px #0002;
+}
+.home-agent-menu-heading {
+  padding: 8px 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.home-agent-shortcuts, .home-agent-admin { display: grid; gap: 2px; }
+.home-agent-shortcuts a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px;
+  border-radius: 7px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.home-agent-admin {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--home-line);
+}
+.home-side-nav > nav {
   display: grid;
   gap: 10px;
   position: sticky;
   top: 24px;
 }
-.home-side-nav nav a {
+.home-side-nav > nav a {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -59,10 +109,11 @@
   cursor: pointer;
   transition: background-color 140ms ease;
 }
-.home-side-nav a:hover, .home-bottom-nav a:hover {
+.home-side-nav a:hover, .home-bottom-nav a:hover, .home-side-nav .home-brand:hover,
+.home-side-nav .home-brand[aria-expanded="true"] {
   background-color: color-mix(in srgb, var(--home-ink) 6%, transparent);
 }
-.home-side-nav a:focus-visible, .home-bottom-nav a:focus-visible {
+.home-side-nav a:focus-visible, .home-bottom-nav a:focus-visible, .home-side-nav .home-brand:focus-visible {
   outline: 3px solid var(--home-focus);
   outline-offset: 3px;
 }
@@ -97,5 +148,5 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-side-nav a, .home-bottom-nav a { transition: none; }
+  .home-side-nav a, .home-bottom-nav a, .home-brand-chevron { transition: none; }
 }
