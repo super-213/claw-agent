@@ -1,5 +1,7 @@
 import type { TaskInvocation } from './tasks';
 import { formRequest, jsonRequest, streamRequest } from './client';
+import { requestId } from './tasks';
+import { useAppStore } from '../stores/appStore';
 import type { ChatStreamEvent, MessageMedia, SessionDetail } from './types';
 
 export interface ChatObjectContext {
@@ -26,6 +28,37 @@ export interface RunApprovalPayload {
   approvalToken: string;
   approved: boolean;
   signal?: AbortSignal;
+}
+
+export interface ChatJob {
+  id: string;
+  session_id: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted' | 'cancelled' | 'waiting_approval' | 'waiting_user' | 'continued';
+  run_id?: string | null;
+  error?: string | null;
+  updated_at: number;
+}
+
+export class AcceptedJobError extends Error {
+  constructor(public job: ChatJob, message: string) { super(message); }
+}
+
+export function isViewingChat(sessionId: string) {
+  return document.visibilityState === 'visible' && Array.from(document.querySelectorAll<HTMLElement>('.chat-workspace[data-session-id]'))
+    .some(node => node.dataset.sessionId === sessionId && node.getClientRects().length > 0);
+}
+
+async function followJob(endpoint: string, body: object, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
+  const { job } = await jsonRequest<{ job: ChatJob }>(endpoint, { method: 'POST', body: JSON.stringify(body), signal });
+  onEvent({ type: 'job_started', job });
+  try {
+    const result = await streamRequest(`/api/chat/jobs/${job.id}/events`, { signal, onEvent });
+    if (isViewingChat(job.session_id) && useAppStore.getState().currentSessionId === job.session_id) void chatApi.readJob(job.id).catch(() => undefined);
+    return result;
+  } catch (error) {
+    // Accepted work must not be sent again merely because its HTTP reader detached.
+    throw new AcceptedJobError(job, (error as Error).message);
+  }
 }
 
 interface UploadResponse {
@@ -105,33 +138,30 @@ export const chatApi = {
       signal: payload.signal,
     }),
   stream: (payload: ChatPayload, onEvent: (event: ChatStreamEvent) => void) =>
-    streamRequest('/api/chat/stream', {
-      method: 'POST',
-      body: JSON.stringify(toWirePayload(payload)),
-      signal: payload.signal,
-      onEvent,
-    }),
-  approveRun: (
+    followJob('/api/chat/jobs', { ...toWirePayload(payload), request_id: payload.requestId || requestId() }, onEvent, payload.signal),
+  approveRun: async (
     payload: RunApprovalPayload,
     onEvent: (event: ChatStreamEvent) => void,
-  ) =>
-    streamRequest(`/api/runs/${payload.runId}/approval`, {
-      method: 'POST',
-      body: JSON.stringify({
-        approval_token: payload.approvalToken,
+  ) => {
+    // Native confirmation dialogs can remain open longer than the token TTL.
+    const fresh = await jsonRequest<{ approval_token: string }>(`/api/runs/${payload.runId}/approval-token`, { method: 'POST', signal: payload.signal });
+    return followJob(`/api/runs/${payload.runId}/background-approval`, {
+        approval_token: fresh.approval_token,
         approved: payload.approved,
-      }),
-      signal: payload.signal,
-      onEvent,
-    }),
+        request_id: requestId(),
+      }, onEvent, payload.signal);
+  },
   resumeRun: (
     runId: string,
     onEvent: (event: ChatStreamEvent) => void,
     signal?: AbortSignal,
   ) =>
-    streamRequest(`/api/runs/${runId}/resume`, {
-      method: 'POST',
-      signal,
-      onEvent,
-    }),
+    followJob(`/api/runs/${runId}/background-resume`, { request_id: requestId() }, onEvent, signal),
+  latestJob: (sessionId: string) => jsonRequest<{ job: ChatJob | null }>(`/api/sessions/${sessionId}/chat-job`),
+  job: (id: string) => jsonRequest<{ job: ChatJob }>(`/api/chat/jobs/${id}`),
+  readJob: (id: string) => jsonRequest(`/api/chat/jobs/${id}/read`, { method: 'POST' }),
+  cancelJob: (id: string) => jsonRequest(`/api/chat/jobs/${id}/cancel`, { method: 'POST' }),
+  approvalToken: (runId: string) => jsonRequest<{ approval_token: string }>(`/api/runs/${runId}/approval-token`, { method: 'POST' }),
+  runs: (sessionId: string) => jsonRequest<{ runs: Array<{ id: string; pending_approval?: { tool_call?: { name?: string; arguments?: object } }; tool_ledger?: Record<string, { status?: string }>; steps?: Array<{ tool_calls?: Array<{ id: string; name?: string; arguments?: object }> }> }> }>(`/api/sessions/${sessionId}/runs`),
+  resolveTool: (runId: string, callId: string, action: string) => jsonRequest(`/api/runs/${runId}/background-resolve-tool`, { method: 'POST', body: JSON.stringify({ call_id: callId, action }) }),
 };

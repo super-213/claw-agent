@@ -12,6 +12,7 @@ import { homeApi } from '../../api/home';
 import { isAdmin, useAppStore } from '../../stores/appStore';
 import { formatTime } from '../../utils/format';
 import { TaskAdmin } from '../tasks/TaskAdmin';
+import { ChatNotificationSettings } from '../pwa/ChatNotificationSettings';
 
 export function MoreView({
   section,
@@ -112,6 +113,7 @@ export function MoreView({
           <h2>{user?.display_name || user?.username}</h2>
           <p className="home-muted">账号：{user?.username}</p>
           <p className="home-muted">外观跟随设备的浅色或深色模式。</p>
+          <ChatNotificationSettings />
           {isAdmin(user) && (
             <button type="button" onClick={onSettings}>
               模型与设备设置（管理员）

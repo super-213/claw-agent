@@ -27,6 +27,7 @@ SINGLE_FILES = (
     "deploy/claw-agent.conf",
     "deploy/README.md",
     "deploy/PWA.md",
+    "deploy/CHAT_NOTIFICATIONS.md",
     "deploy/pwa-disable-sw.js",
     "deploy/CLOUDFLARE_TUNNEL.md",
 )

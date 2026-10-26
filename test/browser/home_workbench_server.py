@@ -1,5 +1,5 @@
 """Isolated examples for 010 browser validation. Never uses real family data."""
-import sys, tempfile, os
+import sys, tempfile, os, asyncio, json
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
@@ -55,10 +55,18 @@ class FakeLLM:
  async def __aenter__(self):return self
  async def __aexit__(self,*_):pass
  async def achat_with_tools(self,messages,schemas):
+  if os.environ.get('HOME010_MODEL_DELAY'):
+   await asyncio.sleep(float(os.environ['HOME010_MODEL_DELAY']))
   self.turn+=1
   return AgentModelResponse(tool_calls=[ToolCall('validation-create','family_timed_memo_create',{'items':[{'title':'示例·聊天新增日程','due_date':'2026-10-23'}]})]) if self.turn==1 else AgentModelResponse(content='示例日程已记录。')
  async def astream_with_tools(self,messages,schemas):yield {'type':'done','response':await self.achat_with_tools(messages,schemas)}
 w._new_llm_client=lambda:FakeLLM()
+if os.environ.get('HOME010_CAPTURE_PUSH'):
+ capture=Path(os.environ['HOME010_CAPTURE_PUSH'])
+ def capture_push(subscription,payload):
+  with capture.open('a') as out:
+   out.write(json.dumps(payload,ensure_ascii=False)+'\n')
+ w._chat_background().notifications.sender=capture_push
 print('Isolated example server ready',flush=True)
 import uvicorn
 uvicorn.run(w.app,host='127.0.0.1',port=int(os.environ.get("HOME010_API_PORT", "8012")),log_level='warning')

@@ -152,6 +152,8 @@ export type ChatRunStatus =
   | 'error';
 
 export type ChatStreamEvent =
+  | { type: 'heartbeat'; [key: string]: unknown }
+  | { type: 'job_started'; job: import('./chat').ChatJob; [key: string]: unknown }
   | { type: 'task_changed'; task_ids: string[]; revision: number; [key: string]: unknown }
   | {
       type: 'step';

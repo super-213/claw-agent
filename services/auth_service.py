@@ -65,6 +65,12 @@ class AuthSessionStore:
             self._sessions.pop(self._hash_token(token), None)
             self._persist_locked()
 
+    def is_active_hash(self, token_hash: str, user_id: str) -> bool:
+        """Validate a push binding without extending the login's lifetime."""
+        with self._lock:
+            session = self._sessions.get(token_hash)
+            return bool(session and session['user_id'] == user_id and session['expires_at'] > self._now())
+
     def max_age_seconds(self, *, remember_me: bool = False) -> int:
         return self.remember_ttl_seconds if remember_me else self.ttl_seconds
 

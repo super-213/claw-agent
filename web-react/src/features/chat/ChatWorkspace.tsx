@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { ApiError } from '../../api/client';
-import { chatApi } from '../../api/chat';
+import { AcceptedJobError, chatApi, isViewingChat, type ChatJob } from '../../api/chat';
 import { configApi } from '../../api/config';
 import { sessionsApi } from '../../api/sessions';
 import { skillsApi } from '../../api/skills';
@@ -18,6 +18,7 @@ import { SkillModal } from '../plugins/SkillModal';
 import { UserAdminModal } from '../users/UserAdminModal';
 import { Composer } from './Composer';
 import { MessageList } from './MessageList';
+import { RunRecoveryPanel } from './RunRecoveryPanel';
 import type { BranchActionState } from './MessageRows';
 import { isAdmin, selectCurrentSession, useAppStore } from '../../stores/appStore';
 import { formatTokens, isImageAttachment } from '../../utils/format';
@@ -96,6 +97,10 @@ export function ChatWorkspace({
   const [readySessionId, setReadySessionId] = useState<string | null>(null);
   const [bootError, setBootError] = useState('');
   const [returnedToChat, setReturnedToChat] = useState(false);
+  const [remoteJob, setRemoteJob] = useState<ChatJob | null>(null);
+  const [jobActionBusy, setJobActionBusy] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const refreshedJob = useRef('');
   const appliedSeed = useRef<number | null>(null);
   const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   useEffect(() => setTaskDraft(null), [currentSessionId, currentUser?.id]);
@@ -103,7 +108,7 @@ export function ChatWorkspace({
   const [branchNotice, setBranchNotice] = useState<BranchNotice | null>(null);
 
   const busySessionIds = useMemo(() => new Set(Object.keys(streams)), [streams]);
-  const currentBusy = Boolean(currentSessionId && streams[currentSessionId]);
+  const currentBusy = Boolean(currentSessionId && streams[currentSessionId]) || Boolean(remoteJob && ['queued', 'running', 'waiting_approval', 'waiting_user'].includes(remoteJob.status));
   const activeTreeNode = useMemo(
     () => tree?.nodes.find((node) => node.node_id === tree.active_node_id) || null,
     [tree],
@@ -111,6 +116,48 @@ export function ChatWorkspace({
   const pendingBranchNodeId = activeTreeNode?.is_placeholder ? activeTreeNode.node_id : null;
   const branchCreationLocked = Boolean(pendingBranchNodeId || branchNotice);
   const standalone = mode === 'standalone';
+
+  useEffect(() => {
+    setRemoteJob(null);
+    if (!active || !currentSessionId) return;
+    let live = true;
+    let checking = false;
+    const sessionId = currentSessionId;
+    const owner = currentUser?.id;
+    const check = async () => {
+      if (checking || !window.navigator.onLine || document.visibilityState !== 'visible') return;
+      checking = true;
+      try {
+        const { job } = await chatApi.latestJob(sessionId);
+        if (!live || useAppStore.getState().currentUser?.id !== owner || useAppStore.getState().currentSessionId !== sessionId) return;
+        setRemoteJob(job);
+        if (job && !['queued', 'running'].includes(job.status) && !useAppStore.getState().streams[sessionId] && refreshedJob.current !== `${job.id}:${job.status}`) {
+          const detail = await sessionsApi.get(sessionId);
+          if (!live || useAppStore.getState().currentUser?.id !== owner) return;
+          setSessionMessages(sessionId, detail.messages || []);
+          setBootError('');
+          // The user may have left while the saved conversation was loading.
+          if (isViewingChat(sessionId)) {
+            refreshedJob.current = `${job.id}:${job.status}`;
+            void chatApi.readJob(job.id).catch(() => undefined);
+          }
+        }
+      } catch { /* Network failures retain the last known task state. */ }
+      finally { checking = false; }
+    };
+    const refresh = () => { void check(); };
+    const timer = window.setInterval(refresh, 2000);
+    window.addEventListener('online', refresh);
+    window.addEventListener('claw-auth-restored', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    refresh();
+    return () => {
+      live = false; window.clearInterval(timer);
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('claw-auth-restored', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [active, currentSessionId, currentUser?.id, setSessionMessages]);
 
   useEffect(() => {
     if (!standalone || !active) return;
@@ -310,6 +357,7 @@ export function ChatWorkspace({
     ]);
 
     const streamMessages = new Map<number, string>();
+    let accepted = false;
     const approvalState: {
       pending: { runId: string; approvalToken: string; approved: boolean } | null;
     } = { pending: null };
@@ -334,6 +382,12 @@ export function ChatWorkspace({
 
     const handleEvent = (event: ChatStreamEvent) => {
       if (useAppStore.getState().currentUser?.id !== ownerId) return;
+      if (event.type === 'job_started') {
+        accepted = true;
+        if (useAppStore.getState().currentSessionId === targetSessionId) setRemoteJob(event.job);
+        return;
+      }
+      if (event.type === 'heartbeat') return;
       if (event.type === 'step') {
         const message = event.message || event.stage || '处理进度';
         setStatusText(message);
@@ -403,6 +457,8 @@ export function ChatWorkspace({
         return;
       }
       if (event.type === 'approval_required') {
+        // Suspended pages must not approve/deny tools through a suppressed dialog.
+        if (document.visibilityState !== 'visible') return;
         const runId = String(event.run_id || '');
         const approvalToken = String(event.approval_token || '');
         const name = event.tool_call?.name || '高风险工具';
@@ -444,6 +500,13 @@ export function ChatWorkspace({
       return true;
     } catch (caught) {
       console.warn('[ChatWorkspace] sendMessage:', caught);
+      if (caught instanceof AcceptedJobError || accepted) {
+        if (useAppStore.getState().currentUser?.id === ownerId && useAppStore.getState().currentSessionId === targetSessionId) {
+          if (caught instanceof AcceptedJobError) setRemoteJob(caught.job);
+          setBootError(`任务已提交至服务器，请核对任务状态；无需重复发送。${(caught as Error).message || ''}`);
+        }
+        return true;
+      }
       if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500 && useAppStore.getState().currentSessionId === targetSessionId) setDraft(text);
       appendSynthetic({ role: 'process', content: `请求失败\n${(caught as Error).message || '网络错误'}`, node_id: `error-${Date.now()}` });
       return false;
@@ -452,6 +515,28 @@ export function ChatWorkspace({
       setStatusText(Object.keys(useAppStore.getState().streams).length ? '后台生成中...' : '就绪');
     }
   }, [beginStream, currentSessionId, currentUser?.id, endStream, loadSessions, loadTree, objectContext, onSessionChange, setCurrentSessionId, setDraft, setSessionMessages, setStatusText, streams, updateStream]);
+
+  const continueJob = async () => {
+    if (!remoteJob?.run_id || jobActionBusy) return;
+    const job = remoteJob;
+    setJobActionBusy(true);
+    try {
+      const events = (event: ChatStreamEvent) => { if (event.type === 'job_started') setRemoteJob(event.job); };
+      if (job.status === 'waiting_approval') {
+        const { runs } = await chatApi.runs(job.session_id);
+        const pending = runs.find(run => run.id === job.run_id)?.pending_approval?.tool_call;
+        const approved = confirm(`是否允许执行 ${pending?.name || '待确认操作'}？\n\n${JSON.stringify(pending?.arguments || {}, null, 2)}`);
+        await chatApi.approveRun({ runId: job.run_id!, approvalToken: '', approved }, events);
+      } else {
+        await chatApi.resumeRun(job.run_id!, events);
+      }
+      refreshedJob.current = '';
+      await refreshCurrent();
+    } catch (error) {
+      if (error instanceof AcceptedJobError) setRemoteJob(error.job);
+      else setBootError((error as Error).message || '暂时无法继续任务。');
+    } finally { setJobActionBusy(false); }
+  };
 
   useEffect(() => {
     if (!standalone || !active || !pendingChatMessage || !readySessionId ||
@@ -519,7 +604,7 @@ export function ChatWorkspace({
   const branchSummary = tree ? `${tree.nodes.length} 节点` : '未载入';
 
   return (
-    <div className={`app chat-workspace ${standalone ? 'chat-standalone' : 'chat-overlay-app'}`}>
+    <div className={`app chat-workspace ${standalone ? 'chat-standalone' : 'chat-overlay-app'}`} data-session-id={currentSessionId || undefined}>
       {standalone && <HomeNav view="chat" />}
       {standalone ? (
         <SessionSidebar
@@ -589,7 +674,22 @@ export function ChatWorkspace({
         </div>
 
         {bootError && <p className="chat-navigation-notice" role="alert">{bootError}</p>}
-        {returnedToChat && <div className="chat-navigation-notice" role="status"><span>已返回对话。如果回答长时间没有更新，可以结束当前连接并重新读取已保存的结果。</span><button type="button" onClick={() => {
+        {remoteJob && remoteJob.status !== 'succeeded' && <div className="chat-navigation-notice" role="status">
+          <span>{remoteJob.status === 'queued' || remoteJob.status === 'running' ? '服务器正在处理，离开页面后仍会继续。开启回复通知后，完成时会提醒你。' : remoteJob.status === 'waiting_approval' ? '任务等待你的操作确认。' : remoteJob.status === 'waiting_user' ? '中断前的一项操作结果需要核对，任务已暂停。' : remoteJob.error || '任务已停止，可查看已保存的对话记录。'}</span>
+          {['queued', 'running'].includes(remoteJob.status) && <button type="button" disabled={jobActionBusy} onClick={() => {
+            if (!remoteJob || !confirm('停止服务器上的当前任务？已完成的操作不会撤销。')) return;
+            setJobActionBusy(true);
+            void chatApi.cancelJob(remoteJob.id).then(() => refreshCurrent()).catch(error => setBootError(error.message)).finally(() => setJobActionBusy(false));
+          }}>停止生成</button>}
+          {remoteJob.run_id && ['waiting_approval', 'interrupted'].includes(remoteJob.status) && <button type="button" disabled={jobActionBusy} onClick={() => void continueJob()}>{remoteJob.status === 'waiting_approval' ? '查看并确认' : '从检查点继续'}</button>}
+          {remoteJob.run_id && remoteJob.status === 'waiting_user' && <button type="button" onClick={() => setRecoveryOpen(true)}>核对操作结果</button>}
+        </div>}
+        {recoveryOpen && remoteJob?.run_id && <RunRecoveryPanel sessionId={remoteJob.session_id} runId={remoteJob.run_id} onClose={() => setRecoveryOpen(false)} onResolved={(cancelled) => {
+          setRecoveryOpen(false);
+          if (!cancelled) void continueJob();
+          else void chatApi.latestJob(remoteJob.session_id).then(result => setRemoteJob(result.job));
+        }} />}
+        {returnedToChat && <div className="chat-navigation-notice" role="status"><span>已返回对话。可以重新读取服务器保存的结果，查看连接断开不会停止后台任务。</span><button type="button" onClick={() => {
           if (currentSessionId) useAppStore.getState().streams[currentSessionId]?.abortController?.abort();
           void refreshCurrent().then(() => setReturnedToChat(false)).catch(error => setBootError(error.message));
         }}>重新读取</button><button type="button" aria-label="关闭返回提示" onClick={() => setReturnedToChat(false)}>关闭</button></div>}

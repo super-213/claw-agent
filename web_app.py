@@ -36,6 +36,8 @@ from services.access_control import (
     normalize_sharing,
 )
 from services.auth_service import AuthSessionStore
+from services.chat_jobs import BackgroundChat, ChatJobStore, background_session
+from services.chat_notifications import ChatNotifications, auth_fingerprint
 from services.branch_service import (
     create_session_branch,
     delete_session_branch,
@@ -132,6 +134,11 @@ class ChatRequest(BaseModel):
 class RunApprovalRequest(BaseModel):
     approval_token: str | None = None
     approved: bool = True
+    request_id: str | None = None
+
+
+class BackgroundRunRequest(BaseModel):
+    request_id: str
 
 
 class MemoryWriteRequest(BaseModel):
@@ -229,6 +236,8 @@ async def _set_static_cache_headers(_request: Request, call_next):
     if auth_cookie_refresh:
         _set_login_cookie(response, auth_cookie_refresh["token"], remember_me=True)
     content_type = response.headers.get("content-type", "")
+    if _request.url.path.startswith(('/api/chat/jobs', '/api/chat-notifications')) or _request.url.path.endswith('/chat-job'):
+        response.headers['Cache-Control'] = 'no-store'
     if _request.url.path.startswith("/assets/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
@@ -975,6 +984,8 @@ def auth_login(payload: LoginRequest | None = Body(default=None)):
 @app.post("/api/auth/logout", tags=["auth"])
 def auth_logout(request: Request, response: Response):
     token = request.cookies.get(AUTH_COOKIE_NAME)
+    if chat_background is not None:
+        chat_background.notifications.logout(auth_fingerprint(token))
     auth_sessions.delete(token)
     response.delete_cookie(AUTH_COOKIE_NAME)
     return {"ok": True}
@@ -1213,6 +1224,18 @@ async def _stop_home_scheduler() -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+@app.on_event('startup')
+async def _start_chat_background():
+    if not app.config.get('TESTING'):
+        await _chat_background().start()
+
+
+@app.on_event('shutdown')
+async def _stop_chat_background():
+    if chat_background is not None:
+        await chat_background.stop()
 
 
 @app.get("/api/dashboard/summary", tags=["dashboard"])
@@ -1820,6 +1843,7 @@ def get_session(session_id: str, user: dict[str, Any] = Depends(require_user)):
 def delete_session(session_id: str, user: dict[str, Any] = Depends(require_user)):
     try:
         _load_authorized_session(session_id, user, delete=True)
+        _ensure_chat_idle(session_id)
         store.delete_session(session_id)
     except KeyError:
         return _json({"error": "session_not_found"}, 404)
@@ -1883,6 +1907,7 @@ def create_branch(
 
     if not branch_point_node_id:
         return _json({"error": "missing_field", "message": "branch_point_node_id is required"}, 400)
+    _ensure_chat_idle(session_id)
 
     try:
         _load_authorized_session(session_id, user, write=True)
@@ -1913,6 +1938,7 @@ def switch_branch(
 
     if not target_node_id:
         return _json({"error": "missing_field", "message": "target_node_id is required"}, 400)
+    _ensure_chat_idle(session_id)
 
     try:
         _load_authorized_session(session_id, user, write=True)
@@ -1947,6 +1973,7 @@ def delete_branch(
     node_id: str,
     user: dict[str, Any] = Depends(require_user),
 ):
+    _ensure_chat_idle(session_id)
     try:
         _load_authorized_session(session_id, user, write=True)
         return delete_session_branch(store, agent_prompt, session_id, node_id)
@@ -2041,6 +2068,7 @@ async def chat(
 ):
     payload_data = _payload(payload)
     session_id = payload_data.get("session_id")
+    _ensure_chat_idle(session_id)
     user_message = (payload_data.get("message") or "").strip()
     try:
         images = normalize_images(payload_data.get("images"))
@@ -2152,6 +2180,7 @@ async def approve_run(
     try:
         run = await asyncio.to_thread(run_store.load, run_id)
         session_id = str(run.get("session_id") or "")
+        _ensure_chat_idle(session_id)
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
     except KeyError:
         return _json({"error": "run_not_found"}, 404)
@@ -2199,6 +2228,7 @@ async def resume_run(
     try:
         run = await asyncio.to_thread(run_store.load, run_id)
         session_id = str(run.get("session_id") or "")
+        _ensure_chat_idle(session_id)
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
     except KeyError:
         return _json({"error": "run_not_found"}, 404)
@@ -2353,6 +2383,7 @@ async def chat_stream(
 ):
     payload_data = _payload(payload)
     session_id = payload_data.get("session_id")
+    _ensure_chat_idle(session_id)
     user_message = (payload_data.get("message") or "").strip()
     try:
         images = normalize_images(payload_data.get("images"))
@@ -2438,6 +2469,174 @@ async def chat_stream(
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+chat_background: BackgroundChat | None = None
+
+
+def _ensure_chat_idle(session_id):
+    if chat_background is not None and background_session.get() != session_id and chat_background.store.is_active(session_id):
+        raise HTTPException(status_code=409, detail='session_busy')
+
+
+def _chat_background() -> BackgroundChat:
+    global chat_background
+    if chat_background is None:
+        jobs = ChatJobStore(home_service.root_dir / 'chat_jobs.sqlite3')
+        def valid_login(fingerprint, user_id):
+            account = user_store.get_user(user_id)
+            return bool(account and account.get('status') == 'active' and auth_sessions.is_active_hash(fingerprint, user_id))
+        notices = ChatNotifications(jobs, valid_login)
+        chat_background = BackgroundChat(jobs, notices)
+    return chat_background
+
+
+async def _background_response(call):
+    response = await call()
+    if response.status_code >= 400:
+        data = __import__('json').loads(response.body)
+        yield stream_event({'type': 'error', 'message': data.get('message') or data.get('error') or '任务未能执行。'})
+        return
+    async for event in response.body_iterator:
+        yield event
+
+
+@app.post('/api/chat/jobs', tags=['chat'], status_code=202)
+async def create_chat_job(payload: ChatRequest, user=Depends(require_user)):
+    data = _payload(payload)
+    session_id = str(data.get('session_id') or '')
+    try:
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
+    except KeyError:
+        raise TaskError('session_not_found', status=404)
+    except PermissionError:
+        raise TaskError('forbidden', status=403)
+    try:
+        images = normalize_images(data.get('images'))
+        attachments = normalize_attachments(data.get('attachments'))
+    except ValueError as exc:
+        raise TaskError('invalid_media', str(exc))
+    if not (data.get('message') or '').strip() and not images and not attachments:
+        raise TaskError('empty_message', '请输入问题或添加附件。')
+    _task_chat_context(data, user, session_id)
+    job = await _chat_background().submit(str(user['id']), session_id, data.get('request_id'), data,
+        lambda: _background_response(lambda: chat_stream(payload, user)))
+    return {'job': job}
+
+
+async def _authorized_job(job_id, user):
+    job = await asyncio.to_thread(_chat_background().store.get, job_id, str(user['id']))
+    try:
+        await asyncio.to_thread(_load_authorized_session, job['session_id'], user, write=False)
+    except (KeyError, PermissionError):
+        raise TaskError('job_not_found', status=404)
+    return job
+
+
+@app.get('/api/chat/jobs/{job_id}', tags=['chat'])
+async def get_chat_job(job_id: str, user=Depends(require_user)):
+    return {'job': ChatJobStore.public(await _authorized_job(job_id, user))}
+
+
+@app.get('/api/chat/jobs/{job_id}/events', tags=['chat'])
+async def chat_job_events(job_id: str, after: int = 0, user=Depends(require_user)):
+    await _authorized_job(job_id, user)
+    return StreamingResponse(_chat_background().stream(job_id, str(user['id']), max(0, after)), media_type='application/x-ndjson', headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
+
+
+@app.get('/api/sessions/{session_id}/chat-job', tags=['chat'])
+async def latest_chat_job(session_id: str, user=Depends(require_user)):
+    try:
+        await asyncio.to_thread(_load_authorized_session, session_id, user, write=False)
+    except (KeyError, PermissionError):
+        raise TaskError('session_not_found', status=404)
+    job = await asyncio.to_thread(_chat_background().store.latest, session_id, str(user['id']))
+    return {'job': job}
+
+
+@app.post('/api/chat/jobs/{job_id}/read', tags=['chat'])
+async def read_chat_job(job_id: str, user=Depends(require_user)):
+    await _authorized_job(job_id, user)
+    await asyncio.to_thread(_chat_background().store.read, job_id, str(user['id']))
+    return {'ok': True}
+
+
+@app.post('/api/chat/jobs/{job_id}/cancel', tags=['chat'])
+async def cancel_chat_job(job_id: str, user=Depends(require_user)):
+    job = await _authorized_job(job_id, user)
+    try:
+        await asyncio.to_thread(_load_authorized_session, job['session_id'], user, write=True)
+    except PermissionError:
+        raise TaskError('forbidden', status=403)
+    if job.get('run_id'):
+        await asyncio.to_thread(run_store.request_cancel, job['run_id'])
+    await _chat_background().cancel(job_id, str(user['id']))
+    return {'ok': True}
+
+
+async def _background_run_access(run_id, user):
+    try:
+        run = await asyncio.to_thread(run_store.load, run_id)
+        await asyncio.to_thread(_load_authorized_session, str(run.get('session_id') or ''), user, write=True)
+    except KeyError:
+        raise TaskError('run_not_found', status=404)
+    except PermissionError:
+        raise TaskError('forbidden', status=403)
+    if run.get('actor_user_id') not in (None, str(user['id'])):
+        raise TaskError('forbidden', status=403)
+    return run
+
+
+@app.post('/api/runs/{run_id}/background-resume', tags=['runtime'], status_code=202)
+async def background_resume(run_id: str, payload: BackgroundRunRequest, user=Depends(require_user)):
+    run = await _background_run_access(run_id, user)
+    session_id = str(run.get('session_id') or '')
+    if run.get('status') not in ('interrupted', 'running'):
+        raise TaskError('run_not_resumable', '此任务无法继续，请查看运行记录。', status=409)
+    job = await _chat_background().submit(str(user['id']), session_id, payload.request_id,
+        {'action': 'resume', 'run_id': run_id}, lambda: _background_response(lambda: resume_run(run_id, user)), run_id=run_id)
+    return {'job': job}
+
+
+@app.post('/api/runs/{run_id}/background-approval', tags=['runtime'], status_code=202)
+async def background_approval(run_id: str, payload: RunApprovalRequest, user=Depends(require_user)):
+    run = await _background_run_access(run_id, user)
+    session_id = str(run.get('session_id') or '')
+    if not payload.approval_token:
+        raise TaskError('missing_approval_token')
+    # Do not store a reusable approval token in job input metadata.
+    job = await _chat_background().submit(str(user['id']), session_id, payload.request_id,
+        {'action': 'approval', 'run_id': run_id, 'approved': payload.approved},
+        lambda: _background_response(lambda: approve_run(run_id, payload, user)), run_id=run_id)
+    return {'job': job}
+
+
+@app.post('/api/runs/{run_id}/background-resolve-tool', tags=['runtime'])
+async def background_resolve(run_id: str, payload: RunRecoveryRequest, user=Depends(require_user)):
+    run = await _background_run_access(run_id, user)
+    _ensure_chat_idle(run['session_id'])
+    try:
+        updated = await asyncio.to_thread(run_store.resolve_tool_uncertainty, run_id, call_id=payload.call_id or '', action=payload.action or '', output=payload.output)
+    except ValueError as exc:
+        raise TaskError(str(exc), '请重新核对当前任务状态。', status=409)
+    await asyncio.to_thread(_chat_background().store.resolve_waiting, run_id, str(user['id']), updated['status'])
+    return {'status': updated['status']}
+
+
+@app.get('/api/chat-notifications', tags=['push'])
+def chat_notification_status(request: Request, user=Depends(require_user)):
+    return _chat_background().notifications.current(str(user['id']), auth_fingerprint(request.cookies.get(AUTH_COOKIE_NAME)))
+
+
+@app.post('/api/chat-notifications/subscribe', tags=['push'])
+def chat_notification_subscribe(request: Request, payload: dict = Body(...), user=Depends(require_user)):
+    return _chat_background().notifications.subscribe(str(user['id']), auth_fingerprint(request.cookies.get(AUTH_COOKIE_NAME)), payload.get('subscription'))
+
+
+@app.post('/api/chat-notifications/disable', tags=['push'])
+def chat_notification_disable(request: Request, payload: dict = Body(default={}), user=Depends(require_user)):
+    _chat_background().notifications.disable(str(user['id']), auth_fingerprint(request.cookies.get(AUTH_COOKIE_NAME)), payload.get('endpoint'))
+    return {'ok': True}
 
 
 if __name__ == "__main__":

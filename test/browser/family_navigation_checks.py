@@ -3,6 +3,7 @@
 HOME010_WEB_ORIGIN and HOME010_SCREENSHOTS select the local server and output.
 """
 import os
+from urllib.parse import urlsplit
 from pathlib import Path
 from uuid import uuid4
 
@@ -135,7 +136,7 @@ with sync_playwright() as p:
     expect(page.get_by_label('和家庭 Agent 对话')).to_have_value('示例·工作台草稿')
     sent = []
     page.on('request', lambda request: sent.append(request.url)
-            if request.method == 'POST' and '/chat' in request.url else None)
+            if request.method == 'POST' and urlsplit(request.url).path in ('/api/chat', '/api/chat/stream', '/api/chat/jobs') else None)
     sent_text = '示例·帮我记录一条日程 ' + uuid4().hex[:8]
     page.get_by_label('和家庭 Agent 对话').fill(sent_text)
     page.get_by_role('button', name='发送', exact=True).click()

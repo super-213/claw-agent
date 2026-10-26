@@ -41,6 +41,11 @@ body.pwa-install-route { height: auto; overflow: visible; background: var(--home
 .composer-attachment-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .composer-upload-list { max-height: min(28dvh, 220px); overflow: auto; overscroll-behavior: contain; }
 .chat-latest { position: sticky; bottom: 12px; display: block; margin: 8px auto 0; padding: 10px 16px; min-height: 44px; border-radius: 24px; border: 1px solid var(--home-line); background: var(--home-surface); color: var(--home-ink); box-shadow: 0 2px 12px #0001; z-index: 2; }
+.chat-notification-settings { display: grid; gap: 12px; padding-block: 18px; border-block: 1px solid var(--home-line); }
+.chat-notification-settings h3 { font-size: 18px; }
+.chat-notification-settings p { font-size: 14px; line-height: 1.7; max-width: 540px; }
+.chat-notification-settings button { justify-self: start; }
+.chat-recovery-arguments { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding-block: 12px; font-size: 13px; }
 @media (max-width: 860px) {
   .home-shell :is(input, textarea, select), .auth-shell .auth-panel :is(input, textarea, select) { font-size: max(16px, 1em); }
   .auth-shell { min-height: var(--app-height); }

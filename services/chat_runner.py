@@ -132,6 +132,8 @@ async def stream_chat_events(
                     session_id=session_id,
                 ):
                     if event.get("type") != "done":
+                        if orchestrator.run:
+                            event = {**event, "run_id": orchestrator.run.get("id")}
                         yield stream_event(event)
 
             messages = conversation.get_messages()
@@ -167,6 +169,8 @@ async def stream_chat_events(
     except Exception as e:
         if orchestrator is not None:
             orchestrator.mark_interrupted(str(e))
+        if conversation is not None:
+            await _save_conversation(store, session_id, conversation)
         yield stream_event({
             "type": "error",
             "stage": "error",
@@ -185,6 +189,8 @@ async def stream_run_approval_events(
     approved: bool,
 ) -> AsyncIterator[str]:
     """Resume a persisted run after an approval decision."""
+    orchestrator = None
+    conversation = None
     try:
         async with session_run_locks.locked(session_id):
             session = await asyncio.to_thread(store.load_session, session_id)
@@ -218,8 +224,22 @@ async def stream_run_approval_events(
                 "run_status": orchestrator.run.get("status") if orchestrator.run else None,
                 "active_node_id": conversation.active_node_id,
             })
+    except asyncio.CancelledError:
+        if orchestrator is not None:
+            orchestrator.mark_interrupted("server_task_cancelled")
+        if conversation is not None:
+            await _save_conversation(store, session_id, conversation)
+        raise
     except Exception as exc:
         yield stream_event({"type": "error", "stage": "error", "message": str(exc)})
+        # A rotated/invalid approval token must leave the operation available for
+        # confirmation rather than making its background job look terminal.
+        run = getattr(orchestrator, "run", None) or {}
+        if run.get("status") in ("waiting_approval", "waiting_user"):
+            yield stream_event({
+                "type": "done", "run_id": run_id, "session_id": session_id,
+                "run_status": run["status"], "messages": [],
+            })
 
 
 async def stream_run_resume_events(

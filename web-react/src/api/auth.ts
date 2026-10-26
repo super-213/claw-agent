@@ -1,4 +1,5 @@
 import { jsonRequest } from './client';
+import { clearLocalPush } from '../features/pwa/chatNotifications';
 import type { User } from './types';
 
 export interface LoginPayload {
@@ -24,6 +25,10 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  logout: () => jsonRequest<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
+  logout: async () => {
+    const result = await jsonRequest<{ ok: true }>('/api/auth/logout', { method: 'POST' });
+    await Promise.race([clearLocalPush().catch(() => undefined), new Promise(resolve => window.setTimeout(resolve, 2000))]);
+    return result;
+  },
   me: () => jsonRequest<{ user: User }>('/api/auth/me'),
 };

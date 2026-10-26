@@ -32,6 +32,7 @@ export default [
         Event: 'readonly',
         Navigator: 'readonly',
         ServiceWorkerRegistration: 'readonly',
+        Notification: 'readonly',
         HTMLButtonElement: 'readonly',
         Node: 'readonly',
         HTMLInputElement: 'readonly',

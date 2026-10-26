@@ -91,8 +91,11 @@ with sync_playwright() as p:
  d=page.locator('.chat-workspace');expect(d).to_be_visible()
  expect(d.locator('.composer')).to_have_css('background-color', 'rgb(199, 233, 255)')
  expect(d.locator('.composer-input')).to_be_visible()
- assert d.locator('.composer-input').bounding_box()['height'] < 100
  expect(d.get_by_text('示例日程已记录。',exact=True).first).to_be_visible(timeout=15000)
+ # The initial send can replace the provisional route while the job is accepted.
+ # Measure the settled conversation rather than a node being detached mid-check.
+ expect(d.locator('.composer-input')).to_be_visible()
+ assert d.locator('.composer-input').bounding_box()['height'] < 100
  page.wait_for_timeout(300);page.screenshot(path=str(out/'mobile-chat-complete.png'))
  page.locator('.home-bottom-nav').get_by_role('link',name='工作台',exact=True).click();expect(d).not_to_be_visible()
  page.get_by_role('button',name='查看全部',exact=True).click()
