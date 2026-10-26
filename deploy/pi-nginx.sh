@@ -129,5 +129,17 @@ fi
 
 echo "同步前端静态文件…"
 sudo install -d -m 755 "$WEB_ROOT"
-sudo cp -R "$APP_DIR/web-react/dist/." "$WEB_ROOT/"
+# Publish dependencies first; retain old hashed assets for already-open clients.
+# Atomically replace the two release entry points only after every asset is ready.
+for source in "$APP_DIR/web-react/dist/"*; do
+  name="$(basename "$source")"
+  case "$name" in index.html|sw.js) continue ;; esac
+  sudo cp -R "$source" "$WEB_ROOT/"
+done
+for name in index.html sw.js; do
+  if [[ -f "$APP_DIR/web-react/dist/$name" ]]; then
+    sudo install -m 644 "$APP_DIR/web-react/dist/$name" "$WEB_ROOT/.$name.next"
+    sudo mv -f "$WEB_ROOT/.$name.next" "$WEB_ROOT/$name"
+  fi
+done
 sudo chmod -R a+rX "$WEB_ROOT"

@@ -5,8 +5,10 @@ import { ChatWorkspace } from '../features/chat/ChatWorkspace';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { HomePage } from '../features/home/HomePage';
 import { FamilyRedirect } from '../features/home/familyNavigation';
+import { InstallPage } from '../features/pwa/InstallPage';
 
 export const routes: RouteObject[] = [
+  { path: '/install', element: <InstallPage /> },
   { path: '/login', element: <LoginPage /> },
   {
     element: <ProtectedRoute />,

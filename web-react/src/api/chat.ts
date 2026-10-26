@@ -32,6 +32,43 @@ interface UploadResponse {
   media: MessageMedia[];
 }
 
+export interface UploadOptions {
+  signal?: AbortSignal;
+  onProgress?: (percent: number) => void;
+}
+
+export function uploadChatMedia(files: File[], options: UploadOptions = {}): Promise<UploadResponse> {
+  if (!window.navigator.onLine) return Promise.reject(new Error('当前离线，请联网后上传。'));
+  return new Promise((resolve, reject) => {
+    const xhr = new window.XMLHttpRequest();
+    xhr.open('POST', '/api/chat/uploads');
+    xhr.timeout = 120000;
+    const cleanup = () => options.signal?.removeEventListener('abort', cancel);
+    const fail = (message: string) => { cleanup(); reject(new Error(message)); };
+    const cancel = () => { xhr.abort(); fail('已取消上传'); };
+    if (options.signal?.aborted) { fail('已取消上传'); return; }
+    options.signal?.addEventListener('abort', cancel, { once: true });
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) options.onProgress?.(Math.round(event.loaded / event.total * 100));
+    };
+    xhr.onload = () => {
+      cleanup();
+      let data: UploadResponse & { message?: string };
+      try { data = JSON.parse(xhr.responseText); } catch { data = { media: [] }; }
+      if (xhr.status === 401) window.dispatchEvent(new CustomEvent('claw-api-unauthorized'));
+      if (xhr.status === 413) { reject(new Error('文件过大，请选择不超过 25 MiB 的文件。')); return; }
+      if (xhr.status < 200 || xhr.status >= 300 || !data.media?.length) { reject(new Error(data.message || (xhr.status === 401 ? '登录已过期，请登录后重试上传。' : '上传失败，请重试。'))); return; }
+      resolve(data);
+    };
+    xhr.onerror = () => fail('网络连接失败，请重试上传。');
+    xhr.ontimeout = () => fail('上传超时，请检查网络后重试。');
+    xhr.onabort = () => fail('已取消上传');
+    const body = new FormData();
+    files.forEach(file => body.append('files', file));
+    xhr.send(body);
+  });
+}
+
 const toWirePayload = ({
   sessionId,
   message,
@@ -55,7 +92,8 @@ const toWirePayload = ({
 });
 
 export const chatApi = {
-  uploadMedia: (files: File[]) => {
+  uploadMedia: (files: File[], options?: UploadOptions) => {
+    if (options) return uploadChatMedia(files, options);
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
     return formRequest<UploadResponse>('/api/chat/uploads', formData);

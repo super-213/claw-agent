@@ -1,20 +1,24 @@
 import { useId, type ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useDialog } from './useDialog';
+import { useSheetDrag } from './useSheetDrag';
 
 export function HomeDialog({
   title,
   children,
   onClose,
   wide = false,
+  swipeToClose = false,
 }: {
   title: string;
   children: ReactNode | ((dismiss: () => void) => ReactNode);
   onClose: () => void;
   wide?: boolean;
+  swipeToClose?: boolean;
 }) {
   const id = useId();
   const { ref, dismiss } = useDialog(true, onClose);
+  const gestures = useSheetDrag(ref, dismiss, swipeToClose && Boolean(window.matchMedia?.('(max-width: 860px)').matches));
   return (
     <div
       className="home-dialog-backdrop"
@@ -30,6 +34,7 @@ export function HomeDialog({
         aria-labelledby={id}
         tabIndex={-1}
       >
+        {swipeToClose && <div className="pwa-sheet-handle" aria-hidden="true" {...gestures}><span /></div>}
         <header>
           <button type="button" onClick={dismiss} aria-label="返回">
             <ArrowLeft size={19} />

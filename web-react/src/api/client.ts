@@ -1,5 +1,6 @@
 import { createNdjsonParseState, flushNdjson, isTerminalStreamError, parseNdjsonChunk } from './stream';
 import type { ChatStreamEvent } from './types';
+import { beginActivity } from '../features/pwa/activity';
 
 export class ApiError extends Error {
   status: number;
@@ -29,28 +30,34 @@ const parseJson = async (response: Response): Promise<any> => {
 };
 
 export const jsonRequest = async <T>(url: string, options: RequestInit = {}): Promise<T> => {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  return parseJson(response) as Promise<T>;
+  const writing = options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase());
+  if (writing && !window.navigator.onLine) throw new Error('当前离线，请联网后重试。');
+  const finish = writing ? beginActivity() : () => undefined;
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+    });
+    return await parseJson(response) as T;
+  } finally { finish(); }
 };
 
 export const formRequest = async <T>(url: string, formData: FormData, options: RequestInit = {}): Promise<T> => {
-  const response = await fetch(url, {
-    ...options,
-    method: options.method || 'POST',
-    body: formData,
-    headers: {
-      Accept: 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  return parseJson(response) as Promise<T>;
+  if (!window.navigator.onLine) throw new Error('当前离线，请联网后上传。');
+  const finish = beginActivity();
+  try {
+    const response = await fetch(url, {
+      ...options,
+      method: options.method || 'POST',
+      body: formData,
+      headers: { Accept: 'application/json', ...(options.headers || {}) },
+    });
+    return await parseJson(response) as T;
+  } finally { finish(); }
 };
 
 interface StreamOptions extends RequestInit {
@@ -58,6 +65,7 @@ interface StreamOptions extends RequestInit {
 }
 
 export const streamRequest = async (url: string, options: StreamOptions = {}): Promise<ChatStreamEvent | null> => {
+  if (!window.navigator.onLine) throw new Error('当前离线，请联网后发送。');
   const { onEvent = () => undefined, ...requestOptions } = options;
   const response = await fetch(url, {
     ...requestOptions,
@@ -93,12 +101,22 @@ export const streamRequest = async (url: string, options: StreamOptions = {}): P
   };
 
   while (true) {
-    const { value, done } = await reader.read();
+    let timer = 0;
+    const { value, done } = await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => {
+        timer = window.setTimeout(() => {
+          void reader.cancel().catch(() => undefined);
+          reject(new Error('长时间未收到新内容，连接已结束。请重新读取会话核对结果。'));
+        }, 240000);
+      }),
+    ]).finally(() => window.clearTimeout(timer));
     if (done) break;
     parseNdjsonChunk<ChatStreamEvent>(state, decoder.decode(value, { stream: true }), emit);
   }
 
   parseNdjsonChunk<ChatStreamEvent>(state, decoder.decode(), emit);
   flushNdjson<ChatStreamEvent>(state, emit);
+  if (!finalEvent) throw new Error('连接已中断。请重新读取会话，确认结果后再决定是否重试。');
   return finalEvent;
 };

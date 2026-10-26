@@ -410,7 +410,7 @@ export function HomeWidgets({
         </div>
       )}
       {catalog && (
-        <HomeDialog title="添加小组件" onClose={() => setCatalog(false)}>
+        <HomeDialog title="添加小组件" onClose={() => setCatalog(false)} swipeToClose>
           <div className="home-widget-catalog">
             {(Object.keys(widgetNames) as WidgetKind[]).map((kind) => {
               const Icon = icons[kind];

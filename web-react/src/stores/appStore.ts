@@ -70,12 +70,18 @@ export const useAppStore = create<AppState>((set) => ({
     chatDrafts: { ...state.chatDrafts, [sessionId]: draft },
   })),
   setPendingChatMessage: (pendingChatMessage) => set({ pendingChatMessage }),
-  setCurrentUser: (currentUser) => set((state) => ({
-    currentUser,
-    ...(state.currentUser?.id !== currentUser?.id ? {
-      homeDraft: '', homeScrollPositions: {}, chatDrafts: {}, pendingChatMessage: null,
-    } : {}),
-  })),
+  setCurrentUser: (currentUser) => set((state) => {
+    const changed = state.currentUser?.id !== currentUser?.id;
+    if (changed) Object.values(state.streams).forEach(stream => stream.abortController?.abort());
+    return {
+      currentUser,
+      ...(changed ? {
+        homeDraft: '', homeScrollPositions: {}, chatDrafts: {}, pendingChatMessage: null,
+        sessions: [], messages: [], sessionMessages: {}, streams: {}, currentSessionId: null,
+        skills: [], config: null,
+      } : {}),
+    };
+  }),
   setSessions: (sessions) => set({ sessions }),
   setSkills: (skills) => set({ skills }),
   setConfig: (config) => set({ config }),

@@ -78,6 +78,7 @@ export function MoreView({
       </h1>
       {!section && (
         <div className="home-more-menu">
+          <Link to="/install">添加到主屏幕 <ArrowRight size={18} /></Link>
           <button onClick={() => navigate('/home/more?section=sessions')}>
             <MessageCircle size={21} />
             最近对话

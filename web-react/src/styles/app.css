@@ -11,6 +11,7 @@
 @import './auth.css';
 @import './dashboard.css';
 @import '../features/chat/chat-workspace.css';
+@import '../features/pwa/pwa.css';
 
 html,
 body,

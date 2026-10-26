@@ -26,6 +26,8 @@ SINGLE_FILES = (
     "deploy/pi-nginx.sh",
     "deploy/claw-agent.conf",
     "deploy/README.md",
+    "deploy/PWA.md",
+    "deploy/pwa-disable-sw.js",
     "deploy/CLOUDFLARE_TUNNEL.md",
 )
 

@@ -73,7 +73,7 @@ describe('MessageList auto-scroll behavior', () => {
     setScrollMetrics(scrollNode, { clientHeight: 500, scrollHeight: () => scrollHeight });
 
     scrollNode.scrollTop = 180;
-    scrollNode.dispatchEvent(new Event('scroll', { bubbles: true }));
+    act(() => scrollNode.dispatchEvent(new Event('scroll', { bubbles: true })));
 
     scrollHeight = 1600;
     view.rerender(messagesWithAssistant('开头\n\n正在持续输出更多内容...'));
@@ -89,7 +89,7 @@ describe('MessageList auto-scroll behavior', () => {
     setScrollMetrics(scrollNode, { clientHeight: 500, scrollHeight: () => scrollHeight });
 
     scrollNode.scrollTop = 500;
-    scrollNode.dispatchEvent(new Event('scroll', { bubbles: true }));
+    act(() => scrollNode.dispatchEvent(new Event('scroll', { bubbles: true })));
 
     scrollHeight = 1600;
     view.rerender(messagesWithAssistant('开头\n\n正在持续输出更多内容...'));

@@ -6,6 +6,7 @@ sys.path.insert(0,str(ROOT))
 root=Path(tempfile.mkdtemp(prefix='home010-'))
 os.environ['HOME_DATA_DIR']=str(root/'home')
 os.environ['HOME_REMINDER_DELIVERY_ENABLED']='false'
+os.environ['GENERATED_FILES_DIR']=str(root/'files')
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import web_app as w

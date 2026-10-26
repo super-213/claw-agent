@@ -1,6 +1,7 @@
 import { Bot } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { authApi } from '../../api/auth';
 import { ApiError } from '../../api/client';
 import { useAppStore } from '../../stores/appStore';
@@ -13,8 +14,10 @@ const authErrorText: Record<string, string> = {
   admin_already_exists: '管理员已存在，请直接登录',
 };
 
-export function LoginPage() {
+export function LoginPage({ onAuthenticated }: { onAuthenticated?: () => void } = {}) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const setCurrentUser = useAppStore((state) => state.setCurrentUser);
   const [bootstrapMode, setBootstrapMode] = useState(false);
   const [usernames, setUsernames] = useState<string[]>([]);
@@ -66,8 +69,16 @@ export function LoginPage() {
             display_name: displayName.trim() || trimmedUsername,
           })
         : await authApi.login({ username: trimmedUsername, password, remember_me: rememberMe });
+      if (useAppStore.getState().currentUser?.id !== result.user.id) queryClient.clear();
       setCurrentUser(result.user);
-      navigate('/', { replace: true });
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      if (onAuthenticated) onAuthenticated();
+      else {
+        const from = location.state?.from;
+        const destination = typeof from?.pathname === 'string' && from.pathname.startsWith('/') && !from.pathname.startsWith('//') && from.pathname !== '/login'
+          ? `${from.pathname}${from.search || ''}${from.hash || ''}` : '/home';
+        navigate(destination, { replace: true });
+      }
     } catch (caught) {
       const apiError = caught as ApiError;
       const code = apiError.data?.error || '';
@@ -87,8 +98,9 @@ export function LoginPage() {
           <span>Claw</span> Agent
         </div>
         <div className="auth-subtitle">
-          {bootstrapMode ? '首次使用需要初始化管理员账号' : '登录后继续使用工作台'}
+          {onAuthenticated ? '登录已过期，请重新登录。原页面中的输入仍然保留。' : bootstrapMode ? '首次使用需要初始化管理员账号' : '登录后继续使用工作台'}
         </div>
+        {!onAuthenticated && <Link to="/install" className="pwa-back">添加到 iPhone 主屏幕</Link>}
 
         <form className="auth-form" onSubmit={submit}>
           <label className="field-label">

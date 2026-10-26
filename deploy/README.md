@@ -1,5 +1,7 @@
 # 树莓派部署
 
+iPhone 主屏幕 Web App 的安装、更新、验收与恢复见 [PWA 部署说明](PWA.md)。
+
 需要使用自己的域名从外网访问时，在完成本页部署后继续阅读
 [树莓派安装 Cloudflare Tunnel 并绑定自定义域名](CLOUDFLARE_TUNNEL.md)。
 

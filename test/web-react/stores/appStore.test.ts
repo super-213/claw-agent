@@ -44,4 +44,22 @@ describe('appStore session message cache', () => {
 
     expect(useAppStore.getState().messages).toEqual([message('assistant', '流式输出片段')]);
   });
+
+  it('aborts work and clears private state when changing accounts, but retains drafts on reauthentication', () => {
+    const first = { id: 'a', username: 'a', role: 'user' as const, status: 'active' as const };
+    const second = { id: 'b', username: 'b', role: 'user' as const, status: 'active' as const };
+    useAppStore.getState().setCurrentUser(first);
+    useAppStore.getState().setChatDraft('private', '私有草稿');
+    useAppStore.getState().setSessionMessages('private', [message('user', '私人内容')]);
+    const controller = new AbortController();
+    useAppStore.getState().beginStream('private', '私人任务', controller);
+    useAppStore.getState().setCurrentUser(first);
+    expect(useAppStore.getState().chatDrafts.private).toBe('私有草稿');
+    expect(controller.signal.aborted).toBe(false);
+    useAppStore.getState().setCurrentUser(second);
+    expect(controller.signal.aborted).toBe(true);
+    expect(useAppStore.getState().chatDrafts).toEqual({});
+    expect(useAppStore.getState().sessionMessages).toEqual({});
+    expect(useAppStore.getState().streams).toEqual({});
+  });
 });

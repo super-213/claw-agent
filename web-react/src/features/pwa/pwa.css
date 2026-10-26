@@ -1,0 +1,69 @@
+:root { --app-height: 100dvh; --viewport-top: 0px; }
+html:has(body.pwa-install-route) { height: auto; overflow-y: auto; }
+body.pwa-install-route { height: auto; overflow: visible; background: var(--home-page); }
+.pwa-install { max-width: 720px; margin: auto; padding: max(28px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); color: var(--home-ink, #173432); font-family: system-ui, -apple-system, sans-serif; }
+.pwa-install h1 { font-size: clamp(28px, 5vw, 38px); line-height: 1.2; letter-spacing: -.035em; margin: 14px 0; }
+.pwa-install h2 { font-size: 18px; }
+.pwa-install p { line-height: 1.7; }
+.pwa-back { display: flex; gap: 6px; align-items: center; width: fit-content; min-height: 44px; color: inherit; margin-bottom: 32px; }
+.pwa-app-icon { border-radius: 20px; margin-bottom: 16px; }
+.pwa-eyebrow { font-size: 11px; letter-spacing: .14em; font-weight: 700; }
+.pwa-install-steps { list-style: none; padding: 12px 0; margin: 24px 0; }
+.pwa-install-steps li { display: flex; align-items: start; gap: 18px; padding: 20px 0; border-bottom: 1px solid var(--home-line, #d4dfdc); }
+.pwa-install-steps svg, .pwa-step-number { flex: 0 0 24px; text-align: center; font-weight: 600; }
+.pwa-install-steps span { display: block; margin-top: 6px; color: var(--home-muted, #64726d); font-size: 14px; }
+.pwa-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 20px; border-radius: 12px; background: #2f6f73; color: white; text-decoration: none; }
+.pwa-qr-section { display: flex; align-items: center; gap: 28px; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--home-line, #d4dfdc); }
+.pwa-qr-section > div:first-child { flex-shrink: 0; text-align: center; }
+.pwa-qr-section img { display: block; border-radius: 10px; }
+.pwa-qr-section a { display: inline-block; padding: 10px; color: inherit; }
+.pwa-install-url { overflow-wrap: anywhere; font-size: 13px; user-select: all; }
+.pwa-install button, .pwa-status button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 1px solid var(--home-line, #c7d6d2); border-radius: 9px; padding: 8px 14px; background: var(--home-surface, white); color: var(--home-ink, #173432); cursor: pointer; font: inherit; }
+.pwa-install-note { margin-top: 32px; font-size: 13px; color: var(--home-muted, #64726d); }
+.pwa-status { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 110; display: flex; gap: 12px; align-items: center; max-width: calc(100% - 24px); width: max-content; padding: 8px 12px; border: 1px solid #bfceca; border-radius: 12px; background: var(--home-surface, white); color: var(--home-ink, #173432); box-shadow: 0 4px 24px #0002; font: 14px/1.5 system-ui, sans-serif; }
+.pwa-status span { max-width: 440px; }
+.pwa-offline { top: auto; bottom: calc(80px + env(safe-area-inset-bottom)); pointer-events: none; }
+.pwa-update-cover, .pwa-reauth { position: fixed; inset: 0; z-index: 150; background: #f5f7f8ed; display: grid; place-items: center; overflow: auto; }
+.pwa-reauth { z-index: 140; }
+.pwa-sheet-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-end; justify-content: center; background: #102a2870; }
+.pwa-sheet { background: var(--home-surface, #fff); color: var(--home-ink, #173432); border-radius: 22px 22px 0 0; width: min(100%, 520px); max-height: min(85dvh, 640px); display: flex; flex-direction: column; padding-bottom: max(16px, env(safe-area-inset-bottom)); box-shadow: 0 -8px 40px #0002; }
+.pwa-sheet-handle { padding: 13px; touch-action: none; cursor: grab; }
+.pwa-sheet-handle span { display: block; height: 4px; width: 36px; border-radius: 10px; background: #81918c; margin: auto; }
+.pwa-sheet header { display: flex; align-items: center; justify-content: space-between; padding: 0 20px 12px; }
+.pwa-sheet h2 { margin: 0; font-size: 19px; }
+.pwa-sheet button { min-height: 44px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.pwa-sheet header button { width: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--home-page, #f5f7f8); }
+.pwa-sheet-content { overflow: auto; overscroll-behavior: contain; padding: 0 20px; }
+.pwa-sheet-action { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px 4px; text-align: left; border-top: 1px solid var(--home-line, #d4dfdc) !important; }
+.pwa-sheet-action:active { background: var(--home-page, #f5f7f8); }
+.composer-upload-error { color: #9e302b; font-size: 13px; }
+.composer-attachment button { min-height: 44px; min-width: 44px; }
+.composer-attachment-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.composer-upload-list { max-height: min(28dvh, 220px); overflow: auto; overscroll-behavior: contain; }
+.chat-latest { position: sticky; bottom: 12px; display: block; margin: 8px auto 0; padding: 10px 16px; min-height: 44px; border-radius: 24px; border: 1px solid var(--home-line); background: var(--home-surface); color: var(--home-ink); box-shadow: 0 2px 12px #0001; z-index: 2; }
+@media (max-width: 860px) {
+  .home-shell :is(input, textarea, select), .auth-shell .auth-panel :is(input, textarea, select) { font-size: max(16px, 1em); }
+  .auth-shell { min-height: var(--app-height); }
+  body.chat-route .chat-workspace.chat-standalone { position: fixed; top: var(--viewport-top); height: calc(var(--app-height) - 68px - env(safe-area-inset-bottom, 0px)); }
+  .keyboard-open body.chat-route .chat-workspace.chat-standalone { height: var(--app-height); }
+  .keyboard-open .home-bottom-nav { display: none; }
+  .keyboard-open .chat-workspace .composer-area { padding-bottom: 8px; }
+  .chat-workspace .topbar { min-height: 56px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .chat-workspace .attach-btn, .chat-workspace .send-btn { min-width: 44px; min-height: 44px; }
+  .chat-workspace textarea.composer-input { overflow-y: auto; overscroll-behavior: contain; max-height: min(180px, 30dvh); }
+  .chat-workspace .chat-window, .home-dialog-content { overscroll-behavior: contain; overflow-anchor: auto; }
+  .home-dialog-backdrop, .home-chat-overlay, .pwa-sheet-backdrop { top: var(--viewport-top); height: var(--app-height); bottom: auto; }
+  .home-dialog { max-height: calc(var(--app-height) - 12px); display: flex; flex-direction: column; overflow: hidden; }
+  .home-dialog.wide { min-height: var(--app-height); max-height: var(--app-height); }
+  .home-dialog-content { overflow: auto; min-height: 0; }
+  .home-chat-layer { height: 100%; }
+  .pwa-sheet { max-height: calc(var(--app-height) - 20px); }
+}
+@media (min-width: 768px) and (max-width: 860px) {
+  body.chat-route .chat-workspace.chat-standalone { height: var(--app-height); }
+}
+@media (max-width: 520px) {
+  .pwa-qr-section { align-items: flex-start; flex-direction: column-reverse; }
+  .pwa-status { gap: 6px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .pwa-sheet, .pwa-install * { animation: none !important; transition: none !important; } }

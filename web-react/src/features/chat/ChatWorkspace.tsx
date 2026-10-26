@@ -95,6 +95,7 @@ export function ChatWorkspace({
   const pendingChatMessage = useAppStore((state) => state.pendingChatMessage);
   const [readySessionId, setReadySessionId] = useState<string | null>(null);
   const [bootError, setBootError] = useState('');
+  const [returnedToChat, setReturnedToChat] = useState(false);
   const appliedSeed = useRef<number | null>(null);
   const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   useEffect(() => setTaskDraft(null), [currentSessionId, currentUser?.id]);
@@ -119,45 +120,22 @@ export function ChatWorkspace({
     };
   }, [active, standalone]);
 
-  useEffect(() => {
-    if (!active) return;
-    if (typeof window === 'undefined' || !window.visualViewport || !window.matchMedia('(max-width: 860px)').matches) return;
-    const resetPageOffset = () => {
-      const active = document.activeElement;
-      const activeTag = (active as { tagName?: string } | null)?.tagName;
-      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    };
-    const scheduleReset = () => {
-      window.setTimeout(resetPageOffset, 80);
-      window.setTimeout(resetPageOffset, 280);
-    };
-    window.visualViewport.addEventListener('resize', scheduleReset);
-    window.visualViewport.addEventListener('scroll', scheduleReset);
-    window.addEventListener('focusout', scheduleReset);
-    return () => {
-      window.visualViewport?.removeEventListener('resize', scheduleReset);
-      window.visualViewport?.removeEventListener('scroll', scheduleReset);
-      window.removeEventListener('focusout', scheduleReset);
-    };
-  }, [active]);
-
   const loadConfig = useCallback(async () => {
     if (!isAdmin(currentUser)) return;
     const data = await configApi.get().catch(() => null);
-    if (data) setConfig(data);
+    if (data && useAppStore.getState().currentUser?.id === currentUser?.id) setConfig(data);
   }, [currentUser, setConfig]);
 
   const loadSkills = useCallback(async () => {
+    const owner = useAppStore.getState().currentUser?.id;
     const data = await skillsApi.list();
-    setSkills(data.skills || []);
+    if (useAppStore.getState().currentUser?.id === owner) setSkills(data.skills || []);
   }, [setSkills]);
 
   const loadSessions = useCallback(async () => {
+    const owner = useAppStore.getState().currentUser?.id;
     const data = await sessionsApi.list();
-    setSessions(data);
+    if (useAppStore.getState().currentUser?.id === owner) setSessions(data);
     return data;
   }, [setSessions]);
 
@@ -172,6 +150,7 @@ export function ChatWorkspace({
 
   const openSession = useCallback(
     async (sessionId: string, options: { pushRoute?: boolean } = {}) => {
+      const owner = useAppStore.getState().currentUser?.id;
       setBootError('');
       setCurrentSessionId(sessionId);
       onSessionChange?.(sessionId);
@@ -180,7 +159,7 @@ export function ChatWorkspace({
         navigate(`/sessions/${sessionId}`);
       }
       const detail = await sessionsApi.get(sessionId);
-      if (useAppStore.getState().currentSessionId !== sessionId) return;
+      if (useAppStore.getState().currentSessionId !== sessionId || useAppStore.getState().currentUser?.id !== owner) return;
       const state = useAppStore.getState();
       const cachedMessages = state.sessionMessages[sessionId];
       const nextMessages = state.streams[sessionId] && cachedMessages ? cachedMessages : detail.messages || [];
@@ -257,6 +236,20 @@ export function ChatWorkspace({
     }
   }, [currentSessionId, loadSessions, openSession]);
 
+  useEffect(() => {
+    if (!active) return;
+    let hidden = false;
+    const check = () => {
+      if (document.visibilityState === 'hidden') { hidden = true; return; }
+      if (!hidden || !window.navigator.onLine) return;
+      hidden = false;
+      if (Object.keys(useAppStore.getState().streams).length) setReturnedToChat(true);
+      else void refreshCurrent().catch(() => setReturnedToChat(true));
+    };
+    document.addEventListener('visibilitychange', check);
+    return () => document.removeEventListener('visibilitychange', check);
+  }, [active, refreshCurrent]);
+
   const deleteSession = async (sessionId: string) => {
     if (busySessionIds.has(sessionId)) {
       alert('该会话正在生成中，请等生成完成后再删除');
@@ -280,22 +273,25 @@ export function ChatWorkspace({
     await openSession(session.id);
   };
 
-  const uploadFiles = useCallback(async (files: File[]) => {
-    const result = await chatApi.uploadMedia(files);
+  const uploadFiles = useCallback(async (files: File[], options?: import('../../api/chat').UploadOptions) => {
+    const result = await chatApi.uploadMedia(files, options);
     return result.media || [];
   }, []);
 
   const sendMessage = useCallback(async (text: string, media: MessageMedia[] = [], invocation?: TaskInvocation) => {
+    const ownerId = currentUser?.id;
     setBranchNotice(null);
     let targetSessionId = currentSessionId;
     if (!targetSessionId) {
       const created = await sessionsApi.create();
+      if (useAppStore.getState().currentUser?.id !== ownerId) return false;
       targetSessionId = created.id;
       await loadSessions();
       setCurrentSessionId(targetSessionId);
       onSessionChange?.(targetSessionId);
     }
-    if (!targetSessionId || streams[targetSessionId]) return;
+    if (!targetSessionId || streams[targetSessionId]) return false;
+    if (useAppStore.getState().currentUser?.id !== ownerId) return false;
 
     const images = media.filter(isImageAttachment);
     const attachments = media.filter((item) => !isImageAttachment(item));
@@ -318,6 +314,7 @@ export function ChatWorkspace({
       pending: { runId: string; approvalToken: string; approved: boolean } | null;
     } = { pending: null };
     const appendSynthetic = (message: Message) => {
+      if (useAppStore.getState().currentUser?.id !== ownerId) return;
       useAppStore.getState().setSessionMessages(targetSessionId as string, (currentMessages) => [...currentMessages, message]);
     };
     const updateSyntheticAssistant = (
@@ -336,6 +333,7 @@ export function ChatWorkspace({
     };
 
     const handleEvent = (event: ChatStreamEvent) => {
+      if (useAppStore.getState().currentUser?.id !== ownerId) return;
       if (event.type === 'step') {
         const message = event.message || event.stage || '处理进度';
         setStatusText(message);
@@ -423,6 +421,7 @@ export function ChatWorkspace({
 
     try {
       await chatApi.stream({ sessionId: targetSessionId, message: text, images, attachments, invocation, requestId: requestId(), objectContext: objectContext || undefined, signal: abortController.signal }, handleEvent);
+      if (useAppStore.getState().currentUser?.id !== ownerId) return false;
       while (approvalState.pending) {
         const decision = approvalState.pending;
         approvalState.pending = null;
@@ -442,15 +441,17 @@ export function ChatWorkspace({
         setSessionMessages(targetSessionId, detail.messages || []);
         await loadTree(targetSessionId);
       }
+      return true;
     } catch (caught) {
       console.warn('[ChatWorkspace] sendMessage:', caught);
       if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500 && useAppStore.getState().currentSessionId === targetSessionId) setDraft(text);
       appendSynthetic({ role: 'process', content: `请求失败\n${(caught as Error).message || '网络错误'}`, node_id: `error-${Date.now()}` });
+      return false;
     } finally {
       endStream(targetSessionId);
       setStatusText(Object.keys(useAppStore.getState().streams).length ? '后台生成中...' : '就绪');
     }
-  }, [beginStream, currentSessionId, endStream, loadSessions, loadTree, objectContext, onSessionChange, setCurrentSessionId, setDraft, setSessionMessages, setStatusText, streams, updateStream]);
+  }, [beginStream, currentSessionId, currentUser?.id, endStream, loadSessions, loadTree, objectContext, onSessionChange, setCurrentSessionId, setDraft, setSessionMessages, setStatusText, streams, updateStream]);
 
   useEffect(() => {
     if (!standalone || !active || !pendingChatMessage || !readySessionId ||
@@ -588,6 +589,10 @@ export function ChatWorkspace({
         </div>
 
         {bootError && <p className="chat-navigation-notice" role="alert">{bootError}</p>}
+        {returnedToChat && <div className="chat-navigation-notice" role="status"><span>已返回对话。如果回答长时间没有更新，可以结束当前连接并重新读取已保存的结果。</span><button type="button" onClick={() => {
+          if (currentSessionId) useAppStore.getState().streams[currentSessionId]?.abortController?.abort();
+          void refreshCurrent().then(() => setReturnedToChat(false)).catch(error => setBootError(error.message));
+        }}>重新读取</button><button type="button" aria-label="关闭返回提示" onClick={() => setReturnedToChat(false)}>关闭</button></div>}
         {standalone && pendingChatMessage && (
           <div className="chat-navigation-notice" role="status">
             <span>{currentBusy ? '当前对话回复结束后将发送：' : '正在打开对话，准备发送：'}{pendingChatMessage.text}</span>
@@ -618,7 +623,7 @@ export function ChatWorkspace({
             ) : null}
             {taskDraft && taskDraft.sessionId === currentSessionId && <TaskDraftChooser draft={taskDraft}
               onChoose={(command, body) => { setDraft(`/ ${command} ${body}`); setTaskDraft(null); }} onDismiss={() => setTaskDraft(null)} />}
-            <Composer disabled={currentBusy || !readySessionId || readySessionId !== currentSessionId} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
+            <Composer key={`${currentUser?.id}:${currentSessionId}`} disabled={currentBusy || !readySessionId || readySessionId !== currentSessionId} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
           </div>
           <BranchTreePanel
             open={treeOpen}
