@@ -26,6 +26,7 @@ import { FamilyNav } from './FamilyNav';
 import { rememberFamilySection } from './familyNavigation';
 import { AgentCommandBar } from './AgentCommandBar';
 import { HomeWidgets } from './HomeWidgets';
+import { WorkbenchPanels } from '../board/WorkbenchPanels';
 import { ScheduleCalendar } from './ScheduleCalendar';
 import { HomeDialog } from '../../components/ui/HomeDialog';
 import type { WidgetSize } from './widgetLayout';
@@ -93,6 +94,7 @@ export function HomePage() {
     setNotice('');
     setRowError('');
   }, [currentUser?.id]);
+  useEffect(() => { if (params.get('panel') === 'board' && params.get('post')) setChatOpen(false); }, [params]);
   const scrollPath = location.pathname;
   const closeChat = useCallback(() => {
     setChatOpen(false);
@@ -376,7 +378,7 @@ export function HomePage() {
                     </p>
                   )}
                 </div>
-                <HomeWidgets
+                <WorkbenchPanels key={currentUser?.id} userId={currentUser?.id || 'guest'}><HomeWidgets
                   key={currentUser?.id}
                   userId={currentUser?.id || 'guest'}
                   items={allItems}
@@ -411,7 +413,7 @@ export function HomePage() {
                   attentionCount={exact ? attention.length : undefined}
                   onOpen={go}
                   renderAttention={renderAttention}
-                />
+                /></WorkbenchPanels>
               </div>
               <ScheduleCalendar today={today} onOpen={go} />
             </div>

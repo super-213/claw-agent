@@ -56,6 +56,9 @@ class CardPresenter:
 
 def builtin_card_presenter():
     presenter = CardPresenter()
+    presenter.register('board_post', {'board_post', 'board_post_draft'}, {
+        'family_board_post_create', 'family_board_post_get', 'family_board_post_update',
+        'family_board_post_withdraw', 'family_board_draft_get', 'family_board_draft_update'})
     presenter.register('task', {'family_task', 'task_draft'}, {
         'family_timed_memo_create', 'family_undated_memo_create', 'family_task_get',
         'family_task_update', 'family_task_complete', 'family_task_reopen', 'family_task_claim',

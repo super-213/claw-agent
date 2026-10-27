@@ -25,6 +25,8 @@ def infer_task_invocation(raw, temporal_type=None):
     recognition. The early router only handles clear task/date expressions.
     """
     raw = (raw or '').strip()
+    if re.search(r'便[笺签]|留言板|留(?:个|一[张条个])?言', raw):
+        return None
     if not raw or raw.startswith(('/', '`', '“', '"', '‘', "'")):
         return None
     if re.search(r'^(?:请问|想问|如何|怎么|怎样|如果|假如|假设)|(?:如何|怎么|怎样).{0,8}(?:创建|添加|保存|记录|安排)|(?:不要(?!忘了)|不用|别(?!忘了)|无需|不需要).{0,8}(?:记|添加|创建|保存|安排|提醒)', raw):

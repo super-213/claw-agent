@@ -794,3 +794,23 @@ body.home-route .home-shell {
   .family-toolbar { gap: 8px; }
   .family-sections a { min-width: 64px; padding-inline: 10px; }
 }
+/* Keep the assistant available as a compact command strip above the workspace. */
+.home-shell .home-command { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; }
+.home-shell .home-command-title { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.home-shell .home-command-title h2 { margin: 0; font-size: 14px; }
+.home-shell .home-command-title > svg { width: 18px; height: 18px; }
+.home-shell .home-command form { min-width: 0; gap: 8px; }
+.home-shell .home-command form input { min-width: 0; height: 44px; padding: 9px 11px; font-size: 14px; }
+.home-shell .home-command form button { height: 44px; min-height: 44px; padding: 8px 11px; font-size: 13px; }
+.home-shell .home-command-actions { margin: 0; gap: 7px; }
+.home-shell .home-command-actions button { min-height: 44px; padding: 7px 9px; gap: 5px; font-size: 12px; white-space: nowrap; }
+.home-shell .home-command-actions svg { width: 14px; height: 14px; }
+.home-dashboard-feedback:empty { display: none; }
+@media (max-width: 767px) {
+  .home-shell .home-command { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 11px; }
+  .home-shell .home-command-title h2 { font-size: 13px; }
+  .home-shell .home-command form { grid-column: 1 / -1; grid-row: 2; }
+  .home-shell .home-command-actions { grid-column: 2; grid-row: 1; gap: 4px; }
+  .home-shell .home-command-actions button { padding: 6px; font-size: 11px; }
+  .home-shell .home-command form button { width: 44px; padding: 0; }
+}

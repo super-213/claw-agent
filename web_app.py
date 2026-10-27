@@ -62,6 +62,11 @@ from agent_runtime import ArtifactStore, MemoryStore, RunStore
 from agent_runtime.builtin_tools import build_tool_registry, _file_read, _file_write, _file_write_needs_approval, _resolve_path
 from agent_runtime.registry import ToolRegistry
 from agent_runtime.family_task_tools import register_family_task_tools
+from agent_runtime.family_board_tools import register_family_board_tools
+from services.board_store import BoardStore
+from services.board_service import BoardPostService
+from services.board_api import board_router
+from services.board_chat import guard_board_answer, current_board_context
 from services.family_member_service import FamilyMemberService
 from services.family_task_service import FamilyTaskService
 from services.family_task_api import task_router
@@ -432,6 +437,7 @@ family_members = FamilyMemberService(home_service, user_store)
 file_access_store = TaskStore(run_root.parent / 'file_access.json')
 family_tasks = FamilyTaskService(TaskStore(home_data_dir / 'tasks.json'), family_members,
                                  timezone_name=config['home_timezone'])
+family_board = BoardPostService(BoardStore(home_data_dir / 'board.json'), family_members, timezone_name=config['home_timezone'])
 
 
 def _knowledge_ocr(image_url):
@@ -822,6 +828,7 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
     if user_id:
         from services.task_chat import guard_task_answer, CREATE_TOOLS
         register_family_task_tools(bound_registry, family_tasks, lambda: user_store.get_user(user_id), execution_context)
+        register_family_board_tools(bound_registry, family_board, lambda: user_store.get_user(user_id), execution_context, _board_resolve_source)
         def finalize_task_answer(content, messages, retries):
             run = orchestrator.run or {}
             context = run.get('family_task_context') or task_context or {}
@@ -830,11 +837,15 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
             saved = None
             if any(result.get('status') == 'success' for result in results):
                 saved = family_tasks.created_in_request(user_store.get_user(user_id), context.get('request_id') or run.get('id'))
-            return guard_task_answer(content, messages, context, retries, saved_tasks=saved, creation_results=results,
+            content, feedback = guard_task_answer(content, messages, context, retries, saved_tasks=saved, creation_results=results,
                 member_names={member['member_id']: member['display_name'] for member in family_members.list()})
+            board_results = [step['tool_result'] for step in run.get('steps', [])
+                             if str((step.get('tool_result') or {}).get('name', '')).startswith('family_board_')]
+            content, board_feedback = guard_board_answer(content, messages, context, retries, results=board_results)
+            return content, board_feedback or feedback
         orchestrator.task_answer_guard = finalize_task_answer
         register_knowledge_tools(bound_registry, knowledge, lambda: user_store.get_user(user_id), execution_context, _knowledge_resolve_file)
-        orchestrator.knowledge_context_filter = lambda messages: knowledge.current_tool_context(messages, user_store.get_user(user_id))
+        orchestrator.knowledge_context_filter = lambda messages: current_board_context(knowledge.current_tool_context(messages, user_store.get_user(user_id)), family_board, user_store.get_user(user_id), execution_context)
         orchestrator.knowledge_answer_finalizer = lambda content, messages: knowledge.finalize_answer(user_store.get_user(user_id), content, messages)
     return orchestrator
 
@@ -908,6 +919,15 @@ def _knowledge_resolve_source(user, session_id, node_id, path):
                 pass
     raise TaskError('source_attachment_not_found', '来源消息中没有此附件。')
 
+
+def _board_resolve_source(user, source, session_id=None, node_id=None):
+    path = _knowledge_resolve_file(user, source)
+    if session_id:
+        _knowledge_resolve_source(user, session_id, node_id, path)
+    return path
+
+
+app.include_router(board_router(lambda: family_board, require_user, _card_session_context, _board_resolve_source))
 
 app.include_router(knowledge_router(lambda: knowledge, require_user, _knowledge_resolve_file, _knowledge_resolve_source))
 
@@ -1264,6 +1284,34 @@ async def _stop_home_scheduler() -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def _board_cleanup_loop():
+    while True:
+        try:
+            await asyncio.to_thread(family_board.cleanup_expired)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"[board_cleanup] {exc}")
+        await asyncio.sleep(10)
+
+
+@app.on_event('startup')
+async def _start_board_cleanup():
+    if not app.config.get('TESTING'):
+        app.state.board_cleanup_task = asyncio.create_task(_board_cleanup_loop())
+
+
+@app.on_event('shutdown')
+async def _stop_board_cleanup():
+    task = getattr(app.state, 'board_cleanup_task', None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 @app.on_event('startup')

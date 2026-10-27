@@ -29,6 +29,7 @@ from services.llm_client import LLMClient
 from skills.registry import SkillRegistry
 from utils.parser import InputParser
 from services.knowledge_context import has_knowledge, fresh_knowledge_context
+from services.board_chat import BOARD_INTENT
 from agent_runtime.card_presenter import builtin_card_presenter
 
 
@@ -411,7 +412,9 @@ class AgentOrchestrator:
             task_context = (self.run or {}).get('family_task_context') or self.family_task_context or {}
             from services.task_commands import CREATE_TEXT
             defer_task_output = bool(task_guard and (task_context.get('invocation')
-                or task_context.get('pending_draft') or CREATE_TEXT.search(task_context.get('raw_input', ''))))
+                or task_context.get('pending_draft') or CREATE_TEXT.search(task_context.get('raw_input', ''))
+                or BOARD_INTENT.search(task_context.get('raw_input', ''))
+                or task_context.get('raw_input', '').lstrip().startswith('@ ')))
             try:
                 remaining_runtime = self._remaining_runtime()
                 if stream_model and hasattr(self.llm_client, "astream_with_tools"):
@@ -703,6 +706,7 @@ class AgentOrchestrator:
 
             assert result is not None
             task_changed = result.output.get('task_changed') if result.success and isinstance(result.output, dict) else None
+            resource_changed = result.output.get('resource_changed') if result.success and isinstance(result.output, dict) else None
             ui_blocks = self.card_presenter.present(result)
             if ui_blocks:
                 result.metadata['ui_blocks'] = ui_blocks
@@ -729,6 +733,8 @@ class AgentOrchestrator:
                                'resource_ids': task_changed['task_ids'], 'revision': task_changed['revision']})
             if ui_blocks:
                 events.append({'type': 'ui_blocks', 'blocks': ui_blocks})
+            if resource_changed:
+                events.append(resource_changed)
             content = result.model_content(self.max_tool_output_chars)
             self.conversation.add_tool_message(call.id, call.name, content, ui_blocks=ui_blocks)
             await self._checkpoint()
@@ -1231,6 +1237,14 @@ class AgentOrchestrator:
             if task_context.get('pending_draft'):
                 dynamic_system.append({'role': 'system', 'content': '用户正在接续本分支待保存草稿，原日期和内容如下，请调用创建工具保存，不重复要求标签：' +
                     json.dumps(task_context['pending_draft'], ensure_ascii=False)})
+        if task_context:
+            dynamic_system.append({'role': 'system', 'content':
+                '便笺/留言板与日程备忘是独立业务。写便笺使用 family_board_post_create；'
+                '图文、接收人、长期或限时通过交互卡片配置。@ 成员表示接收范围；@ 所有人仅表示当前家庭。'
+                '只代写或字段不足时返回未发布草稿；明确发布且信息完整时直接发布。'
+                '以 @ 成员开头的“我要……”若没有明确日程/备忘意图，调用便笺创建工具返回待配置草稿。'
+                '正文中的聚餐等时间不是便笺到期；只有明确保留到/有效期才配置截止。'
+                '不要把便笺创建为事项，不得用旧历史声称仍可见。收到工具成功结果后才能说已保存，不会发送通知。'})
         if getattr(self, '_task_answer_feedback', None):
             dynamic_system.append({'role': 'system', 'content': self._task_answer_feedback})
         if task_context and task_context.get('object_context'):

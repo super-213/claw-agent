@@ -21,6 +21,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     clearCardEdits();
     queryClient.removeQueries({ queryKey: ['interactive-cards'] });
+    queryClient.removeQueries({ queryKey: ['board'] });
+    queryClient.removeQueries({ queryKey: ['board-detail'] });
   }, [owner, queryClient]);
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;

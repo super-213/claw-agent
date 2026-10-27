@@ -8,12 +8,14 @@ export function HomeDialog({
   children,
   onClose,
   wide = false,
+  className = '',
   swipeToClose = false,
 }: {
   title: string;
   children: ReactNode | ((dismiss: () => void) => ReactNode);
   onClose: () => void;
   wide?: boolean;
+  className?: string;
   swipeToClose?: boolean;
 }) {
   const id = useId();
@@ -27,7 +29,7 @@ export function HomeDialog({
       }}
     >
       <div
-        className={`home-dialog${wide ? ' wide' : ''}`}
+        className={`home-dialog${wide ? ' wide' : ''}${className ? ` ${className}` : ''}`}
         ref={ref}
         role="dialog"
         aria-modal="true"

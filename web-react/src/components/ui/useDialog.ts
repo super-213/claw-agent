@@ -55,6 +55,9 @@ export function useDialog(open: boolean, onClose: () => void) {
       if (window.history.state?.homeDialog !== dialogId) closeRef.current();
     };
     const key = (event: KeyboardEvent) => {
+      // Only the top history layer owns keyboard dismissal, even before a
+      // newly opened nested dialog has received its scheduled autofocus.
+      if (window.history.state?.homeDialog !== dialogId) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -82,12 +85,12 @@ export function useDialog(open: boolean, onClose: () => void) {
       }
     };
     window.addEventListener('popstate', pop);
-    node.addEventListener('keydown', key);
+    window.addEventListener('keydown', key);
     return () => {
       active.current = false;
       window.clearTimeout(timer);
       window.removeEventListener('popstate', pop);
-      node.removeEventListener('keydown', key);
+      window.removeEventListener('keydown', key);
       blocked.forEach((entry) => {
         entry.node.inert = entry.inert;
       });

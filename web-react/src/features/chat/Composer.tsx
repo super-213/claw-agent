@@ -1,3 +1,5 @@
+import { BoardMentionInput } from '../board/BoardMentionInput';
+import '../board/board.css';
 import { Camera, FileText, Image as ImageIcon, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { commandFromText, invocationFor, tasksApi, type FamilyMember, type TaskInvocation, type TaskMention } from '../../api/tasks';
@@ -180,7 +182,7 @@ export function Composer({
 
   return (
     <div className="composer-area">
-      <TaskCommandInput
+      <BoardMentionInput text={draft} onChange={onDraftChange} members={members} disabled={!!disabled}>{({ handleBoardKey, menuId: boardMenuId, activeOptionId: boardOptionId }) => <TaskCommandInput
         text={draft}
         onChange={onDraftChange}
         members={members}
@@ -220,9 +222,9 @@ export function Composer({
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
-            aria-expanded={!!menuId}
-            aria-controls={menuId}
-            aria-activedescendant={activeOptionId}
+            aria-expanded={!!(boardMenuId || menuId)}
+            aria-controls={boardMenuId || menuId}
+            aria-activedescendant={boardOptionId || activeOptionId}
             className="composer-input"
             placeholder="发张图片、问问文件，或说“帮我记住…”"
             rows={1}
@@ -231,7 +233,7 @@ export function Composer({
             disabled={disabled}
             onKeyDown={event => {
               if (event.nativeEvent.isComposing) return;
-              if (!event.shiftKey && handleKeyDown(event.key)) { event.preventDefault(); return; }
+              if (!event.shiftKey && (handleBoardKey(event.key) || handleKeyDown(event.key))) { event.preventDefault(); return; }
               keyDown(event);
             }}
             onChange={(event) => { const text = event.target.value; setMentions(validMentions(text, mentions)); onDraftChange(text); }}
@@ -247,7 +249,7 @@ export function Composer({
             <Send size={20} />
           </button>
         </>}
-      </TaskCommandInput>
+      </TaskCommandInput>}</BoardMentionInput>
       {items.length ? (
         <div className="composer-attachments composer-upload-list" aria-live="polite">
           {items.map((attachment) => {

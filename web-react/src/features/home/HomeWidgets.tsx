@@ -41,6 +41,7 @@ const icons = {
 };
 export function HomeWidgets({
   userId,
+  panelSwitch,
   items,
   inventoryReady,
   inventoryFailed,
@@ -56,6 +57,7 @@ export function HomeWidgets({
   renderAttention,
 }: {
   userId: string;
+  panelSwitch?: ReactNode;
   items: HomeInventoryItem[];
   inventoryReady: (location?: string) => boolean;
   inventoryFailed: (location?: string) => boolean;
@@ -181,8 +183,7 @@ export function HomeWidgets({
     >
       <div className="home-widget-heading">
         <div>
-          <LayoutGrid size={17} />
-          <h2>我的小组件</h2>
+          {panelSwitch || <><LayoutGrid size={17} /><h2>我的小组件</h2></>}
         </div>
         <div>
           {editing && (

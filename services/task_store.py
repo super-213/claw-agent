@@ -21,6 +21,7 @@ class TaskError(ValueError):
 
 
 class TaskStore:
+    collections = ('tasks', 'occurrences', 'operations')
     _guard = RLock()
     _locks = {}
 
@@ -46,7 +47,7 @@ class TaskStore:
                         doc = json.loads(self.path.read_text(encoding='utf-8'))
                         if not isinstance(doc, dict) or doc.get('schema_version') != 1:
                             raise ValueError('unknown schema')
-                        for key in ('tasks', 'occurrences', 'operations'):
+                        for key in self.collections:
                             if not isinstance(doc.get(key), dict):
                                 raise ValueError('invalid collection')
                     except (ValueError, OSError) as exc:
@@ -63,10 +64,13 @@ class TaskStore:
                         backups.mkdir(exist_ok=True)
                         daily = backups / (self.path.stem + '-' + datetime.now(timezone.utc).date().isoformat() + '.json')
                         if not daily.exists():
-                            self.write_atomic(daily, before)
+                            self.write_atomic(daily, self.backup_document(before))
                     self.write_atomic(self.path, doc)
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
+
+    def backup_document(self, doc):
+        return doc
 
     @staticmethod
     def write_atomic(path, doc):
