@@ -47,6 +47,13 @@ def main():
                          if task.get('source', {}).get('session_id') == session_id]
                 valid = (response.status_code == 200 and result.get('run_status') == 'completed'
                          and len(tasks) == 1 and tasks[0]['space_type'] == space and tasks[0]['temporal_type'] == temporal)
+                blocks = messages[-1].get('ui_blocks') or []
+                valid = valid and len(blocks) == 1 and blocks[0].get('kind') == 'task'
+                if blocks:
+                    resource = blocks[0]['resource']
+                    card = client.get('/api/home/tasks/' + resource['id'] + '/card', params={
+                        'instance_id': resource.get('instance_id'), 'session_id': session_id})
+                    valid = valid and card.status_code == 200 and card.json()['task']['id'] == tasks[0]['id']
                 if temporal == 'timed' and tasks:
                     valid = valid and tasks[0]['due_date'] == (now.date() + timedelta(days=1)).isoformat()
                     if index == 0:

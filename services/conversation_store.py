@@ -388,7 +388,7 @@ class ConversationStore:
             payload["attachments"] = message["attachments"]
         if message.get("images"):
             payload["images"] = message["images"]
-        for key in ("tool_calls", "tool_call_id", "name"):
+        for key in ("tool_calls", "tool_call_id", "name", "ui_blocks", "ui_summary"):
             if key in message:
                 payload[key] = message[key]
         return payload

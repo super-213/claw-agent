@@ -45,12 +45,20 @@ def test_space_permissions_admin_is_not_a_task_superuser(family):
 @pytest.mark.parametrize('mode', ['all', 'any'])
 def test_multiple_assignees_progress_and_reopen(family, mode):
     service, users, _ = family
-    task, rows = create(family, inv=invocation('household', ids=['A', 'B'], completion_mode=mode))
+    task, rows = create(family, inv=invocation('household', temporal='timed', ids=['A', 'B'], completion_mode=mode),
+                        items=[{'title': '协作事项', 'due_date': '2026-10-23'}])
     done = change(family, task, 'complete', occ=rows[0])['occurrence']
     assert done['status'] == ('completed' if mode == 'any' else 'open')
     assert done['member_progress']['B']['status'] == 'open'
     with pytest.raises(TaskError, match='version_conflict'):
         change(family, task, 'complete', actor=1, occ=rows[0], rid='stale')
+    if mode == 'any':
+        # Once an any-person item is completed, others cannot rewrite that result.
+        with pytest.raises(TaskError, match='task_read_only'):
+            change(family, task, 'complete', actor=1, occ=done, rid='b-done')
+        restored = change(family, task, 'reopen', occ=done)['occurrence']
+        assert restored['status'] == 'open' and restored['member_progress']['B']['status'] == 'open'
+        return
     done2 = change(family, task, 'complete', actor=1, occ=done, rid='b-done')['occurrence']
     assert done2['status'] == 'completed'
     assert done2['member_progress']['A']['status'] == 'completed'
@@ -139,15 +147,17 @@ def test_future_projection_pause_resume_stop(family):
     assert len(service.get(users[0], task['id'])['occurrences']) == 2
     archived = change(family, resumed, 'archive')['task']
     assert archived['lifecycle'] == 'archived'
-    assert all(o['status'] == 'cancelled' for o in service.get(users[0], task['id'])['occurrences'])
+    history = service.get(users[0], task['id'])['occurrences']
+    assert all(o['status'] == 'cancelled' for o in history if o['due_date'] >= clock[0].date().isoformat())
+    assert next(o for o in history if o['due_date'] == '2026-10-28')['status'] == 'open'
 
 
-def test_convert_single_to_weekly_preserves_id_completion(family):
+def test_completed_memo_cannot_be_reactivated_by_converting_to_weekly(family):
     service, users, _ = family
     task, rows = create(family)
     done = change(family, task, 'complete', occ=rows[0])['occurrence']
-    result = change(family, task, 'update', patch={'temporal_type': 'timed', 'recurrence': {'frequency': 'weekly', 'weekday': None}})
-    assert result['task']['id'] == task['id']
+    with pytest.raises(TaskError, match='task_read_only'):
+        change(family, task, 'update', patch={'temporal_type': 'timed', 'recurrence': {'frequency': 'weekly', 'weekday': None}})
     occurrences = service.get(users[0], task['id'])['occurrences']
     assert len(occurrences) == 1 and occurrences[0]['status'] == done['status']
     assert occurrences[0]['member_progress'] == done['member_progress']
@@ -307,5 +317,5 @@ def test_completed_history_cannot_be_rewritten_by_occurrence_edit(family):
     task, rows = create(family)
     completed = change(family, task, 'complete', occ=rows[0])['occurrence']
     for action in ('update_occurrence', 'skip', 'cancel'):
-        with pytest.raises(TaskError, match='invalid_transition'):
+        with pytest.raises(TaskError, match='task_read_only'):
             change(family, task, action, occ=completed, patch={'title': '更改过去'}, rid=action)

@@ -3,6 +3,9 @@ import type { Message } from '../../api/types';
 import { formatBytes, formatUsage } from '../../utils/format';
 import { getMessageView } from '../../utils/messageView';
 import { MessageContent } from './MessageContent';
+import { InteractiveCardHost } from '../interactive-cards/InteractiveCardHost';
+import { cardAdapter, isCardReference } from '../interactive-cards/registry';
+import type { CardContext } from '../interactive-cards/types';
 
 interface MessageRowsProps {
   messages: Message[];
@@ -10,6 +13,7 @@ interface MessageRowsProps {
   onCreateBranch: (nodeId: string) => void | Promise<void>;
   branchActionStates?: Record<string, BranchActionState>;
   branchCreationLocked?: boolean;
+  cardContext?: CardContext;
 }
 
 export type BranchActionState = 'idle' | 'pending' | 'success' | 'error';
@@ -191,7 +195,7 @@ function MessageRow({
       {showHeader ? <AssistantHeader iteration={iteration} /> : <div className="msg-label">{label || (view.role === 'user' ? '你' : view.label)}</div>}
       {view.flow ? <ProtocolFlow flow={view.flow} /> : null}
       <div className={`message ${view.role}`}>
-        <MessageContent message={message} />
+        <MessageContent message={message.ui_summary && message.ui_blocks?.some(block => !!cardAdapter(block)) ? { ...message, content: message.ui_summary } : message} />
       </div>
       {formatUsage(message.usage) ? <details className="msg-usage"><summary>用量详情</summary><span>{formatUsage(message.usage)}</span></details> : null}
       {isFinal ? (
@@ -206,8 +210,19 @@ function MessageRow({
   );
 }
 
-export function MessageRows({ messages, onCreateBranch, branchActionStates, branchCreationLocked = false }: MessageRowsProps) {
+export function MessageRows({ messages, onCreateBranch, branchActionStates, branchCreationLocked = false, cardContext }: MessageRowsProps) {
   const rows: JSX.Element[] = [];
+  const renderedCards = new Set<string>();
+  const finalCards = new Set(messages.filter(message => message.role === 'assistant' && !message.tool_calls?.length && message.content?.trim())
+    .flatMap(message => (message.ui_blocks || []).map(block => block.card_id)));
+  const addCards = (message: Message, preferFinal = false) => {
+    for (const block of message.ui_blocks || []) {
+      if (!isCardReference(block) || renderedCards.has(block.card_id)) continue;
+      if (preferFinal && finalCards.has(block.card_id)) continue;
+      renderedCards.add(block.card_id);
+      rows.push(<InteractiveCardHost key={`card-${block.card_id}`} reference={block} context={cardContext} />);
+    }
+  };
   let iteration = 0;
 
   for (let index = 0; index < messages.length; index += 1) {
@@ -248,6 +263,7 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
             badge="TOOL"
           />,
         );
+        if (resultMessage) addCards(resultMessage, true);
       });
       index = resultIndex - 1;
       continue;
@@ -256,6 +272,10 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
     if (msg.role === 'tool') continue;
 
     if (msg.role === 'assistant') {
+      if (!msg.content?.trim() && !msg.tool_calls?.length && msg.ui_blocks?.length) {
+        addCards(msg, true);
+        continue;
+      }
       iteration += 1;
       if (iteration > 1) rows.push(<IterationDivider key={`iter-${index}`} iteration={iteration} />);
       rows.push(
@@ -269,6 +289,7 @@ export function MessageRows({ messages, onCreateBranch, branchActionStates, bran
           branchCreationLocked={branchCreationLocked}
         />,
       );
+      addCards(msg);
       continue;
     }
 

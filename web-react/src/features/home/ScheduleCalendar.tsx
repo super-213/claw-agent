@@ -37,7 +37,7 @@ async function loadMonth(month: string) {
     rows.push(...page.items);
     cursor = page.next_cursor;
   }
-  return { rows, complete: first.history_complete };
+  return { rows, complete: first.history_complete, timezone: first.timezone };
 }
 export function ScheduleCalendar({
   today,
@@ -90,7 +90,9 @@ export function ScheduleCalendar({
     : '正在读取日期…';
   const time = (row: TaskRow) => {
     const value = row.occurrence?.due_at || '';
-    return /(?:T|^)(\d{2}:\d{2})/.exec(value)?.[1] || '当天';
+    return value ? new Intl.DateTimeFormat('zh-CN', {
+      timeZone: query.data?.timezone || 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(new Date(value)) : '当天';
   };
   return (
     <aside

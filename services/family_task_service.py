@@ -12,9 +12,11 @@ from services.task_access import currently_assigned, can_read, check_version, re
 from services.task_commands import TIME_TEXT, COMMANDS
 from services.task_recurrence import materialize, monday, occurrence, definition_snapshot, parse_date, project, validate_rule
 from services.task_store import TaskError
+from services.task_cards import TaskCardsMixin
+from services.task_card_policy import assert_writable
 
 
-class FamilyTaskService:
+class FamilyTaskService(TaskCardsMixin):
     def __init__(self, store, members, *, timezone_name='Asia/Shanghai', clock=None):
         self.store, self.members = store, members
         self.timezone_name = timezone_name
@@ -44,15 +46,15 @@ class FamilyTaskService:
                 'revision': doc['revision'], **data}
 
     def _mutate(self, user, request_id, operation_index, params, fn):
-        actor = self.members.actor(user)
         if not isinstance(request_id, str) or not request_id or len(request_id) > 200:
             raise TaskError('request_id_required')
         if not isinstance(operation_index, int) or isinstance(operation_index, bool) or operation_index < 0:
             raise TaskError('invalid_operation_index')
-        now = self.now()
         fingerprint = hashlib.sha256(json.dumps(params, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         key = json.dumps([user['id'], request_id, operation_index])
         with self.store.transaction() as doc:
+            now = self.now()
+            actor = self.members.actor(user)
             previous = doc['operations'].get(key)
             if previous:
                 if previous['fingerprint'] != fingerprint:
@@ -67,7 +69,8 @@ class FamilyTaskService:
             result['task_changed'] = {'type': 'task_changed', 'task_ids': result.get('task_ids', []),
                                       'revision': result['revision']}
             doc['events'].append({'actor': actor, 'at': now.isoformat(), 'task_ids': result.get('task_ids', []),
-                                  'action': params['action'], 'revision': result['revision']})
+                                  'action': params['action'], 'revision': result['revision'],
+                                  **({'changes': deepcopy(result['changes'])} if result.get('changes') else {})})
             doc['operations'][key] = {'fingerprint': fingerprint, 'result': deepcopy(result), 'at': now.isoformat()}
             return result
 
@@ -114,56 +117,69 @@ class FamilyTaskService:
             raise TaskError('invalid_mentions')
         if not isinstance(items, list) or not items or len(items) > 100:
             raise TaskError('invalid_batch')
+        def apply(doc, actor, now):
+            return self._create_in_doc(doc, actor, now, items, invocation, source)
+        return self._mutate(user, request_id, operation_index, {'action': 'create', 'items': items, 'invocation': invocation}, apply)
+
+    def _create_in_doc(self, doc, actor, now, items, invocation, source=None):
         allowed = {'title', 'description', 'category', 'due_date', 'due_at', 'recurrence', 'starts_on',
                    'space_type', 'temporal_type', 'assignee_ids', 'actionable', 'completion_mode'}
-        def apply(doc, actor, now):
-            ids = self.members.validate([m['member_id'] for m in invocation.get('mentions', [])])
-            created = []
-            for item in items:
-                if not isinstance(item, dict) or set(item) - allowed:
-                    raise TaskError('invalid_task_fields')
-                data = deepcopy(item)
-                # Native tools often provide a full timestamp alone. Derive the
-                # calendar day in the household timezone before validating it.
-                if data.get('due_at') and not data.get('due_date'):
-                    try:
-                        timestamp = datetime.fromisoformat(data['due_at'])
-                        if timestamp.tzinfo:
-                            data['due_date'] = timestamp.astimezone(self.zone).date().isoformat()
-                    except (TypeError, ValueError):
-                        pass  # _validate_definition returns the canonical error.
-                for field in ('space_type', 'temporal_type', 'actionable', 'completion_mode'):
-                    selected = invocation.get(field, 'all' if field == 'completion_mode' else True if field == 'actionable' else None)
-                    if field in data and data[field] != selected:
-                        raise TaskError('invocation_conflict')
-                    data[field] = selected
-                expected_ids = ids or ([actor] if data['space_type'] == 'personal' else [])
-                if 'assignee_ids' in data and data['assignee_ids'] != expected_ids:
+        if not isinstance(items, list) or not 1 <= len(items) <= 100:
+            raise TaskError('invalid_batch')
+        ids = self.members.validate([m['member_id'] for m in invocation.get('mentions', [])])
+        created = []
+        for item in items:
+            if not isinstance(item, dict) or set(item) - allowed:
+                raise TaskError('invalid_task_fields')
+            data = deepcopy(item)
+            # Native tools often provide a full timestamp alone. Derive the
+            # calendar day in the household timezone before validating it.
+            if data.get('due_at') and not data.get('due_date'):
+                try:
+                    timestamp = datetime.fromisoformat(data['due_at'])
+                    if timestamp.tzinfo:
+                        data['due_date'] = timestamp.astimezone(self.zone).date().isoformat()
+                except (TypeError, ValueError):
+                    pass  # _validate_definition returns the canonical error.
+            for field in ('space_type', 'temporal_type', 'actionable', 'completion_mode'):
+                selected = invocation.get(field, 'all' if field == 'completion_mode' else True if field == 'actionable' else None)
+                if field in data and data[field] != selected:
                     raise TaskError('invocation_conflict')
-                self._validate_definition(data, allow_time_text=invocation.get('literal_time_text') is True)
-                task_id = 'task_' + uuid.uuid4().hex
-                household_id = self.members.home.household().get('id', 'household_default')
-                task = {**data, 'id': task_id, 'household_id': household_id,
-                        'space_owner_id': actor if data['space_type'] == 'personal' else household_id,
-                        'space_id': 'personal:' + actor if data['space_type'] == 'personal' else 'household:' + household_id,
-                        'created_by': actor, 'assignee_ids': expected_ids if data['actionable'] else [],
-                        'related_member_ids': ids if not data['actionable'] else [],
-                        'visibility': 'participants' if data['space_type'] == 'personal' else 'household',
-                        'completion_mode': data['completion_mode'] if data['actionable'] else None,
-                        'title': data['title'].strip(), 'description': data.get('description', ''),
-                        'category': data.get('category'), 'due_date': data.get('due_date'), 'due_at': data.get('due_at'),
-                        'recurrence': data.get('recurrence'), 'starts_on': data.get('starts_on') or
-                        ((data.get('due_date') or now.date().isoformat()) if data.get('recurrence') else None),
-                        'timezone': self.timezone_name, 'lifecycle': 'active', 'version': 1, 'rule_revision': 1,
-                        'created_at': now.isoformat(), 'updated_at': now.isoformat(), 'source': source or {}}
-                if task['recurrence']:
-                    task['definition_history'] = [{'effective_on': monday(parse_date(task['starts_on'])).isoformat(),
-                                                   'definition': definition_snapshot(task)}]
-                doc['tasks'][task_id] = task
-                materialize(doc, task, now.date())
-                created.append(deepcopy(task))
-            return {'tasks': created, 'task_ids': [t['id'] for t in created]}
-        return self._mutate(user, request_id, operation_index, {'action': 'create', 'items': items, 'invocation': invocation}, apply)
+                data[field] = selected
+            expected_ids = ids or ([actor] if data['space_type'] == 'personal' else [])
+            if 'assignee_ids' in data and data['assignee_ids'] != expected_ids:
+                raise TaskError('invocation_conflict')
+            self._validate_definition(data, allow_time_text=invocation.get('literal_time_text') is True)
+            task_id = 'task_' + uuid.uuid4().hex
+            household_id = self.members.home.household().get('id', 'household_default')
+            task = {**data, 'id': task_id, 'household_id': household_id,
+                    'space_owner_id': actor if data['space_type'] == 'personal' else household_id,
+                    'space_id': 'personal:' + actor if data['space_type'] == 'personal' else 'household:' + household_id,
+                    'created_by': actor, 'assignee_ids': expected_ids if data['actionable'] else [],
+                    'related_member_ids': ids if not data['actionable'] else [],
+                    'visibility': 'participants' if data['space_type'] == 'personal' else 'household',
+                    'completion_mode': data['completion_mode'] if data['actionable'] else None,
+                    'title': data['title'].strip(), 'description': data.get('description', ''),
+                    'category': data.get('category'), 'due_date': data.get('due_date'), 'due_at': data.get('due_at'),
+                    'recurrence': data.get('recurrence'), 'starts_on': data.get('starts_on') or
+                    ((data.get('due_date') or now.date().isoformat()) if data.get('recurrence') else None),
+                    'timezone': self.timezone_name, 'lifecycle': 'active', 'version': 1, 'rule_revision': 1,
+                    'created_at': now.isoformat(), 'updated_at': now.isoformat(), 'source': source or {}}
+            if task['recurrence']:
+                task['definition_history'] = [{'effective_on': monday(parse_date(task['starts_on'])).isoformat(),
+                                               'definition': definition_snapshot(task)}]
+            doc['tasks'][task_id] = task
+            materialize(doc, task, now.date())
+            created.append(deepcopy(task))
+        result = {'tasks': created, 'task_ids': [t['id'] for t in created]}
+        if source and source.get('draft_id'):
+            pair = next(((key, draft) for key, draft in doc['drafts'].items() if draft.get('id') == source['draft_id']), None)
+            if pair:
+                key, draft = pair
+                if draft.get('session_id') == source.get('session_id') and draft.get('branch_id') == source.get('branch_id'):
+                    self._remember_draft_commit(doc, draft, result, actor, now)
+                    doc['drafts'].pop(key)
+        return result
 
     def _rows(self, doc, actor, now, filters):
         tasks = [t for t in doc['tasks'].values() if can_read(t, actor, now.date())]
@@ -284,114 +300,129 @@ class FamilyTaskService:
                     'history_complete': complete, 'revision': doc['revision'] + int(before != doc)}
 
     def change(self, user, task_id, action, *, expected_version, request_id, operation_index=0,
-               occurrence_id=None, patch=None):
+               occurrence_id=None, patch=None, bound_occurrence_id=None):
         patch = patch or {}
         def apply(doc, actor, now):
-            task = visible_task(doc, task_id, actor, now.date())
-            materialize(doc, task, now.date())
-            if occurrence_id:
-                occ = doc['occurrences'].get(occurrence_id)
-                if not occ and task['recurrence'] and occurrence_id.startswith(task_id + ':'):
-                    period = parse_date(occurrence_id.split(':', 1)[1])
-                    candidates = project(task, period, period + timedelta(days=6))
-                    occ = next((o for o in candidates if o['id'] == occurrence_id), None)
-                    if occ:
-                        occ.pop('projected', None)
-                        doc['occurrences'][occurrence_id] = occ
-                if not occ or occ['task_id'] != task_id:
-                    raise TaskError('occurrence_not_found', status=404)
-                check_version(occ, expected_version)
-                if not task['actionable']:
-                    raise TaskError('information_not_completable')
-                if action in {'complete', 'reopen'}:
-                    if actor not in occ['assignee_ids']:
-                        raise TaskError('forbidden', '先认领或由负责人完成自己的份额。', status=403)
-                    if occ['status'] in {'cancelled', 'skipped'} or task['lifecycle'] == 'archived':
-                        raise TaskError('invalid_transition')
-                    progress = occ['member_progress'][actor]
-                    if progress['status'] == ('completed' if action == 'complete' else 'open') and not (action == 'reopen' and occ.get('legacy_completion_unknown_actor')):
-                        return {'task': deepcopy(task), 'occurrence': deepcopy(occ), 'task_ids': [task_id]}
-                    if action == 'reopen' and occ.get('legacy_completion_unknown_actor'):
-                        occ['legacy_completion_unknown_actor'] = False
-                        occ['legacy_history_note'] = '旧记录曾完成，原完成者未知；现已撤销完成。'
-                    progress.update(status='completed' if action == 'complete' else 'open',
-                                    completed_by=actor if action == 'complete' else None,
-                                    completed_at=now.isoformat() if action == 'complete' else None)
-                    done = [m for m, p in occ['member_progress'].items() if p['status'] == 'completed']
-                    completed = bool(done) and (occ['completion_mode'] == 'any' or len(done) == len(occ['assignee_ids']))
-                    occ.update(status='completed' if completed else 'open', completed_by=done if completed else None,
-                               completed_at=now.isoformat() if completed else None)
-                elif action in {'skip', 'cancel'}:
-                    if occ['status'] != 'open':
-                        raise TaskError('invalid_transition')
-                    require_creator(task, actor)
-                    occ['status'] = 'skipped' if action == 'skip' else 'cancelled'
-                    occ['reason'] = patch.get('reason', '')
-                elif action == 'update_occurrence':
-                    if occ['status'] != 'open':
-                        raise TaskError('invalid_transition')
-                    require_creator(task, actor)
-                    if set(patch) - {'title', 'due_date', 'due_at'}:
-                        raise TaskError('invalid_occurrence_fields')
-                    if task['temporal_type'] == 'undated' and (patch.get('due_date') or patch.get('due_at')):
-                        raise TaskError('undated_has_date')
-                    candidate = {**task, 'due_date': occ['due_date'], 'due_at': occ['due_at'], **patch}
-                    self._validate_definition(candidate, allow_time_text=True)
-                    for key, value in patch.items():
-                        occ['title_snapshot' if key == 'title' else key] = value
-                else:
-                    raise TaskError('invalid_action')
-                occ['version'] += 1
-                result = {'task': deepcopy(task), 'occurrence': deepcopy(occ)}
-            else:
-                check_version(task, expected_version)
-                if action == 'claim':
-                    if task['space_type'] != 'household' or task['assignee_ids'] or not task['actionable'] or task['lifecycle'] != 'active':
-                        raise TaskError('not_claimable', status=409)
-                    task['assignee_ids'] = [actor]
-                    for occ in doc['occurrences'].values():
-                        if occ['task_id'] == task_id and occ['status'] == 'open' and not occ['assignee_ids']:
-                            occ['assignee_ids'] = [actor]
-                            occ['member_progress'] = {actor: {'status': 'open', 'completed_by': None, 'completed_at': None}}
-                            occ['version'] += 1
-                elif action == 'leave':
-                    if actor not in task['assignee_ids'] or not task['recurrence'] or not patch.get('reason'):
-                        raise TaskError('invalid_participation_change')
-                    effective_on = (monday(now.date()) + timedelta(days=7)).isoformat()
-                    task.setdefault('definition_history', [{'effective_on': monday(parse_date(task['starts_on'])).isoformat(), 'definition': definition_snapshot(task)}])
-                    task['assignee_ids'].remove(actor)
-                    task.setdefault('former_assignees_until', {})[actor] = effective_on
-                    task['definition_history'].append({'effective_on': effective_on, 'definition': definition_snapshot(task)})
-                    task.setdefault('participation_history', []).append({'member_id': actor, 'effective_on':
-                        (monday(now.date()) + timedelta(days=7)).isoformat(), 'reason': patch['reason']})
-                else:
-                    require_creator(task, actor)
-                    if action == 'update':
-                        self._update(doc, task, patch, actor, now)
-                    elif action == 'pause' and task['recurrence'] and task['lifecycle'] == 'active':
-                        task.update(lifecycle='paused', paused_on=now.date().isoformat())
-                    elif action == 'resume' and task['lifecycle'] == 'paused':
-                        start = (monday(parse_date(task['paused_on'])) + timedelta(days=7)).isoformat()
-                        end = monday(now.date()).isoformat()
-                        if start < end:
-                            task.setdefault('paused_periods', []).append([start, end])
-                        task['cursor'] = end
-                        task['lifecycle'] = 'active'
-                    elif action == 'archive':
-                        task['lifecycle'] = 'archived'
-                        for occ in doc['occurrences'].values():
-                            if occ['task_id'] == task_id and occ['status'] == 'open':
-                                occ.update(status='cancelled', reason=patch.get('reason', '系列已停止或记录已归档'), version=occ['version'] + 1)
-                    else:
-                        raise TaskError('invalid_transition')
-                task['version'] += 1
-                task['updated_at'] = now.isoformat()
-                materialize(doc, task, now.date())
-                result = {'task': deepcopy(task)}
-            return {**result, 'task_ids': [task_id]}
+            if bound_occurrence_id:
+                task = visible_task(doc, task_id, actor, now.date())
+                bound = self._card_occurrence(doc, task, bound_occurrence_id, now)
+                assert_writable(task, bound, now, action)
+            return self._change_in_doc(doc, actor, now, task_id, action, expected_version, occurrence_id, patch)
         return self._mutate(user, request_id, operation_index,
                             {'action': action, 'task_id': task_id, 'occurrence_id': occurrence_id,
-                             'expected_version': expected_version, 'patch': patch}, apply)
+                             'expected_version': expected_version, 'patch': patch,
+                             **({'bound_occurrence_id': bound_occurrence_id} if bound_occurrence_id else {})}, apply)
+
+    def _change_in_doc(self, doc, actor, now, task_id, action, expected_version, occurrence_id=None, patch=None):
+        patch = patch or {}
+        task = visible_task(doc, task_id, actor, now.date())
+        materialize(doc, task, now.date())
+        if occurrence_id:
+            occ = doc['occurrences'].get(occurrence_id)
+            if not occ and task['recurrence'] and occurrence_id.startswith(task_id + ':'):
+                period = parse_date(occurrence_id.split(':', 1)[1])
+                candidates = project(task, period, period + timedelta(days=6))
+                occ = next((o for o in candidates if o['id'] == occurrence_id), None)
+                if occ:
+                    occ.pop('projected', None)
+                    doc['occurrences'][occurrence_id] = occ
+            if not occ or occ['task_id'] != task_id:
+                raise TaskError('occurrence_not_found', status=404)
+            if self.card_time_state(task, occ, now) == 'expired':
+                assert_writable(task, occ, now, action)
+            check_version(occ, expected_version)
+            assert_writable(task, occ, now, action)
+            if not task['actionable']:
+                raise TaskError('information_not_completable')
+            if action in {'complete', 'reopen'}:
+                if actor not in occ['assignee_ids']:
+                    raise TaskError('forbidden', '先认领或由负责人完成自己的份额。', status=403)
+                if occ['status'] in {'cancelled', 'skipped'} or task['lifecycle'] == 'archived':
+                    raise TaskError('invalid_transition')
+                progress = occ['member_progress'][actor]
+                if progress['status'] == ('completed' if action == 'complete' else 'open') and not (action == 'reopen' and occ.get('legacy_completion_unknown_actor')):
+                    return {'task': deepcopy(task), 'occurrence': deepcopy(occ), 'task_ids': [task_id]}
+                if action == 'reopen' and occ.get('legacy_completion_unknown_actor'):
+                    occ['legacy_completion_unknown_actor'] = False
+                    occ['legacy_history_note'] = '旧记录曾完成，原完成者未知；现已撤销完成。'
+                progress.update(status='completed' if action == 'complete' else 'open',
+                                completed_by=actor if action == 'complete' else None,
+                                completed_at=now.isoformat() if action == 'complete' else None)
+                done = [m for m, p in occ['member_progress'].items() if p['status'] == 'completed']
+                completed = bool(done) and (occ['completion_mode'] == 'any' or len(done) == len(occ['assignee_ids']))
+                occ.update(status='completed' if completed else 'open', completed_by=done if completed else None,
+                           completed_at=now.isoformat() if completed else None)
+            elif action in {'skip', 'cancel'}:
+                if occ['status'] != 'open':
+                    raise TaskError('invalid_transition')
+                require_creator(task, actor)
+                occ['status'] = 'skipped' if action == 'skip' else 'cancelled'
+                occ['reason'] = patch.get('reason', '')
+            elif action == 'update_occurrence':
+                if occ['status'] != 'open':
+                    raise TaskError('invalid_transition')
+                require_creator(task, actor)
+                if set(patch) - {'title', 'due_date', 'due_at'}:
+                    raise TaskError('invalid_occurrence_fields')
+                if task['temporal_type'] == 'undated' and (patch.get('due_date') or patch.get('due_at')):
+                    raise TaskError('undated_has_date')
+                candidate = {**task, 'due_date': occ['due_date'], 'due_at': occ['due_at'], **patch}
+                self._validate_definition(candidate, allow_time_text=True)
+                for key, value in patch.items():
+                    occ['title_snapshot' if key == 'title' else key] = value
+            else:
+                raise TaskError('invalid_action')
+            occ['version'] += 1
+            result = {'task': deepcopy(task), 'occurrence': deepcopy(occ)}
+        else:
+            guard_occ = doc['occurrences'].get(task_id + ':once') if not task['recurrence'] else None
+            assert_writable(task, guard_occ, now, action, series=bool(task['recurrence']))
+            check_version(task, expected_version)
+            if action == 'claim':
+                if task['space_type'] != 'household' or task['assignee_ids'] or not task['actionable'] or task['lifecycle'] != 'active':
+                    raise TaskError('not_claimable', status=409)
+                task['assignee_ids'] = [actor]
+                for occ in doc['occurrences'].values():
+                    if (occ['task_id'] == task_id and occ['status'] == 'open' and not occ['assignee_ids']
+                            and self.card_time_state(task, occ, now) != 'expired'):
+                        occ['assignee_ids'] = [actor]
+                        occ['member_progress'] = {actor: {'status': 'open', 'completed_by': None, 'completed_at': None}}
+                        occ['version'] += 1
+            elif action == 'leave':
+                if actor not in task['assignee_ids'] or not task['recurrence'] or not patch.get('reason'):
+                    raise TaskError('invalid_participation_change')
+                effective_on = (monday(now.date()) + timedelta(days=7)).isoformat()
+                task.setdefault('definition_history', [{'effective_on': monday(parse_date(task['starts_on'])).isoformat(), 'definition': definition_snapshot(task)}])
+                task['assignee_ids'].remove(actor)
+                task.setdefault('former_assignees_until', {})[actor] = effective_on
+                task['definition_history'].append({'effective_on': effective_on, 'definition': definition_snapshot(task)})
+                task.setdefault('participation_history', []).append({'member_id': actor, 'effective_on':
+                    (monday(now.date()) + timedelta(days=7)).isoformat(), 'reason': patch['reason']})
+            else:
+                require_creator(task, actor)
+                if action == 'update':
+                    self._update(doc, task, patch, actor, now)
+                elif action == 'pause' and task['recurrence'] and task['lifecycle'] == 'active':
+                    task.update(lifecycle='paused', paused_on=now.date().isoformat())
+                elif action == 'resume' and task['lifecycle'] == 'paused':
+                    start = (monday(parse_date(task['paused_on'])) + timedelta(days=7)).isoformat()
+                    end = monday(now.date()).isoformat()
+                    if start < end:
+                        task.setdefault('paused_periods', []).append([start, end])
+                    task['cursor'] = end
+                    task['lifecycle'] = 'active'
+                elif action == 'archive':
+                    task['lifecycle'] = 'archived'
+                    for occ in doc['occurrences'].values():
+                        if occ['task_id'] == task_id and occ['status'] == 'open' and self.card_time_state(task, occ, now) != 'expired':
+                            occ.update(status='cancelled', reason=patch.get('reason', '系列已停止或记录已归档'), version=occ['version'] + 1)
+                else:
+                    raise TaskError('invalid_transition')
+            task['version'] += 1
+            task['updated_at'] = now.isoformat()
+            materialize(doc, task, now.date())
+            result = {'task': deepcopy(task)}
+        return {**result, 'task_ids': [task_id]}
 
     def _update(self, doc, task, patch, actor, now):
         allowed = {'title', 'description', 'category', 'due_date', 'due_at', 'recurrence', 'starts_on',
@@ -420,14 +451,19 @@ class FamilyTaskService:
                 period = monday(parse_date((old or {}).get('due_date') or now.date().isoformat()))
                 replacement = occurrence(task, period)
                 if old:
-                    replacement.update({k: old[k] for k in ('status', 'member_progress', 'completed_by', 'completed_at')})
+                    replacement['member_progress'] = {member: old['member_progress'].get(member, progress)
+                        for member, progress in replacement['member_progress'].items()}
+                    done = [member for member, progress in replacement['member_progress'].items() if progress['status'] == 'completed']
+                    completed = bool(done) and (replacement['completion_mode'] == 'any' or len(done) == len(replacement['assignee_ids']))
+                    replacement.update(status='completed' if completed else 'open', completed_by=done if completed else None,
+                                       completed_at=old.get('completed_at') or now.isoformat() if completed else None)
                     replacement['version'] = old['version'] + 1
                     replacement['source_occurrence_id'] = old['id']
                 doc['occurrences'][replacement['id']] = replacement
             elif old_rule and not task['recurrence']:
                 # Keep completed history; cancel outstanding periods before creating one single instance.
                 for occ in doc['occurrences'].values():
-                    if occ['task_id'] == task['id'] and occ['status'] == 'open':
+                    if occ['task_id'] == task['id'] and occ['status'] == 'open' and self.card_time_state(previous, occ, now) != 'expired':
                         occ.update(status='cancelled', reason='已转为单次事项', version=occ['version'] + 1)
         if old_rule and task['recurrence']:
             effective_on = (monday(now.date()) + timedelta(days=7)).isoformat()
@@ -446,4 +482,8 @@ class FamilyTaskService:
             fresh = occurrence(task, parse_date(occ['period_start']) if occ['period_start'] else None)
             fresh['version'] = occ['version'] + 1
             fresh['member_progress'] = {m: occ['member_progress'].get(m, p) for m, p in fresh['member_progress'].items()}
+            done = [mid for mid, p in fresh['member_progress'].items() if p['status'] == 'completed']
+            completed = bool(done) and (fresh['completion_mode'] == 'any' or len(done) == len(fresh['assignee_ids']))
+            fresh.update(status='completed' if completed else 'open', completed_by=done if completed else None,
+                         completed_at=now.isoformat() if completed else None)
             occ.update(fresh)

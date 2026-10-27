@@ -377,12 +377,15 @@ export function ChatWorkspace({
       iteration: number,
       content: string,
       toolCalls?: Message['tool_calls'],
+      uiBlocks?: Message['ui_blocks'],
+      uiSummary?: string,
     ) => {
       const nodeId = `stream-assistant-${iteration}`;
       useAppStore.getState().setSessionMessages(targetSessionId as string, (currentMessages) =>
         currentMessages.map((message) => (
           message.node_id === nodeId
-            ? { ...message, content, ...(toolCalls?.length ? { tool_calls: toolCalls } : {}) }
+            ? { ...message, content, ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+              ...(uiBlocks?.length ? { ui_blocks: uiBlocks, ui_summary: uiSummary } : {}) }
             : message
         )),
       );
@@ -396,6 +399,18 @@ export function ChatWorkspace({
         return;
       }
       if (event.type === 'heartbeat') return;
+      if (event.type === 'resource_changed') {
+        window.dispatchEvent(new CustomEvent('resource_changed', { detail: event }));
+        return;
+      }
+      if (event.type === 'ui_blocks') {
+        for (const block of event.blocks) {
+          const id = `stream-card-${block.card_id}`;
+          useAppStore.getState().setSessionMessages(targetSessionId as string, messages =>
+            messages.some(m => m.node_id === id) ? messages : [...messages, { role: 'assistant', content: '', node_id: id, ui_blocks: [block] }]);
+        }
+        return;
+      }
       if (event.type === 'step') {
         const message = event.message || event.stage || '处理进度';
         setStatusText(message);
@@ -432,6 +447,8 @@ export function ChatWorkspace({
           iteration,
           event.content || streamMessages.get(iteration) || '',
           toolCalls,
+          event.ui_blocks,
+          event.ui_summary,
         );
         setStatusText('解析模型回复...');
         return;
@@ -450,7 +467,7 @@ export function ChatWorkspace({
       if (event.type === 'task_changed' || (event.type === 'tool_result' && event.success !== false && event.tool_call?.name?.startsWith('family_'))) window.dispatchEvent(new CustomEvent('task_changed'));
       if (event.type === 'tool_result') {
         const output = event.tool_result?.output as Record<string, unknown> | undefined;
-        if (event.success === false && output?.draft) {
+        if (event.success === false && output?.draft && !Array.isArray(output.ui_blocks)) {
           const values = Array.isArray(output.draft) ? output.draft : [output.draft];
           const items = values.filter((value): value is { title: string } => Boolean(value && typeof value.title === 'string'));
           if (items.length) setTaskDraft({ sessionId: targetSessionId as string, items, message: String(output.message || '请补充事项所需信息后再保存。') });

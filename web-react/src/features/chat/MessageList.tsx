@@ -78,6 +78,7 @@ export function MessageList({
         </div>
         {visibleMessages.length ? (
           <MessageRows
+            cardContext={{ surface: 'chat', sessionId: conversationKey && conversationKey !== 'default' ? conversationKey : undefined }}
             messages={messages}
             onCreateBranch={onCreateBranch}
             branchActionStates={branchActionStates}

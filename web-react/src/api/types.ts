@@ -50,6 +50,8 @@ export interface Message {
   }>;
   tool_call_id?: string;
   name?: string;
+  ui_blocks?: import('../features/interactive-cards/types').InteractiveCardRef[];
+  ui_summary?: string;
   [key: string]: unknown;
 }
 
@@ -152,6 +154,8 @@ export type ChatRunStatus =
   | 'error';
 
 export type ChatStreamEvent =
+  | { type: 'ui_blocks'; blocks: import('../features/interactive-cards/types').InteractiveCardRef[] }
+  | { type: 'resource_changed'; resource_type: string; resource_ids: string[]; revision: number }
   | { type: 'heartbeat'; [key: string]: unknown }
   | { type: 'job_started'; job: import('./chat').ChatJob; [key: string]: unknown }
   | { type: 'task_changed'; task_ids: string[]; revision: number; [key: string]: unknown }
@@ -184,6 +188,8 @@ export type ChatStreamEvent =
         name?: string;
         arguments?: Record<string, unknown>;
       }>;
+      ui_blocks?: import('../features/interactive-cards/types').InteractiveCardRef[];
+      ui_summary?: string;
       [key: string]: unknown;
     }
   | {

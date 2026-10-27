@@ -556,7 +556,32 @@ async def task_exception_handler(_request: Request, exc: TaskError):
     return JSONResponse(exc.payload(), status_code=exc.status)
 
 
-app.include_router(task_router(lambda: family_tasks, require_user, require_admin))
+def _card_session_context(user, session_id, *, write=False):
+    try:
+        session = _load_authorized_session(session_id, user, write=write)
+    except KeyError:
+        raise TaskError('session_not_found', status=404)
+    except PermissionError:
+        raise TaskError('forbidden', status=403)
+    from core.branch_engine import BranchEngine
+    engine = BranchEngine(session.get('messages') or [])
+    active = session.get('active_node_id')
+    path = engine.get_path_to_node(active) if active and active in engine._nodes else []
+    branch_id = 'main'
+    for node in path:
+        if len(engine._children.get(node.get('parent_id'), [])) > 1 or node.get('_branch_placeholder'):
+            branch_id = node['node_id']
+    shared = (session.get('sharing') or {}).get('scope', 'private') != 'private' or session.get('owner_user_id') != user['id']
+    def protect_private():
+        latest = store.protect_private_task_history(session_id, user['id'])
+        if (latest.get('sharing') or {}).get('scope', 'private') != 'private' or latest.get('owner_user_id') != user['id']:
+            raise TaskError('private_session_required', '请进入自己的个人会话。', status=403)
+    return {'session_id': session_id, 'branch_id': branch_id,
+            'active_message_ids': [node['node_id'] for node in path], 'shared': shared,
+            'read_only_session': not can_write_session(user, session), 'protect_private_session': protect_private}
+
+
+app.include_router(task_router(lambda: family_tasks, require_user, require_admin, _card_session_context))
 
 
 def _response_with_login_cookie(user: dict[str, Any], *, remember_me: bool = False) -> JSONResponse:
@@ -2103,10 +2128,21 @@ def _task_chat_context(payload, user, session_id):
             object_context = {**object_context, 'title': selected['name'], 'location': selected['location']}
         object_context = {key: object_context.get(key) for key in ('type', 'id', 'title', 'location', 'source')}
     task_ref = payload.get('task_ref')
+    if not task_ref and re.search(r'这件事|这条|刚才|上面|把它', raw):
+        for node in reversed(path):
+            refs = {block['resource']['id']: block['resource'] for block in node.get('ui_blocks', [])
+                    if block.get('kind') == 'task' and (block.get('resource') or {}).get('type') == 'family_task'}
+            if refs:
+                if len(refs) == 1:
+                    ref = next(iter(refs.values()))
+                    task_ref = {'task_id': ref['id'], 'occurrence_id': ref.get('instance_id')}
+                break
     if task_ref:
         if not isinstance(task_ref, dict) or not task_ref.get('task_id'):
             raise TaskError('invalid_task_ref')
         family_tasks.get(user, task_ref['task_id'])
+        if task_ref.get('occurrence_id'):
+            family_tasks.card_get(user, task_ref['task_id'], instance_id=task_ref['occurrence_id'])
     return {'user_id': user['id'], 'session_id': session_id,
             'branch_id': branch_id, 'invocation': invocation, 'pending_draft': pending_draft,
             'task_ref': task_ref, 'object_context': object_context,

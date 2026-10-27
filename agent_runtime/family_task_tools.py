@@ -3,9 +3,11 @@ from copy import deepcopy
 from datetime import timedelta
 import json
 import re
+import uuid
 from services.task_access import can_read
 from services.task_store import TaskError
 from .models import ToolDefinition
+from .card_presenter import card_reference
 
 
 ITEM_SCHEMA = {'type': 'object', 'properties': {
@@ -53,11 +55,16 @@ def register_family_task_tools(registry, service, user_provider, context_provide
         branch = context.get('branch_id', '')
         ref_key = json.dumps([session_id, branch, actor])
         def remember(task_ids):
+            refs = service.card_references(user, task_ids, context,
+                instance_id=bound_instance if task_ids == [task_id] else None)
             with service.store.transaction() as doc:
                 doc['references'][ref_key] = {'task_ids': list(dict.fromkeys(task_ids)), 'expires_at':
-                    (service.now() + timedelta(hours=1)).isoformat(), 'user_message_id': context.get('user_message_id')}
+                    (service.now() + timedelta(hours=1)).isoformat(), 'user_message_id': context.get('user_message_id'),
+                    'instance_id': refs[0]['resource'].get('instance_id') if len(refs) == 1 else None}
+            return refs
 
         task_id = args.get('task_id')
+        bound_instance = (context.get('task_ref') or {}).get('occurrence_id')
         if task_id == 'recent' and context.get('task_ref'):
             task_id = context['task_ref']['task_id']
         if task_id == 'recent':
@@ -69,6 +76,7 @@ def register_family_task_tools(registry, service, user_provider, context_provide
                 if source_message and source_message not in context.get('active_message_ids', []):
                     raise TaskError('task_reference_expired', '来源消息不在当前分支，请重新选择事项。')
                 ids = reference.get('task_ids', [])
+                bound_instance = bound_instance or reference.get('instance_id')
                 if len(ids) != 1:
                     candidates = [{'id': t, 'title': doc['tasks'][t]['title']} for t in ids
                                   if t in doc['tasks'] and can_read(doc['tasks'][t], actor)]
@@ -80,6 +88,10 @@ def register_family_task_tools(registry, service, user_provider, context_provide
             raise TaskError('private_session_required', status=403)
         if task_id and service.get(user, task_id)['task']['visibility'] != 'household':
             protect_private()
+        if task_id and bound_instance and name not in {'family_task_get', 'family_task_list'}:
+            from services.task_card_policy import assert_writable
+            bound = service.card_get(user, task_id, instance_id=bound_instance)
+            assert_writable(bound['task'], bound['occurrence'], service.now(), name.removeprefix('family_task_'))
         if name.endswith('_memo_create') and (not invocation or invocation.get('space_type') == 'personal'):
             protect_private()
         if name in {'family_task_draft_get', 'family_task_draft_discard'}:
@@ -93,7 +105,11 @@ def register_family_task_tools(registry, service, user_provider, context_provide
                 if name == 'family_task_draft_discard':
                     doc['drafts'].pop(ref_key)
                     return {'discarded': True}
-                return deepcopy(draft)
+                if not draft.get('id'):
+                    draft.update(id='draft_' + uuid.uuid4().hex, version=1, session_id=session_id, branch_id=branch)
+                result = deepcopy(draft)
+                result['ui_blocks'] = [card_reference('task', 'task_draft', draft['id'], context=context, mode='draft')]
+                return result
         if name == 'family_member_resolve':
             return {'candidates': service.members.resolve(args['text'], user)}
         if name == 'family_task_list':
@@ -105,6 +121,7 @@ def register_family_task_tools(registry, service, user_provider, context_provide
         if name == 'family_task_get':
             result = service.get(user, task_id)
             remember([task_id])
+            result['ui_blocks'] = service.card_references(user, [task_id], context, instance_id=bound_instance)
             return result
         request_id = context.get('request_id')
         index = args.get('operation_index', 0)
@@ -120,26 +137,26 @@ def register_family_task_tools(registry, service, user_provider, context_provide
                 # A draft is durable but is never counted as a task.
                 with service.store.transaction() as doc:
                     doc['references'].pop(ref_key, None)
-                    doc['drafts'][ref_key] = {'items': args['items'], 'expires_at':
-                        (service.now() + timedelta(minutes=30)).isoformat(), 'user_id': user['id'],
-                        'user_message_id': context.get('user_message_id')}
-                raise TaskError('explicit_selection_required', '请选择 / 日程、/ 备忘、/ 家庭日程 或 / 家庭备忘后保存。', draft=args['items'])
+                draft = service.draft_save(user, args['items'], invocation, context)
+                block = card_reference('task', 'task_draft', draft['id'], context=context, mode='draft')
+                raise TaskError('explicit_selection_required', '请在卡片中补充事项类型和所需信息后保存。', draft=args['items'], ui_blocks=[block])
             if temporal != invocation['temporal_type']:
                 raise TaskError('invocation_conflict')
             # A model cannot erase an undecided date expression by cleaning a memo title.
             from services.task_commands import TIME_TEXT
             if temporal == 'undated' and TIME_TEXT.search(invocation.get('body', '')) and not invocation.get('literal_time_text'):
-                raise TaskError('memo_time_choice_required', '请选择转为日程或仅作为文字保存。', draft=args['items'])
+                draft = service.draft_save(user, args['items'], invocation, context)
+                raise TaskError('memo_time_choice_required', '请选择转为日程或仅作为文字保存。', draft=args['items'],
+                    ui_blocks=[card_reference('task', 'task_draft', draft['id'], context=context, mode='draft')])
             try:
                 result = service.create(user, args['items'], invocation, request_id=request_id,
-                    operation_index=index, source={k: context.get(k) for k in
-                        ('raw_input', 'session_id', 'branch_id', 'user_message_id', 'run_id')})
+                    operation_index=index, source={**{k: context.get(k) for k in
+                        ('raw_input', 'session_id', 'branch_id', 'user_message_id', 'run_id')},
+                        'draft_id': (context.get('pending_draft') or {}).get('id')})
             except TaskError as error:
                 if error.code in {'schedule_date_required', 'unsupported_recurrence', 'memo_time_choice_required', 'member_unavailable'}:
-                    with service.store.transaction() as doc:
-                        doc['drafts'][ref_key] = {'items': args['items'], 'invocation': invocation,
-                            'expires_at': (service.now() + timedelta(minutes=30)).isoformat(), 'user_id': user['id'],
-                            'user_message_id': context.get('user_message_id')}
+                    draft = service.draft_save(user, args['items'], invocation, context)
+                    error.details['ui_blocks'] = [card_reference('task', 'task_draft', draft['id'], context=context, mode='draft')]
                 raise
             with service.store.transaction() as doc:
                 doc['drafts'].pop(ref_key, None)
@@ -179,8 +196,9 @@ def register_family_task_tools(registry, service, user_provider, context_provide
                     if args.get('occurrence_id') != current_id and not re.search(r'上周|下周|\d{4}-\d{2}-\d{2}|第.+周', raw):
                         raise TaskError('current_occurrence_required', '默认只处理本周；其他周期请明确选择。')
             result = service.change(user, task_id, action, expected_version=args['expected_version'],
-                request_id=request_id, operation_index=index, occurrence_id=args.get('occurrence_id'), patch=args.get('patch'))
-        remember(result['task_ids'])
+                request_id=request_id, operation_index=index, occurrence_id=args.get('occurrence_id'), patch=args.get('patch'),
+                bound_occurrence_id=bound_instance)
+        result['ui_blocks'] = remember(result['task_ids'])
         return result
 
     def register(name, description, properties, required=()):

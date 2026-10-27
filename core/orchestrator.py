@@ -29,6 +29,7 @@ from services.llm_client import LLMClient
 from skills.registry import SkillRegistry
 from utils.parser import InputParser
 from services.knowledge_context import has_knowledge, fresh_knowledge_context
+from agent_runtime.card_presenter import builtin_card_presenter
 
 
 class AgentOrchestrator:
@@ -77,6 +78,7 @@ class AgentOrchestrator:
         self.memory_store = memory_store
         self.user_id = user_id
         self.family_task_context = None
+        self.card_presenter = builtin_card_presenter()
         self.loop_guard = LoopGuard(
             max_repeated_calls=max(2, max_repeated_calls),
             max_empty_turns=max(1, max_empty_turns),
@@ -479,9 +481,21 @@ class AgentOrchestrator:
                 # Creation has not executed yet; do not persist a premature receipt.
                 response.content = ''
             tool_payloads = [call.as_openai() for call in response.tool_calls]
+            final_blocks = {}
+            if not response.tool_calls:
+                for step in (self.run or {}).get('steps', []):
+                    for block in ((step.get('tool_result') or {}).get('metadata') or {}).get('ui_blocks', []):
+                        final_blocks[block['card_id']] = block
+            ui_summary = None
+            if final_blocks:
+                ui_summary = ('请在卡片中补充后保存。' if all(b.get('mode') == 'draft' for b in final_blocks.values())
+                              else '记录已保存，可在卡片中查看和调整。' if response.content.startswith('已保存')
+                              else '可在卡片中查看当前记录。')
             self.conversation.add_assistant_message(
                 response.content,
                 tool_calls=tool_payloads or None,
+                ui_blocks=list(final_blocks.values()) or None,
+                ui_summary=ui_summary,
             )
             self._record_context_nodes(context_node_ids)
             await self._checkpoint()
@@ -491,6 +505,8 @@ class AgentOrchestrator:
                 "content": response.content,
                 "reasoning_summary": response.content[:1000],
                 "tool_calls": [call.as_dict() for call in response.tool_calls],
+                "ui_blocks": list(final_blocks.values()),
+                "ui_summary": ui_summary,
                 "finish_reason": response.finish_reason,
                 "usage": response.usage,
                 "latency_ms": response.latency_ms,
@@ -503,6 +519,8 @@ class AgentOrchestrator:
                 "iteration": iteration,
                 "content": response.content,
                 "tool_calls": [call.as_dict() for call in response.tool_calls],
+                "ui_blocks": list(final_blocks.values()),
+                "ui_summary": ui_summary,
             }
 
             if not response.tool_calls:
@@ -685,6 +703,9 @@ class AgentOrchestrator:
 
             assert result is not None
             task_changed = result.output.get('task_changed') if result.success and isinstance(result.output, dict) else None
+            ui_blocks = self.card_presenter.present(result)
+            if ui_blocks:
+                result.metadata['ui_blocks'] = ui_blocks
             if self.artifact_store:
                 result = self.artifact_store.externalize(result, max_chars=self.max_tool_output_chars)
             if self.run_store and self.run and self.run.get("id"):
@@ -704,8 +725,12 @@ class AgentOrchestrator:
                     )
             if task_changed:
                 events.append(task_changed)
+                events.append({'type': 'resource_changed', 'resource_type': 'family_task',
+                               'resource_ids': task_changed['task_ids'], 'revision': task_changed['revision']})
+            if ui_blocks:
+                events.append({'type': 'ui_blocks', 'blocks': ui_blocks})
             content = result.model_content(self.max_tool_output_chars)
-            self.conversation.add_tool_message(call.id, call.name, content)
+            self.conversation.add_tool_message(call.id, call.name, content, ui_blocks=ui_blocks)
             await self._checkpoint()
             self._append_run_step({
                 "kind": "tool",
