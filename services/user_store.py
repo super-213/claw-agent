@@ -221,18 +221,20 @@ class UserStore:
             return {"users": []}
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
-            return {"users": []}
+        except (OSError, ValueError) as exc:
+            raise RuntimeError('user_store_corrupt') from exc
         if not isinstance(data, dict):
-            return {"users": []}
+            raise RuntimeError('user_store_corrupt')
         users = data.get("users")
         if not isinstance(users, list):
-            data["users"] = []
+            raise RuntimeError('user_store_corrupt')
         return data
 
     def _write(self, data: dict[str, Any]) -> None:
         tmp_path = self.path.with_name(f".{self.path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-        tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        with tmp_path.open('x', encoding='utf-8') as output:
+            os.fchmod(output.fileno(), 0o600)
+            json.dump(data, output, ensure_ascii=False, indent=2)
         os.replace(tmp_path, self.path)
 
     @staticmethod

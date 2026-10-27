@@ -24,6 +24,20 @@ export function HomeAgentMenu({ onLeave }: { onLeave?: () => void }) {
   const panelId = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = panel.current;
+    if (!open || !element || !('showPopover' in element)) return;
+    element.setAttribute('popover', 'auto');
+    const rect = trigger.current?.getBoundingClientRect();
+    if (rect) { element.style.top = `${rect.bottom + 8}px`; element.style.left = `${Math.min(rect.left, Math.max(8, window.innerWidth - 280))}px`; }
+    const toggle = (event: Event) => {
+      if ((event as ToggleEvent).newState === 'closed') setOpen(false);
+    };
+    element.addEventListener('toggle', toggle);
+    element.showPopover();
+    return () => element.removeEventListener('toggle', toggle);
+  }, [open]);
 
   useEffect(() => setOpen(false), [location.key, user?.id]);
   useEffect(() => {
@@ -49,6 +63,16 @@ export function HomeAgentMenu({ onLeave }: { onLeave?: () => void }) {
     <div className="home-agent-menu" ref={root} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }} onKeyDown={(event) => {
+      if (open && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        const links = Array.from(panel.current?.querySelectorAll<HTMLAnchorElement>('a') || []);
+        if (links.length) {
+          event.preventDefault();
+          const index = links.indexOf(document.activeElement as HTMLAnchorElement);
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? links.length - 1 :
+            (index + (event.key === 'ArrowUp' ? -1 : 1) + links.length) % links.length;
+          links[next].focus();
+        }
+      }
       if (event.key === 'Escape' && open) {
         event.preventDefault();
         event.stopPropagation();
@@ -64,7 +88,7 @@ export function HomeAgentMenu({ onLeave }: { onLeave?: () => void }) {
         <ChevronRight className="home-brand-chevron" size={12} aria-hidden="true" />
       </button>
       {open && (
-        <div className="home-agent-popover" id={panelId}>
+        <div className="home-agent-popover" id={panelId} ref={panel}>
           <div className="home-agent-menu-heading">家庭 Agent</div>
           <nav className="home-agent-shortcuts" aria-label="家庭 Agent 快捷入口">
             {links(shortcuts)}

@@ -1,3 +1,4 @@
+import { OfflinePage } from '../features/offline/OfflinePage';
 import { Navigate, RouteObject } from 'react-router-dom';
 import { ProtectedRoute } from '../features/auth/ProtectedRoute';
 import { LoginPage } from '../features/auth/LoginPage';
@@ -8,6 +9,7 @@ import { FamilyRedirect } from '../features/home/familyNavigation';
 import { InstallPage } from '../features/pwa/InstallPage';
 
 export const routes: RouteObject[] = [
+  { path: '/offline', element: <OfflinePage /> },
   { path: '/install', element: <InstallPage /> },
   { path: '/login', element: <LoginPage /> },
   {

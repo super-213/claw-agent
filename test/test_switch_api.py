@@ -22,6 +22,7 @@ def session_with_tree():
     now = "2024-01-01T00:00:00+00:00"
     session_data = {
         "id": session_id,
+        "owner_user_id": "test-admin",
         "title": "Test Session",
         "created_at": now,
         "updated_at": now,

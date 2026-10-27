@@ -1,3 +1,6 @@
+import { useAppStore } from '../stores/appStore';
+import { clearOffline } from '../features/offline/storage';
+import { cancelOfflineSync } from '../features/offline/sync';
 import { jsonRequest } from './client';
 import { clearLocalPush } from '../features/pwa/chatNotifications';
 import type { User } from './types';
@@ -26,7 +29,12 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
   logout: async () => {
+    cancelOfflineSync();
+    useAppStore.getState().setCurrentUser(null);
+    await clearOffline(true, true).catch(() => undefined);
     const result = await jsonRequest<{ ok: true }>('/api/auth/logout', { method: 'POST' });
+    useAppStore.getState().setCurrentUser(null);
+    window.dispatchEvent(new Event('claw-auth-cleared'));
     await Promise.race([clearLocalPush().catch(() => undefined), new Promise(resolve => window.setTimeout(resolve, 2000))]);
     return result;
   },

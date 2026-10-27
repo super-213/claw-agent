@@ -630,7 +630,7 @@ class AgentOrchestrator:
             ledger = dict(((self.run or {}).get("tool_ledger") or {}).get(call.id) or {})
             if ledger.get("fingerprint") and ledger.get("fingerprint") != fingerprint:
                 result = ToolResult(call.id, call.name, "error", error="tool_call_id_reused_with_different_arguments")
-            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and not call.name.startswith(("family_", "knowledge_")):
+            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and not call.name.startswith(("family_", "knowledge_", "mcp_")):
                 cached = ledger["result"]
                 result = ToolResult(
                     call_id=str(cached.get("call_id") or call.id),

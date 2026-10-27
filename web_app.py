@@ -61,6 +61,7 @@ from skills import SkillRegistry
 from agent_runtime import ArtifactStore, MemoryStore, RunStore
 from agent_runtime.builtin_tools import build_tool_registry, _file_read, _file_write, _file_write_needs_approval, _resolve_path
 from agent_runtime.registry import ToolRegistry
+from agent_runtime.mcp_adapter import MCPAdapter
 from agent_runtime.family_task_tools import register_family_task_tools
 from agent_runtime.family_board_tools import register_family_board_tools
 from services.board_store import BoardStore
@@ -75,6 +76,8 @@ from services.task_legacy_adapter import TaskLegacyAdapter
 from services.task_store import TaskStore, TaskError
 from services.knowledge_service import KnowledgeService
 from services.knowledge_api import knowledge_router
+from services.offline_api import offline_router
+from services.passkeys import PasskeyService, passkey_router
 from agent_runtime.knowledge_tools import register_knowledge_tools
 
 
@@ -238,13 +241,19 @@ async def http_exception_handler(_request: Request, exc: HTTPException):
 @app.middleware("http")
 async def _set_static_cache_headers(_request: Request, call_next):
     """Disable browser caching for static assets during development."""
+    if _request.method not in {'GET', 'HEAD', 'OPTIONS'}:
+        origin = _request.headers.get('origin')
+        if origin and origin != str(_request.base_url).rstrip('/'):
+            return _error('untrusted_origin', 403)
     response = await call_next(_request)
     auth_cookie_refresh = getattr(_request.state, "auth_cookie_refresh", None)
     if auth_cookie_refresh:
         _set_login_cookie(response, auth_cookie_refresh["token"], remember_me=True)
     content_type = response.headers.get("content-type", "")
-    if _request.url.path.startswith(('/api/chat/jobs', '/api/chat-notifications')) or _request.url.path.endswith('/chat-job'):
-        response.headers['Cache-Control'] = 'no-store'
+    if _request.url.path.startswith(('/api/', '/generated/', '/files/')):
+        response.headers.setdefault('Cache-Control', 'no-store')
+        response.headers['Vary'] = 'Cookie'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
     if _request.url.path.startswith("/assets/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
@@ -451,8 +460,13 @@ PROTECTED_TASK_PATHS = tuple(p.resolve() for p in (
     home_data_dir, user_file, user_file.with_name('auth_sessions.json'), conversation_root, run_root,
     run_root.parent / 'memory', run_root.parent / 'file_access.json', run_root.parent / 'backups', PROJECT_ROOT / '.data', PROJECT_ROOT / '.git', PROJECT_ROOT / '.env', PROJECT_ROOT / 'config',
     PROJECT_ROOT / '.codex', PROJECT_ROOT / '.agents', PROJECT_ROOT / '.aws',
+    PROJECT_ROOT / '.webui_secret_key',
+    user_file.with_name('passkeys.json'), run_root.parent / 'mcp_audit.json',
 ))
 auth_sessions = AuthSessionStore(path=user_file.with_name("auth_sessions.json"))
+mcp_adapter = MCPAdapter.from_env(run_root.parent / 'mcp_audit.json')
+passkeys = PasskeyService(user_file.with_name('passkeys.json'), os.getenv('PASSKEY_RP_ID', ''),
+    os.getenv('PASSKEY_ORIGIN', ''), enabled=os.getenv('PASSKEY_ENABLED', 'false').lower() == 'true')
 session_run_locks = SessionRunLocks()
 skills_dir = Path(config["skills_dir"])
 if not skills_dir.is_absolute():
@@ -551,6 +565,13 @@ async def require_user(request: Request) -> dict[str, Any]:
     return user
 
 
+async def require_home_member(request: Request) -> dict[str, Any]:
+    user = await require_user(request)
+    if not app.config.get('TESTING'):
+        family_members.actor(user)
+    return user
+
+
 async def require_admin(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
     if not can_manage_users(user):
         raise HTTPException(status_code=403, detail="forbidden")
@@ -590,7 +611,11 @@ def _card_session_context(user, session_id, *, write=False):
 app.include_router(task_router(lambda: family_tasks, require_user, require_admin, _card_session_context))
 
 
-def _response_with_login_cookie(user: dict[str, Any], *, remember_me: bool = False) -> JSONResponse:
+def _response_with_login_cookie(user: dict[str, Any], *, remember_me: bool = False, previous_token: str | None = None) -> JSONResponse:
+    if previous_token:
+        auth_sessions.delete(previous_token)
+        if chat_background is not None:
+            chat_background.notifications.logout(auth_fingerprint(previous_token))
     token = auth_sessions.create(user["id"], remember_me=remember_me)
     response = _json({"ok": True, "user": user})
     _set_login_cookie(response, token, remember_me=remember_me)
@@ -603,6 +628,7 @@ def _set_login_cookie(response: Response, token: str, *, remember_me: bool = Fal
         "value": token,
         "httponly": True,
         "samesite": "lax",
+        "secure": os.getenv('AUTH_COOKIE_SECURE', 'false').lower() == 'true',
     }
     if remember_me:
         cookie_kwargs["max_age"] = auth_sessions.max_age_seconds(remember_me=True)
@@ -845,6 +871,7 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
             return content, board_feedback or feedback
         orchestrator.task_answer_guard = finalize_task_answer
         register_knowledge_tools(bound_registry, knowledge, lambda: user_store.get_user(user_id), execution_context, _knowledge_resolve_file)
+        mcp_adapter.register(bound_registry, lambda: user_store.get_user(user_id), family_members, execution_context)
         orchestrator.knowledge_context_filter = lambda messages: current_board_context(knowledge.current_tool_context(messages, user_store.get_user(user_id)), family_board, user_store.get_user(user_id), execution_context)
         orchestrator.knowledge_answer_finalizer = lambda content, messages: knowledge.finalize_answer(user_store.get_user(user_id), content, messages)
     return orchestrator
@@ -928,6 +955,13 @@ def _board_resolve_source(user, source, session_id=None, node_id=None):
 
 
 app.include_router(board_router(lambda: family_board, require_user, _card_session_context, _board_resolve_source))
+app.include_router(offline_router(require_user, lambda: family_tasks, lambda: family_members,
+    lambda: knowledge, _visible_session_metas))
+
+
+@app.get('/api/health', tags=['health'])
+def health():
+    return {'status': 'ok'}
 
 app.include_router(knowledge_router(lambda: knowledge, require_user, _knowledge_resolve_file, _knowledge_resolve_source))
 
@@ -1027,7 +1061,7 @@ def auth_usernames():
 
 
 @app.post("/api/auth/login", tags=["auth"])
-def auth_login(payload: LoginRequest | None = Body(default=None)):
+def auth_login(request: Request, payload: LoginRequest | None = Body(default=None)):
     if not _bootstrap_completed():
         return _error("admin_required", 409)
     payload_data = _payload(payload)
@@ -1038,7 +1072,8 @@ def auth_login(payload: LoginRequest | None = Body(default=None)):
     if not user:
         return _error("invalid_credentials", 401)
     user_store.mark_login(user["id"])
-    return _response_with_login_cookie(user, remember_me=payload_data.get("remember_me") is True)
+    return _response_with_login_cookie(user, remember_me=payload_data.get("remember_me") is True,
+        previous_token=request.cookies.get(AUTH_COOKIE_NAME))
 
 
 @app.post("/api/auth/logout", tags=["auth"])
@@ -1056,6 +1091,20 @@ async def auth_me(user: dict[str, Any] | None = Depends(current_user)):
     if not user:
         return _error("unauthorized", 401)
     return {"user": user}
+
+
+app.include_router(passkey_router(passkeys, require_user, lambda: user_store, _response_with_login_cookie, AUTH_COOKIE_NAME))
+
+
+@app.get('/api/admin/mcp/status', tags=['admin'])
+def mcp_status(_admin=Depends(require_admin)):
+    events = mcp_adapter.audit.snapshot().get('mcp_events', [])
+    calls = [event for event in events if event['status'] in {'success', 'error'}]
+    successes = sum(event['status'] == 'success' for event in calls)
+    return {'enabled_servers': len(mcp_adapter.configs), 'calls': len(calls),
+        'success_rate': successes / len(calls) if calls else None,
+        'mean_duration_ms': sum(event['duration_ms'] for event in calls) / len(calls) if calls else None,
+        'events': events[-100:]}
 
 
 @app.get("/api/admin/users", tags=["admin"])
@@ -1112,6 +1161,8 @@ def admin_update_user(
         return _error("user_not_found", 404)
     except ValueError as e:
         return _error(str(e), 400)
+    if user.get('status') != 'active':
+        auth_sessions.revoke_user(user_id)
     return {"ok": True, "user": user}
 
 
@@ -1119,6 +1170,8 @@ def admin_update_user(
 def admin_delete_user(user_id: str, _admin: dict[str, Any] = Depends(require_admin)):
     try:
         user_store.delete_user(user_id)
+        auth_sessions.revoke_user(user_id)
+        passkeys.revoke_user(user_id)
     except KeyError:
         return _error("user_not_found", 404)
     except ValueError as e:
@@ -1135,6 +1188,8 @@ def admin_reset_password(
     payload_data = _payload(payload)
     try:
         user = user_store.reset_password(user_id, payload_data.get("password") or "")
+        auth_sessions.revoke_user(user_id)
+        passkeys.revoke_user(user_id)
     except KeyError:
         return _error("user_not_found", 404)
     except ValueError as e:
@@ -1469,7 +1524,7 @@ def home_activity_log(limit: int = 100, _user: dict[str, Any] = Depends(require_
 def home_inventory_expiring(
     days: int = 3,
     location: str | None = None,
-    _user: dict[str, Any] = Depends(require_user),
+    _user: dict[str, Any] = Depends(require_home_member),
 ):
     try:
         return home_service.expiring_items(days=days, location=location)
@@ -1483,7 +1538,7 @@ def home_inventory(
     category: str | None = None,
     status: str | None = None,
     expires_before: str | None = None,
-    _user: dict[str, Any] = Depends(require_user),
+    _user: dict[str, Any] = Depends(require_home_member),
 ):
     try:
         return home_service.list_inventory(
@@ -1502,7 +1557,7 @@ def home_inventory_location(
     category: str | None = None,
     status: str | None = None,
     expires_before: str | None = None,
-    _user: dict[str, Any] = Depends(require_user),
+    _user: dict[str, Any] = Depends(require_home_member),
 ):
     try:
         return home_service.list_inventory(
@@ -1519,7 +1574,7 @@ def home_inventory_location(
 def home_inventory_add_item(
     location: str,
     payload: dict[str, Any] | None = Body(default=None),
-    user: dict[str, Any] = Depends(require_user),
+    user: dict[str, Any] = Depends(require_home_member),
 ):
     try:
         return _json(home_service.add_inventory_item(location, payload or {}, user), 201)
@@ -1532,7 +1587,7 @@ def home_inventory_update_item(
     location: str,
     item_id: str,
     payload: dict[str, Any] | None = Body(default=None),
-    user: dict[str, Any] = Depends(require_user),
+    user: dict[str, Any] = Depends(require_home_member),
 ):
     try:
         return home_service.update_inventory_item(location, item_id, payload or {}, user)
@@ -1543,7 +1598,7 @@ def home_inventory_update_item(
 
 
 @app.delete("/api/home/inventory/{location}/items/{item_id}", tags=["home"])
-def home_inventory_delete_item(location: str, item_id: str, user: dict[str, Any] = Depends(require_user)):
+def home_inventory_delete_item(location: str, item_id: str, user: dict[str, Any] = Depends(require_home_member)):
     try:
         return home_service.delete_inventory_item(location, item_id, user)
     except KeyError:
@@ -1557,7 +1612,7 @@ def home_inventory_consume_item(
     location: str,
     item_id: str,
     payload: InventoryConsumeRequest | None = Body(default=None),
-    user: dict[str, Any] = Depends(require_user),
+    user: dict[str, Any] = Depends(require_home_member),
 ):
     try:
         return home_service.consume_inventory_item(location, item_id, _payload(payload).get("quantity"), user)
@@ -1568,7 +1623,7 @@ def home_inventory_consume_item(
 
 
 @app.post("/api/home/inventory/{location}/items/{item_id}/restore", tags=["home"])
-def home_inventory_restore_item(location: str, item_id: str, user: dict[str, Any] = Depends(require_user)):
+def home_inventory_restore_item(location: str, item_id: str, user: dict[str, Any] = Depends(require_home_member)):
     try:
         return home_service.restore_inventory_item(location, item_id, user)
     except KeyError:
@@ -1971,7 +2026,7 @@ def update_session_share(
 ):
     try:
         session = _load_authorized_session(session_id, user)
-        if user.get("role") != "admin" and session.get("owner_user_id") != user.get("id"):
+        if session.get("owner_user_id") != user.get("id"):
             return _json({"error": "forbidden"}, 403)
         sharing = normalize_sharing(_payload(payload))
         updated = store.update_sharing(session_id, sharing)

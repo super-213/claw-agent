@@ -1,0 +1,18 @@
+# Copy to ignored config/mcp.toml; set MCP_CONFIG to its absolute path.
+enabled = false
+[[servers]]
+id = "home"
+enabled = true
+# Absolute executable and script paths must be reviewed by the operator.
+command = "/usr/bin/python3"
+args = ["/absolute/path/to/claw-agent/scripts/mcp_status_server.py"]
+tools = ["service_status"]
+user_ids = ["REPLACE_WITH_BOUND_USER_ID"]
+timeout = 5
+max_bytes = 65536
+cpu_seconds = 5
+memory_mb = 512
+require_confirmation = true
+# Credentials are environment variable REFERENCES, never literal secret values.
+# [servers.env]
+# SERVICE_TOKEN = "MCP_HOME_TOKEN"

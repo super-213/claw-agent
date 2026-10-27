@@ -1,3 +1,4 @@
+import { PasskeySettings } from '../auth/PasskeySettings';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -80,6 +81,7 @@ export function MoreView({
       </h1>
       {!section && (
         <div className="home-more-menu">
+          <Link to="/offline">离线随身页 <ArrowRight size={18} /></Link>
           <Link to="/install">添加到主屏幕 <ArrowRight size={18} /></Link>
           <button onClick={() => navigate('/home/more?section=sessions')}>
             <MessageCircle size={21} />
@@ -115,6 +117,8 @@ export function MoreView({
           <h2>{user?.display_name || user?.username}</h2>
           <p className="home-muted">账号：{user?.username}</p>
           <ChatNotificationSettings />
+          <PasskeySettings />
+          <Link to="/offline">离线随身页与个人备忘同步</Link>
           {isAdmin(user) && (
             <button type="button" onClick={onSettings}>
               模型与设备设置（管理员）

@@ -86,7 +86,7 @@ def test_job_status_and_events_are_private_even_from_other_admins(jobs_api):
     for suffix in ['', '/events']:
         assert client.get('/api/chat/jobs/' + job['id'] + suffix).status_code == 404
     assert client.post('/api/chat/jobs/' + job['id'] + '/cancel').status_code == 404
-    assert client.get('/api/sessions/' + session + '/chat-job').json()['job'] is None
+    assert client.get('/api/sessions/' + session + '/chat-job').status_code == 404
     assert client.post('/api/runs/missing/background-resume', json={'request_id': 'resume-00001'}).status_code == 404
 
 

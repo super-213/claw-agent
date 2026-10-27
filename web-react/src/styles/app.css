@@ -13,6 +13,7 @@
 @import '../features/chat/chat-workspace.css';
 @import '../features/pwa/pwa.css';
 @import './dark-theme.css';
+@import './modern.css';
 
 html,
 body,

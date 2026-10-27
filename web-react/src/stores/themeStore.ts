@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { flushSync } from 'react-dom';
 
 export type ThemePreference = 'light' | 'auto' | 'dark';
 export const THEME_STORAGE_KEY = 'claw-theme';
@@ -33,8 +34,10 @@ export const useThemeStore = create<{
     } catch {
       // Keep switching available when the browser blocks local storage.
     }
-    applyTheme(preference);
-    set({ preference });
+    const update = () => { applyTheme(preference); set({ preference }); };
+    if (document.startViewTransition && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(() => flushSync(update));
+    } else update();
   },
 }));
 

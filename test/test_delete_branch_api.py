@@ -31,6 +31,7 @@ def session_with_branches():
     now = "2024-01-01T00:00:00+00:00"
     session_data = {
         "id": session_id,
+        "owner_user_id": "test-admin",
         "title": "Test Session",
         "created_at": now,
         "updated_at": now,
@@ -180,6 +181,7 @@ class TestDeleteBranchEndpoint:
         session_id = uuid.uuid4().hex
         session_data = {
             "id": session_id,
+        "owner_user_id": "test-admin",
             "title": "Empty Session",
             "created_at": "2024-01-01T00:00:00+00:00",
             "updated_at": "2024-01-01T00:00:00+00:00",

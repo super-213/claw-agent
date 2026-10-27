@@ -25,9 +25,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': apiTarget,
-      '/files': apiTarget,
-      '/generated': apiTarget,
+      '/api': { target: apiTarget, changeOrigin: false },
+      '/files': { target: apiTarget, changeOrigin: false },
+      '/generated': { target: apiTarget, changeOrigin: false },
     },
   },
 });

@@ -22,6 +22,7 @@ def session_with_tree():
     now = "2024-01-01T00:00:00+00:00"
     session_data = {
         "id": session_id,
+        "owner_user_id": "test-admin",
         "title": "Test Session",
         "created_at": now,
         "updated_at": now,
@@ -124,6 +125,7 @@ class TestGetSessionTreeEndpoint:
         long_content = "A" * 50
         session_data = {
             "id": session_id,
+        "owner_user_id": "test-admin",
             "title": "Test",
             "created_at": now,
             "updated_at": now,
@@ -165,6 +167,7 @@ class TestGetSessionTreeEndpoint:
         session_id = uuid.uuid4().hex
         session_data = {
             "id": session_id,
+        "owner_user_id": "test-admin",
             "title": "Empty",
             "created_at": "2024-01-01T00:00:00+00:00",
             "updated_at": "2024-01-01T00:00:00+00:00",

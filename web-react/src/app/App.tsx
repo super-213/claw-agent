@@ -1,3 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { initializeOfflinePrivacy } from '../features/offline/storage';
+import { cancelOfflineSync, refreshOffline } from '../features/offline/sync';
 import { Fragment, useEffect, useState } from 'react';
 import { useRoutes } from 'react-router-dom';
 import { routes } from './router';
@@ -18,13 +21,29 @@ function Reauthenticate({ onClose }: { onClose: () => void }) {
 
 export function App() {
   const element = useRoutes(routes);
+  const queryClient = useQueryClient();
   const userId = useAppStore(state => state.currentUser?.id);
   const [expired, setExpired] = useState(false);
   useMobileViewport();
   useEffect(() => initializeTheme(), []);
+  useEffect(() => initializeOfflinePrivacy(), []);
+  useEffect(() => {
+    const validate = () => { if (window.navigator.onLine) void refreshOffline().catch(() => undefined); };
+    const clear = () => { cancelOfflineSync(); useAppStore.getState().setCurrentUser(null); queryClient.clear(); };
+    window.addEventListener('online', validate);
+    window.addEventListener('claw-auth-cleared', clear);
+    document.addEventListener('visibilitychange', validate);
+    validate();
+    return () => {
+      window.removeEventListener('online', validate);
+      window.removeEventListener('claw-auth-cleared', clear);
+      document.removeEventListener('visibilitychange', validate);
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     const onUnauthorized = () => {
+      cancelOfflineSync();
       if (window.location.pathname !== '/login' && useAppStore.getState().currentUser) {
         // Preserve drafts in memory across reauthentication, including upload errors.
         setExpired(true);

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "path-traversal-write",
+    "tool": "file_write",
+    "arguments": {"path": "../escape.txt", "content": "blocked"},
+    "approved": true,
+    "expected_error": "path_outside_allowed_roots"
+  },
+  {
+    "id": "unknown-argument",
+    "tool": "datetime_now",
+    "arguments": {"timezone": "UTC", "bypass": true},
+    "approved": false,
+    "expected_error": "不是允许的参数"
+  },
+  {
+    "id": "shell-mutation-needs-approval",
+    "tool": "shell_execute",
+    "arguments": {"command": "printf unsafe > output.txt"},
+    "approved": false,
+    "expected_error": "approval_required"
+  },
+  {
+    "id": "domain-policy",
+    "tool": "http_request",
+    "arguments": {"url": "https://untrusted.example/data"},
+    "approved": false,
+    "expected_error": "http_domain_not_allowed"
+  }
+]

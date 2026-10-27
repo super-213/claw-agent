@@ -15,8 +15,6 @@ def session_owner_id(session: dict[str, Any] | None) -> str | None:
 def can_read_session(user: dict[str, Any] | None, session: dict[str, Any] | None) -> bool:
     if not user or user.get("status") != "active" or not session:
         return False
-    if is_admin(user):
-        return True
     user_id = user.get("id")
     if session_owner_id(session) == user_id:
         return True
@@ -32,7 +30,7 @@ def can_read_session(user: dict[str, Any] | None, session: dict[str, Any] | None
 def can_write_session(user: dict[str, Any] | None, session: dict[str, Any] | None) -> bool:
     if not can_read_session(user, session):
         return False
-    if is_admin(user) or session_owner_id(session) == user.get("id"):
+    if session_owner_id(session) == user.get("id"):
         return True
     sharing = session.get("sharing") or {}
     return (sharing.get("permission") or "write") == "write"
@@ -41,7 +39,7 @@ def can_write_session(user: dict[str, Any] | None, session: dict[str, Any] | Non
 def can_delete_session(user: dict[str, Any] | None, session: dict[str, Any] | None) -> bool:
     if not user or not session:
         return False
-    return is_admin(user) or session_owner_id(session) == user.get("id")
+    return user.get('status') == 'active' and session_owner_id(session) == user.get("id")
 
 
 def can_manage_users(user: dict[str, Any] | None) -> bool:

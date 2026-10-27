@@ -7,7 +7,7 @@ setCacheNameDetails({ prefix: 'claw-home', suffix: 'v1' });
 // Build-time list contains public application files only. Never cache API/media responses.
 precacheAndRoute(self.__WB_MANIFEST);
 registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), {
-  allowlist: [/^\/$/, /^\/(?:home|login|install|chat|sessions|settings|plugins|dashboard|admin)(?:\/|\?|$)/],
+  allowlist: [/^\/$/, /^\/(?:home|offline|login|install|chat|sessions|settings|plugins|dashboard|admin)(?:\/|\?|$)/],
   denylist: [/^\/(?:api|files|generated)(?:\/|$)/],
 }));
 clientsClaim();

@@ -59,7 +59,7 @@ export function PwaStatus() {
     registration.waiting.postMessage({ type: 'APPLY_UPDATE' }, [channel.port2]);
   };
   return <>
-    {!online && <div className="pwa-status pwa-offline" role="status">当前离线，已输入的内容会留在此页面。请联网后继续。</div>}
+    {!online && <div className="pwa-status pwa-offline" role="status">当前离线，输入暂留本页。<a href="/offline">查看已授权离线数据与个人备忘</a></div>}
     {(available || notice) && <aside className="pwa-status" aria-label="应用状态"><span role="status">{notice || '有新版本可用'}</span>{available && <button type="button" disabled={updating || !online} onClick={update}>更新</button>}<button type="button" aria-label="关闭提示" onClick={() => { setNotice(''); setAvailable(false); }}>关闭</button></aside>}
     {updating && <div className="pwa-update-cover" role="alert" aria-busy="true">正在更新，请稍候…</div>}
   </>;

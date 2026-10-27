@@ -7,12 +7,14 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "python3 -m pytest test -q --ignore=test/browser --ignore=test/web-react && npm run web:test",
     "web:dev": "npm --prefix web-react run dev",
     "web:build": "npm --prefix web-react run build",
     "web:typecheck": "npm --prefix web-react run typecheck",
     "web:lint": "npm --prefix web-react run lint",
-    "web:test": "npm --prefix web-react run test"
+    "web:test": "npm --prefix web-react run test",
+    "security:check": "python3 scripts/audit_repository.py --check-index",
+    "web:test:browser": "python3 scripts/validate_roadmap.py"
   },
   "repository": {
     "type": "git",

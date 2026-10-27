@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from services import ConversationStore, TokenUsageEstimator, UserStore
 from services.auth_service import AuthSessionStore
+from services.passkeys import PasskeyService
 from web_app import AUTH_COOKIE_NAME, app
 
 
@@ -14,6 +15,7 @@ def _client_with_auth_state(tmp_path, monkeypatch, auth_session_store=None):
     monkeypatch.setattr("web_app.user_store", user_store)
     monkeypatch.setattr("web_app.store", conversation_store)
     monkeypatch.setattr("web_app.auth_sessions", auth_session_store or AuthSessionStore())
+    monkeypatch.setattr("web_app.passkeys", PasskeyService(tmp_path / 'passkeys.json'))
     app.config["TESTING"] = False
     return TestClient(app), user_store, conversation_store
 
@@ -133,6 +135,10 @@ def test_session_visibility_and_selected_share(tmp_path, monkeypatch):
 
     client.post("/api/auth/logout")
     client.post("/api/auth/login", json={"username": "admin", "password": "secret123"})
+    assert client.get(f"/api/sessions/{alice_session['id']}").status_code == 403
+    assert client.patch(f"/api/sessions/{alice_session['id']}/share", json={"scope": "all"}).status_code == 403
+    client.post("/api/auth/logout")
+    client.post("/api/auth/login", json={"username": "alice", "password": "secret123"})
     share_response = client.patch(
         f"/api/sessions/{alice_session['id']}/share",
         json={"scope": "selected", "user_ids": [bob["id"]], "permission": "write"},
@@ -145,3 +151,32 @@ def test_session_visibility_and_selected_share(tmp_path, monkeypatch):
     assert alice_session["id"] in bob_ids
     assert admin_session["id"] not in bob_ids
     assert client.delete(f"/api/sessions/{alice_session['id']}").status_code == 403
+
+
+def test_corrupt_user_store_cannot_reopen_bootstrap(tmp_path):
+    import pytest
+    path = tmp_path / 'users.json'
+    path.write_text('{broken')
+    with pytest.raises(RuntimeError, match='user_store_corrupt'):
+        UserStore(path).has_admin()
+
+
+def test_agent_file_read_denies_environment_variants_and_legacy_keys(tmp_path):
+    import pytest
+    from agent_runtime.builtin_tools import _file_read
+    for name in ('.env', '.env.production', '.webui_secret_key', '.webui_secret_key.old'):
+        (tmp_path / name).write_text('fixture-secret')
+        with pytest.raises(PermissionError, match='protected_credentials'):
+            _file_read({'path': name}, (tmp_path,))
+    (tmp_path / '.env.example').write_text('PLACEHOLDER=')
+    assert _file_read({'path': '.env.example'}, (tmp_path,))['content'] == 'PLACEHOLDER='
+
+
+def test_new_login_invalidates_the_previous_cookie(tmp_path, monkeypatch):
+    client, _, _ = _client_with_auth_state(tmp_path, monkeypatch)
+    client.post('/api/auth/bootstrap-admin', json={'username': 'admin', 'password': 'secret123'})
+    previous = client.cookies.get(AUTH_COOKIE_NAME)
+    client.post('/api/auth/login', json={'username': 'admin', 'password': 'secret123'})
+    assert previous != client.cookies.get(AUTH_COOKIE_NAME)
+    from web_app import auth_sessions
+    assert auth_sessions.get_user_id(previous) is None

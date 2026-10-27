@@ -250,6 +250,9 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 def _file_read(args: dict[str, Any], roots: tuple[Path, ...], protected_paths=()) -> dict[str, Any]:
     path = _resolve_path(str(args["path"]), roots, default_root=roots[0])
+    if ((path.name == '.env' or path.name.startswith('.env.')) and path.name != '.env.example'
+            or path.name.startswith('.webui_secret_key')):
+        raise PermissionError('protected_credentials')
     if any(path == Path(p).resolve() or _is_relative_to(path, Path(p).resolve()) for p in protected_paths):
         raise PermissionError("protected_family_data")
     if not path.exists() or not path.is_file():

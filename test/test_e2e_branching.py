@@ -38,6 +38,7 @@ def _build_session_with_conversation():
     now = "2024-01-15T10:00:00+00:00"
     return session_id, {
         "id": session_id,
+        "owner_user_id": "test-admin",
         "title": "E2E Test Session",
         "created_at": now,
         "updated_at": now,

@@ -1,3 +1,6 @@
+import { passkeyApi, passkeysSupported } from './passkeys';
+import { clearOffline } from '../offline/storage';
+import { cancelOfflineSync } from '../offline/sync';
 import { Bot } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -28,6 +31,8 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated?: () => void } 
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [passkeyEnabled, setPasskeyEnabled] = useState(false);
+  useEffect(() => { void passkeyApi.status().then(s => setPasskeyEnabled(s.enabled)).catch(() => undefined); }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -69,7 +74,9 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated?: () => void } 
             display_name: displayName.trim() || trimmedUsername,
           })
         : await authApi.login({ username: trimmedUsername, password, remember_me: rememberMe });
-      if (useAppStore.getState().currentUser?.id !== result.user.id) queryClient.clear();
+      if (useAppStore.getState().currentUser?.id !== result.user.id) {
+        cancelOfflineSync(); await clearOffline(true, true).catch(() => undefined); queryClient.clear();
+      }
       setCurrentUser(result.user);
       await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
       if (onAuthenticated) onAuthenticated();
@@ -86,6 +93,21 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated?: () => void } 
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const loginWithPasskey = async () => {
+    if (!username.trim()) { setError('请输入用户名后使用通行密钥'); return; }
+    setSubmitting(true); setError('');
+    try {
+      const result = await passkeyApi.login(username.trim());
+      if (useAppStore.getState().currentUser?.id !== result.user.id) {
+        cancelOfflineSync(); await clearOffline(true, true).catch(() => undefined); queryClient.clear();
+      }
+      setCurrentUser(result.user);
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      if (onAuthenticated) onAuthenticated(); else navigate('/home', { replace: true });
+    } catch (caught) { setError(caught instanceof Error ? caught.message : '通行密钥登录失败，请使用密码。'); }
+    finally { setSubmitting(false); }
   };
 
   return (
@@ -166,6 +188,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated?: () => void } 
             {bootstrapMode ? '创建管理员' : '登录'}
           </button>
         </form>
+        {!bootstrapMode && passkeyEnabled && passkeysSupported() && <button type="button" disabled={submitting} onClick={() => void loginWithPasskey()}>使用通行密钥登录</button>}
       </section>
     </main>
   );

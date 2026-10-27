@@ -65,6 +65,11 @@ class AuthSessionStore:
             self._sessions.pop(self._hash_token(token), None)
             self._persist_locked()
 
+    def revoke_user(self, user_id: str) -> None:
+        with self._lock:
+            self._sessions = {key: row for key, row in self._sessions.items() if row['user_id'] != user_id}
+            self._persist_locked()
+
     def is_active_hash(self, token_hash: str, user_id: str) -> bool:
         """Validate a push binding without extending the login's lifetime."""
         with self._lock:
@@ -131,7 +136,9 @@ class AuthSessionStore:
             if session.get("remember_me") and session["expires_at"] > now
         }
         tmp_path = self.path.with_name(f".{self.path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
-        tmp_path.write_text(json.dumps({"sessions": sessions}, ensure_ascii=False, indent=2), encoding="utf-8")
+        with tmp_path.open('x', encoding='utf-8') as output:
+            os.fchmod(output.fileno(), 0o600)
+            json.dump({"sessions": sessions}, output, ensure_ascii=False, indent=2)
         os.replace(tmp_path, self.path)
 
     @staticmethod
