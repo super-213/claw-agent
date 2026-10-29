@@ -95,7 +95,7 @@ class MediaInputReader:
         stat = path.stat()
         return _cached_document(str(path), stat.st_mtime_ns, stat.st_size)
 
-    def content(self, message: dict, *, include_images: bool = True):
+    def content(self, message: dict, *, include_images: bool = True, errors=None):
         text = str(message.get("content") or "")
         if message.get("role") != "user":
             return text
@@ -104,7 +104,7 @@ class MediaInputReader:
         remaining = MAX_MESSAGE_DOCUMENT_CHARS
         items = [(item, True) for item in (message.get("images") or [])]
         items += [(item, is_image(item)) for item in (message.get("attachments") or [])]
-        for item, image in items[:32]:
+        for item_index, (item, image) in enumerate(items[:32]):
             source = media_source(item)
             display_source = "[内嵌图片]" if source.startswith("data:image/") else source
             name = str(item.get("name") or item.get("alt") or display_source) if isinstance(item, dict) else display_source
@@ -130,6 +130,10 @@ class MediaInputReader:
                         if len(page_images) > available:
                             sections.append("[部分扫描页面未发送：每条消息最多识别 10 张图片，请拆分 PDF]")
             except Exception as exc:
+                if errors is not None:
+                    # No document contents, Base64 data or credential-bearing URLs in logs.
+                    errors.append({"item_index": item_index, "error_type": type(exc).__name__,
+                                   "reason": str(exc)[:200] if isinstance(exc, ValueError) else type(exc).__name__})
                 # A bad file must not hide the other files or cause fabricated analysis.
                 sections.append(f"附件读取失败: {name} ({display_source})；{type(exc).__name__}: {exc}。请明确告知用户该文件未成功读取，不要猜测内容。")
         if sections:

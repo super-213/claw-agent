@@ -155,16 +155,16 @@ export function ConfigModal({
           </label>
         ) : null}
         <label className="field-label">
-          文本模型
+          主模型
           <select className="skill-input" value={model} disabled={modelsLoading || !modelsReady || !models.length} onChange={(event) => setModel(event.target.value)}>
-            {!model ? <option value="" disabled>请选择文本模型</option> : null}
+            {!model ? <option value="" disabled>请选择主模型</option> : null}
             {optionsFor(model).map((id) => <option key={id} value={id}>{modelLabel(id)}</option>)}
           </select>
         </label>
         <label className="field-label">
           视觉模型
           <select className="skill-input" value={visionModel} disabled={modelsLoading || !modelsReady || !models.length} onChange={(event) => setVisionModel(event.target.value)}>
-            <option value="">自动选择（百炼：qwen3-vl-plus；其他：文本模型）</option>
+            <option value="">跟随主模型（支持多模态时无需单独选择）</option>
             {optionsFor(visionModel).map((id) => <option key={id} value={id}>{modelLabel(id)}</option>)}
           </select>
         </label>

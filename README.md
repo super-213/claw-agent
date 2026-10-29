@@ -176,8 +176,8 @@ export MODEL_NAME="qwen-plus"
 | --- | --- | --- |
 | `DASHSCOPE_API_KEY` | 无 | 必填，OpenAI-compatible API Key |
 | `API_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 模型 API 地址 |
-| `MODEL_NAME` | `qwen-plus` | 文本模型名称 |
-| `VISION_MODEL` | 自动选择 | 带图请求的视觉模型；百炼默认 `qwen3-vl-plus`，其他兼容服务默认使用主模型 |
+| `MODEL_NAME` | `qwen-plus` | 主模型名称，支持多模态时可同时处理文字与图片 |
+| `VISION_MODEL` | 跟随主模型 | 留空使用 `MODEL_NAME`；仅在需要单独的视觉模型时填写 |
 | `AGENT_FILE` | `Agent.md` | Agent 系统指令文件 |
 | `SKILLS_DIR` | `skills` | 技能目录 |
 | `CONVERSATION_DIR` | `.data/conversations` | 会话 JSON 保存目录 |
@@ -198,6 +198,8 @@ export MODEL_NAME="qwen-plus"
 | `SHELL_REQUIRE_SANDBOX` | `false` | 为 `true` 时没有可用 OS 沙箱就拒绝启动 |
 | `TOOL_OUTPUT_MAX_CHARS` | `12000` | 写回模型的单次工具结果字符上限 |
 | `TOKEN_ENCODING` | `cl100k_base` | token 估算编码 |
+
+公网请求遇到代理 DNS 的 `198.18.0.0/15` Fake-IP 时，会通过 Cloudflare / Google 的 HTTPS DNS 查询真实公网 IPv4，并固定连接该地址，同时保留原域名的 Host、TLS SNI 和证书校验。私网地址、字面 Fake-IP 地址和重定向仍会拒绝；DNS 回退失败时返回明确错误，不放开内网访问。
 
 长上下文压缩配置：
 
@@ -263,6 +265,8 @@ npm --prefix web-react run preview
 ```
 
 `npm run web:build` 会输出到 `web-react/dist`。FastAPI 的 `8000` 端口只提供后端 API，不托管前端页面；生产前端请用 Vite preview、Nginx 或其他静态服务承载，并把 API 目标指向后端地址。
+
+macOS 部署运行 `bash deploy/mac.sh`，通过交互菜单安装依赖、构建前端并配置后台服务；后续可通过 Cloudflare Tunnel 绑定公网域名。参见 [macOS 部署说明](deploy/MACOS.md)。
 
 树莓派部署在本机运行 `./package-pi.sh` 即可构建并打包，传输压缩包后在树莓派执行启动、状态、停止或更新脚本。参见 [树莓派部署说明](deploy/README.md)。
 
@@ -449,7 +453,7 @@ curl -X POST http://localhost:8000/api/chat \
 - 扫描 PDF：缺少正文的页面转成图片，结合视觉模型识别；每条消息总共最多发送 10 张图片（包含 PDF 扫描页）。PDF 最多处理前 100 页。
 - 每个文档最多提取约 16000 字符，每条消息文档正文总量最多 40000 字符，超限有截断提示。解析失败、加密、缺失或不支持的文件会明确标记，其他附件继续处理。只读取生成文件目录内的本地文件；外部文档须先上传。
 
-文本请求继续使用 `MODEL_NAME`。包含图片或扫描页面的请求（包括流式响应和工具调用）使用 `VISION_MODEL`，可在网页模型设置中修改；百炼留空默认使用 `qwen3-vl-plus`，其他服务留空使用主模型，因此主模型需支持视觉输入与 function calling。视觉与文本模型共用 API URL / API KEY。百炼请求格式参见[官方视觉接口文档](https://help.aliyun.com/zh/model-studio/qwen-vl-compatible-with-openai)。修改依赖后先运行 `python -m pip install -r requirements.txt`，再重启后端。
+文本请求继续使用 `MODEL_NAME`。包含图片或扫描页面的请求（包括流式响应和工具调用）使用 `VISION_MODEL`，可在网页模型设置中修改；留空始终使用主模型，不根据模型名称猜测能力或自动替换。使用主模型识图时，该模型需支持视觉输入与 function calling。视觉与文本模型共用 API URL / API KEY。百炼请求格式参见[官方视觉接口文档](https://help.aliyun.com/zh/model-studio/qwen-vl-compatible-with-openai)。修改依赖后先运行 `python -m pip install -r requirements.txt`，再重启后端。
 
 
 ### 技能与配置 API

@@ -403,7 +403,7 @@ class AgentOrchestrator:
                 "type": "model_request",
                 "phase": "start",
                 "iteration": iteration,
-                "model": self.llm_client.model,
+                "configured_model": self.llm_client.model,
                 "message_count": len(messages),
                 "tool_count": len(schemas),
             })
@@ -446,6 +446,7 @@ class AgentOrchestrator:
                     "phase": "error",
                     "iteration": iteration,
                     "model": self.llm_client.model,
+                    **getattr(self.llm_client, "last_request_diagnostics", {}),
                     "error": str(exc),
                     "metrics": dict(getattr(self.llm_client, "last_request_metrics", {}) or {}),
                 })
@@ -461,6 +462,7 @@ class AgentOrchestrator:
                 "phase": "finish",
                 "iteration": iteration,
                 "model": self.llm_client.model,
+                **getattr(self.llm_client, "last_request_diagnostics", {}),
                 "provider": response.provider,
                 "request_id": response.request_id,
                 "latency_ms": response.latency_ms,
@@ -505,6 +507,7 @@ class AgentOrchestrator:
             self._append_run_step({
                 "kind": "model",
                 "iteration": iteration,
+                **getattr(self.llm_client, "last_request_diagnostics", {}),
                 "content": response.content,
                 "reasoning_summary": response.content[:1000],
                 "tool_calls": [call.as_dict() for call in response.tool_calls],

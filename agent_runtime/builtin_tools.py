@@ -9,12 +9,14 @@ import re
 import shlex
 import socket
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse, quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from services.executor import CommandExecutor
 from services.home_assistant_service import HomeAssistantService, POWER_DOMAINS
+from services.media_input import IMAGE_EXTENSIONS
+from services.public_http import is_fake_ip, is_public_ip, resolve_fake_ip, pinned_opener
 
 from .models import ToolDefinition
 from .registry import ToolRegistry
@@ -124,7 +126,7 @@ def build_tool_registry(
         ))
     registry.register(ToolDefinition(
         name="file_read",
-        description="Read a UTF-8 text file from the project or generated-files directory.",
+        description="Read a UTF-8 text file from the project or generated-files directory. Uploaded images are already visual inputs; do not use this tool to view images.",
         input_schema={
             "type": "object",
             "properties": {
@@ -249,7 +251,13 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _file_read(args: dict[str, Any], roots: tuple[Path, ...], protected_paths=()) -> dict[str, Any]:
-    path = _resolve_path(str(args["path"]), roots, default_root=roots[0])
+    value = str(args["path"])
+    if value.startswith(("/generated/", "/files/")):
+        # Web routes are aliases for the generated directory, never disk roots.
+        relative = unquote(value.split("/", 2)[2])
+        path = _resolve_path(relative, (roots[-1],), default_root=roots[-1])
+    else:
+        path = _resolve_path(value, roots, default_root=roots[0])
     if ((path.name == '.env' or path.name.startswith('.env.')) and path.name != '.env.example'
             or path.name.startswith('.webui_secret_key')):
         raise PermissionError('protected_credentials')
@@ -257,6 +265,8 @@ def _file_read(args: dict[str, Any], roots: tuple[Path, ...], protected_paths=()
         raise PermissionError("protected_family_data")
     if not path.exists() or not path.is_file():
         raise FileNotFoundError(str(path))
+    if path.suffix.lower() in IMAGE_EXTENSIONS:
+        raise ValueError("image_requires_visual_input: 图片应直接通过消息中的 image_url 观察，file_read 只读取文本；不要把本工具失败解释为无法查看已附图片")
     max_chars = max(1, min(int(args.get("max_chars") or 20000), 100000))
     text = path.read_text(encoding="utf-8")
     truncated = len(text) > max_chars
@@ -301,14 +311,15 @@ def _http_request(
         for domain in allowed_domains
     ):
         raise PermissionError("http_domain_not_allowed")
-    _reject_private_host(parsed.hostname)
+    pinned_addresses = _reject_private_host(parsed.hostname)
     method = str(args.get("method") or "GET").upper()
     headers = {str(k): str(v) for k, v in dict(args.get("headers") or {}).items()}
     headers.setdefault("User-Agent", "Claw-Agent-Runtime/1.0")
-    request = Request(url, method=method, headers=headers)
+    request = Request(quote(url, safe=":/?#[]@!$&'()*+,;=%"), method=method, headers=headers)
     max_chars = max(1, min(int(args.get("max_chars") or 20000), 100000))
-    opener = build_opener(_NoRedirectHandler())
-    with opener.open(request, timeout=15) as response:
+    opener = (pinned_opener(pinned_addresses, _NoRedirectHandler()) if pinned_addresses
+              else build_opener(_NoRedirectHandler()))
+    with opener.open(request, timeout=10) as response:
         body = response.read(max_chars * 4 + 1)
         content_type = response.headers.get("Content-Type", "")
         charset = response.headers.get_content_charset() or "utf-8"
@@ -322,15 +333,24 @@ def _http_request(
         }
 
 
-def _reject_private_host(hostname: str) -> None:
+def _reject_private_host(hostname: str) -> tuple[str, ...] | None:
+    # Literal private IPs must never take the synthetic-DNS fallback.
+    try:
+        literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal = None
+    if literal is not None and not is_public_ip(str(literal)):
+        raise PermissionError("private_network_requests_are_not_allowed")
     try:
         addresses = {row[4][0] for row in socket.getaddrinfo(hostname, None)}
     except socket.gaierror as exc:
         raise ValueError("host_resolution_failed") from exc
+    if addresses and all(is_fake_ip(address) for address in addresses):
+        return resolve_fake_ip(hostname)
     for address in addresses:
-        ip = ipaddress.ip_address(address)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+        if not is_public_ip(address):
             raise PermissionError("private_network_requests_are_not_allowed")
+    return None
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):

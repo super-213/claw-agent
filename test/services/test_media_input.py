@@ -157,7 +157,7 @@ def test_context_budget_and_summary_include_extracted_body(media_dir):
 def test_every_llm_entry_point_uses_multimodal_payload(media_dir):
     (media_dir / "uploads/photo.png").write_bytes(image_bytes())
     messages = [user_message("photo.png", image=True)]
-    llm = LLMClient("test-key", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus", media_root=str(media_dir))
+    llm = LLMClient("test-key", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.8-27b", media_root=str(media_dir))
     # Close the unused real HTTP client before replacing it with a stub.
     llm.client.close()
     choice = SimpleNamespace(message=SimpleNamespace(content="a red picture", tool_calls=[]), finish_reason="stop")
@@ -187,9 +187,10 @@ def test_every_llm_entry_point_uses_multimodal_payload(media_dir):
     calls = create.call_args_list + asyncio.run(run())
     assert len(calls) == 7
     for call in calls:
-        assert call.kwargs["model"] == "qwen3-vl-plus"
-        assert call.kwargs["messages"][0]["content"][1]["type"] == "image_url"
-    assert llm._request_payload([{"role": "user", "content": "hello"}])["model"] == "qwen-plus"
+        assert call.kwargs["model"] == "qwen3.8-27b"
+        user = next(m for m in call.kwargs["messages"] if m["role"] == "user")
+        assert user["content"][1]["type"] == "image_url"
+    assert llm._request_payload([{"role": "user", "content": "hello"}])["model"] == "qwen3.8-27b"
     llm.vision_model = "custom-vision-model"
     assert llm._request_payload(messages)["model"] == "custom-vision-model"
 
@@ -197,3 +198,19 @@ def test_every_llm_entry_point_uses_multimodal_payload(media_dir):
 def test_remote_images_are_forwarded_without_local_fetching():
     content = LLMClient._chat_messages([{"role": "user", "content": "看图", "images": ["https://example.com/photo.jpg"]}])[0]["content"]
     assert content[1]["image_url"]["url"] == "https://example.com/photo.jpg"
+
+
+def test_conversion_failure_is_recorded_without_inline_image_data(media_dir):
+    llm = LLMClient("test", "https://example.com/v1", "multimodal-model", media_root=str(media_dir))
+    try:
+        payload = llm._request_payload([user_message("missing.png", image=True)])
+        assert payload["model"] == "multimodal-model"
+        diagnostic = llm.last_request_diagnostics
+        assert diagnostic["image_count"] == 0
+        assert diagnostic["media_errors"][0]["error_type"] == "ValueError"
+        assert "重新上传" in diagnostic["media_errors"][0]["reason"]
+        assert "base64" not in str(diagnostic)
+        llm._request_payload([{"role": "user", "content": "hello"}])
+        assert llm.last_request_diagnostics["media_errors"] == []
+    finally:
+        llm.close()

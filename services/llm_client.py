@@ -30,11 +30,12 @@ class LLMClient:
         self.timeout = timeout
         self.max_retries = max(0, max_retries)
         self.provider = provider if isinstance(provider, ModelProvider) else provider_for(base_url, provider)
-        self.vision_model = vision_model.strip() or (
-            "qwen3-vl-plus" if self.provider.name == "dashscope" and "vl" not in model.lower() else model
-        )
+        # Multimodal models need not have "vl" in their name. Only switch when
+        # the administrator explicitly configures a separate vision model.
+        self.vision_model = vision_model.strip() or model
         self.media_root = media_root
         self.last_request_metrics: Dict[str, Any] = {}
+        self.last_request_diagnostics: Dict[str, Any] = {}
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self._async_client: AsyncOpenAI | None = None
 
@@ -202,19 +203,35 @@ class LLMClient:
                 yield content
 
     def _request_payload(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        normalized = self._chat_messages(messages, self.media_root)
-        has_images = any(isinstance(message["content"], list) for message in normalized)
-        return {"model": self.vision_model if has_images else self.model, "messages": normalized}
+        errors: list[dict[str, Any]] = []
+        normalized = self._chat_messages(messages, self.media_root, media_errors=errors)
+        image_count = sum(
+            part.get("type") == "image_url"
+            for message in normalized if isinstance(message["content"], list)
+            for part in message["content"]
+        )
+        selected_model = self.vision_model if image_count else self.model
+        self.last_request_diagnostics = {
+            "model": selected_model, "image_count": image_count, "media_errors": errors,
+        }
+        if image_count:
+            normalized.insert(1 if normalized and normalized[0]["role"] == "system" else 0, {
+                "role": "system",
+                "content": "用户图片已作为 image_url 视觉输入附在消息中，请直接观察图片回答。"
+                    "不要调用 file_read 读取图片，不要仅凭文件名判断内容。"
+                    "无法确定角色时说明不确定；单个网页请求失败不代表无法联网，必要时换公开来源。",
+            })
+        return {"model": selected_model, "messages": normalized}
 
     @staticmethod
-    def _chat_messages(messages: List[Dict[str, Any]], media_root=None) -> List[Dict[str, Any]]:
+    def _chat_messages(messages: List[Dict[str, Any]], media_root=None, *, media_errors=None) -> List[Dict[str, Any]]:
         """Normalize stored messages while preserving native tool-call fields."""
         normalized: List[Dict[str, Any]] = []
         reader = MediaInputReader(media_root)
         for message in messages:
             row: Dict[str, Any] = {
                 "role": message.get("role", ""),
-                "content": reader.content(message),
+                "content": reader.content(message, errors=media_errors),
             }
             if message.get("tool_calls"):
                 row["tool_calls"] = message["tool_calls"]

@@ -24,7 +24,8 @@ def test_uploaded_image_and_document_reach_model_and_survive_reload(tmp_path, mo
     monkeypatch.setattr(web_app, "GENERATED_DIR", root)
     monkeypatch.setattr(web_app, "UPLOAD_DIR", uploads)
     monkeypatch.setitem(web_app.app.config, "TESTING", True)
-    monkeypatch.setitem(web_app.config.config, "vision_model", "qwen3-vl-plus")
+    monkeypatch.setitem(web_app.config.config, "model", "qwen3.8-27b")
+    monkeypatch.setitem(web_app.config.config, "vision_model", "")
     calls = []
 
     async def create(**kwargs):
@@ -66,11 +67,16 @@ def test_uploaded_image_and_document_reach_model_and_survive_reload(tmp_path, mo
             assert response.json()["run_status"] == "completed"
 
         payload = calls[-1]
-        assert payload["model"] == "qwen3-vl-plus"
+        assert payload["model"] == "qwen3.8-27b"
         assert payload["tools"] and payload["tool_choice"] == "auto"
         content = next(message["content"] for message in payload["messages"] if message["role"] == "user")
         assert "ORDER-9421" in content[0]["text"]
         assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+        run_id = done["run_id"] if streaming else response.json()["run_id"]
+        run = web_app.run_store.load(run_id)
+        finished = next(e for e in run["events"] if e.get("type") == "model_request" and e.get("phase") == "finish")
+        assert finished["model"] == "qwen3.8-27b"
+        assert finished["image_count"] == 1 and finished["media_errors"] == []
         saved = store.load_session(session_id)["messages"]
         user = next(message for message in saved if message["role"] == "user")
         assert user["images"][0]["url"] == media[0]["url"]
