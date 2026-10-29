@@ -1,0 +1,11 @@
+# Copy to config/tool-plugins.toml, or set TOOL_PLUGINS_CONFIG to an absolute path.
+# Only the reviewed datetime plugin is enabled by default. Restart after installing code.
+[plugins.datetime]
+enabled = true
+permissions = []
+
+# Other directories must be explicitly enabled. Grants are host authority,
+# not inferred from plugin manifests or Skill permissions.
+# [plugins.weather]
+# enabled = true
+# permissions = ["network:public-read"]

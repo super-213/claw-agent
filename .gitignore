@@ -49,3 +49,5 @@ web-react/dist/
 .venv/
 config/mcp.toml
 security-audit.local.json
+
+config/tool-plugins.toml

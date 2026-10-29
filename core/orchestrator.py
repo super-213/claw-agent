@@ -1026,6 +1026,7 @@ class AgentOrchestrator:
             )
             self.run = self.run_store.update(
                 self.run,
+                plugin_snapshot=self._plugin_snapshot(),
                 active_skill=active_skill,
                 family_task_context=self.family_task_context,
                 actor_user_id=self.user_id,
@@ -1036,6 +1037,7 @@ class AgentOrchestrator:
         else:
             self.run = {
                 "id": None,
+                "plugin_snapshot": self._plugin_snapshot(),
                 "session_id": session_id,
                 "goal": goal,
                 "status": "running",
@@ -1196,9 +1198,18 @@ class AgentOrchestrator:
         except Exception as exc:
             self._append_run_event({"type": "memory_error", "error": str(exc)})
 
+    def _plugin_snapshot(self) -> dict:
+        return {tool.name: dict(tool.plugin_source) for tool in self.tool_registry.list()
+                if tool.plugin_source} if self.tool_registry else {}
+
     def _restore_skill_state(self) -> None:
         if not self.run:
             return
+        stored_plugins = self.run.get("plugin_snapshot")
+        if stored_plugins is not None:
+            current = self._plugin_snapshot()
+            if any(current.get(name) != source for name, source in stored_plugins.items()):
+                raise ValueError("plugin_snapshot_changed: restore the original plugin configuration before resuming")
         skill_name = str(self.run.get("active_skill") or "")
         if skill_name:
             self.context.activate_skill(skill_name)

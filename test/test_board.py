@@ -2,6 +2,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from io import BytesIO
+from unittest.mock import AsyncMock
+from services.intent_router import IntentRouteResult
 import json
 import pytest
 from PIL import Image
@@ -30,6 +32,9 @@ def board_api(api, tmp_path, monkeypatch):
     clients, tasks, users, clock = api
     service = BoardPostService(BoardStore(tmp_path / 'board.json'), tasks.members, clock=lambda: clock[0])
     monkeypatch.setattr(web_app, 'family_board', service)
+    # These tests exercise board tool execution, not the separate intent model.
+    monkeypatch.setattr(web_app.intent_router, 'route', AsyncMock(return_value=
+        IntentRouteResult(action='general_chat', source='test:board')))
     return clients, service, users, clock
 
 

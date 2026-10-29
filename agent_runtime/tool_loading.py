@@ -34,6 +34,10 @@ def group_for(name: str) -> str:
     return "other"
 
 
+def tool_group(tool: ToolDefinition) -> str:
+    return tool.group or group_for(tool.name)
+
+
 def terms(text: str) -> set[str]:
     words = set(re.findall(r"[a-z0-9]+", text.lower()))
     for phrase in re.findall(r"[\u4e00-\u9fff]+", text):
@@ -72,8 +76,8 @@ class ToolLoadingSession:
                 if tool.name != "skill_load" and (canonical is None or tool.name in canonical)]
 
     def catalog(self) -> str:
-        counts = Counter(group_for(tool.name) for tool in self.eligible())
-        return "\n".join(f"- {group}: {GROUPS[group]}（{count} 项）" for group, count in sorted(counts.items()))
+        counts = Counter(tool_group(tool) for tool in self.eligible())
+        return "\n".join(f"- {group}: {GROUPS.get(group, group)}（{count} 项）" for group, count in sorted(counts.items()))
 
     def load(self, names: list[str]) -> list[str]:
         canonical = list(dict.fromkeys(self.registry.resolve_name(name) for name in names))
@@ -103,14 +107,14 @@ class ToolLoadingSession:
         else:
             if not query and not group:
                 raise ValueError("请提供 query、group 或 names，以便按任务加载工具")
-            candidates = [tool for tool in self.eligible() if not group or group_for(tool.name) == group]
+            candidates = [tool for tool in self.eligible() if not group or tool_group(tool) == group]
             query_terms = terms(query)
             ranked = []
             for tool in candidates:
                 # Exact names and aliases work even when descriptions are in another language.
                 exact = query == tool.name.lower() or self.registry.resolve_name(query) == tool.name
-                direct = len(query_terms & terms(tool.name + " " + tool.description))
-                category = len(query_terms & terms(GROUPS[group_for(tool.name)]))
+                direct = len(query_terms & terms(tool.name + " " + tool.description + " " + " ".join(tool.keywords)))
+                category = len(query_terms & terms(GROUPS.get(tool_group(tool), tool_group(tool))))
                 score = 1000 * exact + 10 * direct + category
                 if score or (group and not query):
                     ranked.append((score, tool))
@@ -129,4 +133,7 @@ class ToolLoadingSession:
     def schemas(self) -> list[dict]:
         eligible = {tool.name for tool in self.eligible()}
         active = set(self.loaded) & eligible
-        return self.controls.schemas() + self.registry.schemas(allowed_tools=active | {"skill_load"})
+        controls = self.controls.schemas()
+        controls[0]["function"]["parameters"]["properties"]["group"]["enum"] = sorted(
+            set(GROUPS) | {tool_group(tool) for tool in self.eligible()})
+        return controls + self.registry.schemas(allowed_tools=active | {"skill_load"})

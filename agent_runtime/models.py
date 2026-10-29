@@ -38,6 +38,11 @@ class ToolDefinition:
     capabilities: tuple[str, ...] = ()
     allowed_domains: tuple[str, ...] = ()
 
+    group: str = ""
+    keywords: tuple[str, ...] = ()
+    plugin_source: dict[str, str] = field(default_factory=dict)
+    plugin_authorize: Callable[[dict[str, Any]], bool] | None = field(default=None, repr=False, compare=False)
+
     def openai_schema(self) -> dict[str, Any]:
         return {
             "type": "function",

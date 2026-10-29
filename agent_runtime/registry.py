@@ -75,6 +75,20 @@ class ToolRouter:
         definition = self.registry.get(call.name)
         if definition is None:
             return None, ["unknown_tool"]
+        if definition.plugin_authorize is not None:
+            try:
+                if definition.plugin_authorize(call.arguments) is not True:
+                    return definition, ["plugin_access_denied"]
+            except Exception:
+                return definition, ["plugin_access_denied"]
+        if definition.plugin_source:
+            legacy_errors = self.validate_schema(call.arguments, definition.input_schema, path="arguments")
+            if legacy_errors:
+                return definition, legacy_errors
+            from jsonschema import Draft202012Validator
+            if not Draft202012Validator(definition.input_schema).is_valid(call.arguments):
+                return definition, ["plugin_arguments_invalid"]
+            return definition, []
         return definition, self.validate_schema(
             call.arguments, definition.input_schema, path="arguments"
         )

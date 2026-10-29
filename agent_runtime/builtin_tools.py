@@ -1,7 +1,6 @@
 """Bundled structured tools and their security boundaries."""
 from __future__ import annotations
 
-from datetime import datetime
 import ipaddress
 import json
 from pathlib import Path
@@ -11,7 +10,6 @@ import socket
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse, quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from services.executor import CommandExecutor
 from services.home_assistant_service import HomeAssistantService, POWER_DOMAINS
@@ -45,23 +43,11 @@ def build_tool_registry(
     allowed_http_domains: tuple[str, ...] = (),
     protected_paths: tuple[Path, ...] = (),
     family_mode: bool = False,
+    include_plugins: bool = True,
 ) -> ToolRegistry:
     project = Path(project_root).resolve()
     generated = Path(generated_files_dir).resolve()
     registry = ToolRegistry()
-
-    registry.register(ToolDefinition(
-        name="datetime_now",
-        description="Return the current date and time in an IANA timezone.",
-        input_schema={
-            "type": "object",
-            "properties": {"timezone": {"type": "string", "maxLength": 100}},
-            "additionalProperties": False,
-        },
-        handler=_datetime_now,
-        idempotent=True,
-        max_retries=1,
-    ))
 
     if skill_registry is not None:
         names = [row["name"] for row in skill_registry.catalog(auto_only=True)]
@@ -205,7 +191,6 @@ def build_tool_registry(
     ):
         _register_home_assistant(registry, home_assistant_service)
     aliases = {
-        "datetime.now": "datetime_now",
         "file.read": "file_read",
         "file.write": "file_write",
         "http.request": "http_request",
@@ -221,17 +206,11 @@ def build_tool_registry(
     for alias, target in aliases.items():
         if registry.get(target) is not None:
             registry.register_alias(alias, target)
+    if include_plugins:
+        from .plugins import PluginManager, ToolBindingContext
+        PluginManager.default().bind(registry, ToolBindingContext(runtime="cli"))
+
     return registry
-
-
-def _datetime_now(args: dict[str, Any]) -> dict[str, Any]:
-    timezone = str(args.get("timezone") or "Asia/Shanghai")
-    try:
-        zone = ZoneInfo(timezone)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError(f"unknown_timezone:{timezone}") from exc
-    now = datetime.now(zone)
-    return {"iso": now.isoformat(), "date": now.date().isoformat(), "timezone": timezone}
 
 
 def _resolve_path(path_value: str, roots: tuple[Path, ...], *, default_root: Path) -> Path:

@@ -11,13 +11,14 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "release" / "claw-agent-pi.tar.gz"
-SOURCE_DIRS = ("agent_runtime", "config", "core", "services", "skills", "utils")
+SOURCE_DIRS = ("agent_runtime", "config", "core", "services", "skills", "tool_plugins", "utils")
 SOURCE_SUFFIXES = {".py", ".md", ".skill", ".json"}
 SINGLE_FILES = (
     "Agent.md",
     "main.py",
     "web_app.py",
     "requirements.txt",
+    "config/tool-plugins.example.toml",
     "scripts/migrate_family_tasks.py",
     "deploy/pi-start.sh",
     "deploy/pi-status.sh",

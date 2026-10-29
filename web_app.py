@@ -60,6 +60,7 @@ from services.model_catalog import ModelCatalogError, fetch_available_models
 from skills import SkillRegistry
 from agent_runtime import ArtifactStore, MemoryStore, RunStore
 from agent_runtime.builtin_tools import build_tool_registry, _file_read, _file_write, _file_write_needs_approval, _resolve_path
+from agent_runtime.plugins import PluginManager, ToolBindingContext
 from agent_runtime.registry import ToolRegistry
 from agent_runtime.mcp_adapter import MCPAdapter
 from agent_runtime.family_task_tools import register_family_task_tools
@@ -479,6 +480,7 @@ executor = CommandExecutor(
     sandbox_backend=config["shell_sandbox_backend"],
     require_sandbox=config["shell_require_sandbox"],
 )
+plugin_manager = PluginManager.default()
 tool_registry = build_tool_registry(
     project_root=PROJECT_ROOT,
     generated_files_dir=GENERATED_DIR,
@@ -486,6 +488,7 @@ tool_registry = build_tool_registry(
     home_assistant_service=home_assistant_service,
     skill_registry=skill_registry,
     family_mode=True,
+    include_plugins=False,
     protected_paths=PROTECTED_TASK_PATHS,
     allowed_http_domains=tuple(
         item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
@@ -769,6 +772,9 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
     )
     bound_registry = ToolRegistry()
     for definition in tool_registry.list():
+        # Plugins must be rebound for this Web actor, never copied from a CLI/global binding.
+        if definition.plugin_source:
+            continue
         if definition.name == 'file_write':
             def write_for_actor(args):
                 result = _file_write(args, user_files)
@@ -879,6 +885,17 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
         mcp_adapter.register(bound_registry, lambda: user_store.get_user(user_id), family_members, execution_context)
         orchestrator.knowledge_context_filter = lambda messages: current_board_context(knowledge.current_tool_context(messages, user_store.get_user(user_id)), family_board, user_store.get_user(user_id), execution_context)
         orchestrator.knowledge_answer_finalizer = lambda content, messages: knowledge.finalize_answer(user_store.get_user(user_id), content, messages)
+    def authorize_plugin(_plugin_id, _arguments):
+        actor = user_store.get_user(user_id) if user_id else None
+        return bool(actor and actor.get('status') == 'active'
+                    and execution_context().get('user_id') == user_id)
+
+    plugin_manager.bind(bound_registry, ToolBindingContext(
+        runtime="web",
+        get_user=lambda: user_store.get_user(user_id) if user_id else None,
+        get_execution_context=execution_context,
+        authorize=authorize_plugin,
+    ))
     return orchestrator
 
 

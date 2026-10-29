@@ -1,0 +1,7 @@
+{
+  "id": "datetime", "version": "1.0.0", "api_version": 1,
+  "description": "当前日期与时间", "entrypoint": "plugin.py:create_plugin",
+  "runtimes": ["web", "cli"], "requires_services": [], "requested_permissions": [],
+  "tool_metadata": {"datetime_now": {"group": "time", "keywords": ["日期", "时间", "时区", "date", "time"]}},
+  "aliases": {"datetime.now": "datetime_now"}
+}
