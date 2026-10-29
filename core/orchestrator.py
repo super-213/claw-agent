@@ -45,10 +45,10 @@ class AgentOrchestrator:
         context_compressor: Optional[ContextCompressor] = None,
         tool_registry: ToolRegistry | None = None,
         run_store: RunStore | None = None,
-        max_steps: int = 12,
-        max_runtime_seconds: int = 180,
+        max_steps: int = 0,
+        max_runtime_seconds: int = 0,
         max_tool_output_chars: int = 12000,
-        max_tokens: int = 100_000,
+        max_tokens: int = 0,
         max_cost: float = 0.0,
         input_cost_per_million: float = 0.0,
         output_cost_per_million: float = 0.0,
@@ -67,8 +67,8 @@ class AgentOrchestrator:
         self.context_compressor = context_compressor
         self.tool_registry = tool_registry
         self.run_store = run_store
-        self.max_steps = max(1, max_steps)
-        self.max_runtime_seconds = max(1, max_runtime_seconds)
+        self.max_steps = max(0, int(max_steps))
+        self.max_runtime_seconds = max(0, int(max_runtime_seconds))
         self.max_tool_output_chars = max(1000, max_tool_output_chars)
         self.max_tokens = max(0, int(max_tokens))
         self.max_cost = max(0.0, float(max_cost))
@@ -1098,9 +1098,9 @@ class AgentOrchestrator:
                 self.run = durable
                 return "cancelled"
         step_count = int((self.run or {}).get("step_count") or iteration)
-        if step_count >= self.max_steps:
+        if self.max_steps and step_count >= self.max_steps:
             return "steps"
-        if self._elapsed_runtime() >= self.max_runtime_seconds:
+        if self.max_runtime_seconds and self._elapsed_runtime() >= self.max_runtime_seconds:
             return "runtime"
         if self.max_tokens and int((self.run or {}).get("tokens_used") or 0) >= self.max_tokens:
             return "tokens"
@@ -1114,8 +1114,10 @@ class AgentOrchestrator:
             status = "cancelled"
         else:
             message = (
-                f"Agent 执行预算已用尽（{reason}）：最多 {self.max_steps} 步、"
-                f"最长 {self.max_runtime_seconds} 秒、最多 {self.max_tokens} tokens、"
+                f"Agent 执行预算已用尽（{reason}）："
+                f"步数上限 {self.max_steps or '未设置'}、"
+                f"时长上限 {str(self.max_runtime_seconds) + ' 秒' if self.max_runtime_seconds else '未设置'}、"
+                f"token 上限 {self.max_tokens or '未设置'}、"
                 f"费用上限 {self.max_cost or '未设置'}。"
             )
             status = "budget_exceeded"
@@ -1129,7 +1131,9 @@ class AgentOrchestrator:
         current = max(0.0, time.monotonic() - self._run_started_monotonic)
         return self._run_elapsed_before_start + current
 
-    def _remaining_runtime(self) -> float:
+    def _remaining_runtime(self) -> float | None:
+        if not self.max_runtime_seconds:
+            return None
         return max(0.05, self.max_runtime_seconds - self._elapsed_runtime())
 
     def _record_runtime_elapsed(self) -> None:

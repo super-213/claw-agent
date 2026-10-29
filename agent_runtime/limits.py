@@ -12,9 +12,9 @@ from .models import ToolCall
 
 @dataclass(frozen=True)
 class RunLimits:
-    max_steps: int = 12
-    max_runtime_seconds: int = 180
-    max_tokens: int = 100_000
+    max_steps: int = 0
+    max_runtime_seconds: int = 0
+    max_tokens: int = 0
     max_cost: float = 0.0
     max_tool_output_chars: int = 12_000
     max_repeated_calls: int = 3

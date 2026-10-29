@@ -188,9 +188,9 @@ export MODEL_NAME="qwen-plus"
 | `PORT` | `8000` | Web 服务端口 |
 | `TIMEOUT` | `30` | 命令与模型客户端超时 |
 | `MAX_RETRIES` | `3` | 模型请求最大重试次数 |
-| `AGENT_MAX_STEPS` | `12` | 单次 Agent Run 最大模型/工具步骤数 |
-| `AGENT_MAX_RUNTIME_SECONDS` | `180` | 单次连续执行最长秒数 |
-| `AGENT_MAX_TOKENS` | `100000` | Run 累计 token 上限（优先使用服务端 usage，缺失时本地估算） |
+| `AGENT_MAX_STEPS` | `0` | 单次 Agent Run 最大模型/工具步骤数；`0` 表示不限制 |
+| `AGENT_MAX_RUNTIME_SECONDS` | `0` | Run 累计执行时长上限（秒）；`0` 表示不限制 |
+| `AGENT_MAX_TOKENS` | `0` | Run 累计 token 上限（优先使用服务端 usage，缺失时本地估算）；`0` 表示不限制 |
 | `AGENT_MAX_COST` | `0` | Run 费用上限；`0` 表示不限制 |
 | `MODEL_INPUT_COST_PER_MILLION` | `0` | 每百万输入 token 费用，用于本地成本预算 |
 | `MODEL_OUTPUT_COST_PER_MILLION` | `0` | 每百万输出 token 费用，用于本地成本预算 |

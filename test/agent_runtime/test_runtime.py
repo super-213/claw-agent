@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from agent_runtime import (
     AgentModelResponse,
     RunStore,
@@ -184,6 +186,71 @@ def test_step_budget_stops_non_terminating_agent(tmp_path):
 
     assert orchestrator.run["status"] == "budget_exceeded"
     assert "执行预算已用尽" in orchestrator.conversation.get_messages()[-1]["content"]
+
+
+@pytest.mark.parametrize("stream_model", [False, True])
+@pytest.mark.parametrize("explicit_zero", [False, True])
+def test_unlimited_run_passes_old_budgets(tmp_path, monkeypatch, stream_model, explicit_zero):
+    from agent_runtime import RunLimits
+    from config.settings import ConfigManager
+
+    registry = ToolRegistry()
+    executed = []
+    registry.register(ToolDefinition(
+        name="progress", description="progress",
+        input_schema={"type": "object", "properties": {"index": {"type": "integer"}},
+                      "required": ["index"], "additionalProperties": False},
+        handler=lambda args: executed.append(args["index"]),
+    ))
+    responses = [AgentModelResponse(
+        tool_calls=[ToolCall(f"c{i}", "progress", {"index": i})],
+        usage={"prompt_tokens": 100000, "completion_tokens": 1, "total_tokens": 100001},
+    ) for i in range(8)] + [AgentModelResponse(content="done")]
+    limits = {key: 0 for key in ("max_steps", "max_runtime_seconds", "max_tokens", "max_cost")}
+    orchestrator = AgentOrchestrator(
+        llm_client=FakeToolLLM(responses),
+        conversation=ConversationManager("system"),
+        skill_registry=SkillRegistry(str(tmp_path / "skills")),
+        tool_registry=registry, run_store=RunStore(tmp_path / "runs"),
+        input_cost_per_million=1,
+        **(limits if explicit_zero else {}),
+    )
+    monkeypatch.setattr(orchestrator, "_elapsed_runtime", lambda: 1000.0)
+    for key, value in limits.items():
+        assert getattr(orchestrator, key) == value
+        assert getattr(RunLimits(), key) == value
+        assert ConfigManager.DEFAULT_CONFIG[f"agent_{key}"] == value
+    assert orchestrator._remaining_runtime() is None
+
+    if stream_model:
+        asyncio.run(_collect(orchestrator.process_user_input_stream_async("run", session_id="unlimited")))
+    else:
+        asyncio.run(orchestrator.process_user_input_async("run", session_id="unlimited"))
+
+    run = orchestrator.run_store.load(orchestrator.run["id"])
+    assert run["status"] == "completed"
+    assert run["step_count"] > 12
+    assert run["tokens_used"] > 100000
+    assert run["runtime_elapsed_ms"] >= 1000000
+    assert run["cost_used"] > 0
+    assert executed == list(range(8))
+    for key in ("max_steps", "max_runtime_seconds", "token_budget", "cost_budget"):
+        assert run[key] == 0
+
+
+@pytest.mark.parametrize("kwargs,reason", [
+    ({"max_runtime_seconds": 180}, "runtime"),
+    ({"max_cost": 1}, "cost"),
+])
+def test_explicit_run_budgets_remain_available(tmp_path, monkeypatch, kwargs, reason):
+    orchestrator = AgentOrchestrator(
+        llm_client=FakeToolLLM([]), conversation=ConversationManager("system"),
+        skill_registry=SkillRegistry(str(tmp_path / "skills")), **kwargs,
+    )
+    orchestrator._start_run(session_id="limited", goal="run")
+    orchestrator._update_run(cost_used=2)
+    monkeypatch.setattr(orchestrator, "_elapsed_runtime", lambda: 181.0)
+    assert orchestrator._budget_reason(100) == reason
 
 
 def test_builtin_write_and_mutating_shell_require_approval(tmp_path):
