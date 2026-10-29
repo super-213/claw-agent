@@ -43,3 +43,11 @@ CLI 和 Web 聊天共用同一套按需加载流程。工具仍由注册表保�
 - 真实 `qwen3.8-27b` 在隔离 Run 中完成了 `tool_load → datetime_now → 回答`。测试只开放实际读取时间，其他处理器被替换为拒绝执行，不写入真实业务数据；该真实测试的注册表包含 5 个基础工具。35 项清单的开销测量单独执行，没有把它宣称为 35 项业务工具的真实任务评测。
 
 核心实现见 [tool_loading.py](../agent_runtime/tool_loading.py) 和 [orchestrator.py](../core/orchestrator.py)。运行中的后端需重启加载新代码。
+
+## Skill 链接安装与显式选择
+
+`skill_install` 是 skills 插件的业务工具，通过 `tool_load` 按任务提供 Schema，不加入首轮全集。它由宿主注入的安装服务使用现有公网 HTTP 校验，写入配置的 `skills_dir`，校验并原子发布后刷新同一注册表。Web 只向管理员提供安装工具，执行时再次检查账号角色和有效状态。明确安装请求可直接执行；宿主另行要求确认时，仍支持原有确认与 checkpoint 恢复。
+
+`skill_load` 的名称参数由实时注册表校验，不再使用启动时的静态枚举，因此空目录启动后安装的技能也可在同一个任务中加载。`allow_auto=false` 仍拒绝模型自动加载，输入 `$ 技能名 任务` 由明确的用户选择路径加载。输入框 `$ ` 菜单列出全部注册技能；显式语法绕过额外意图模型，直接进入编排器。
+
+分支会话的显式技能说明写入当前分支节点，保证最终 SDK 请求、后续原生工具调用和会话持久化都能保留实际技能上下文。相关回归见 `test/agent_runtime/test_skill_install.py`、`test/test_skill_chat_api.py`、`test/web-react/chat/skill-input.test.ts`。

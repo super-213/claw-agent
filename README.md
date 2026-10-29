@@ -584,13 +584,18 @@ skills/<name>/
 
 模型上下文中只保留 manifest 摘要；模型选择后通过 `skill_load` 获取完整说明。`manifest.json` 可声明 `triggers`、`required_tools`、`allowed_tools`、`permissions`、`resources`、`version` 与 `allow_auto`。旧的 `<name>.md`/`.skill` 仍兼容。
 
-添加技能有三种方式：
+添加技能有四种方式：
 
 1. 在 `skills/<skill_name>/` 下创建 `<skill_name>.md` 或 `<skill_name>.skill`。
 2. 使用 CLI：`/add-skill <name> [内容]`。
 3. 使用 Web 侧边栏或 `POST /api/skills`。
+4. 在聊天中明确要求“帮我安装这个 Skill：链接”。Agent 按需加载 `skill_install`，下载到配置的 `skills_dir`（默认项目 `skills/`），校验文件和 manifest 后注册。Web 安装仅面向管理员；普通成员仍可选择和使用已注册技能。
 
-用户输入包含 `调用 <技能名> skill ...` 时，系统会加载对应技能内容并注入模型上下文。
+链接支持公开 GitHub 仓库根目录、`tree/<ref>/<技能目录>`、`blob/<ref>/.../SKILL.md`、raw GitHub `SKILL.md`，以及其他公网 HTTPS 的直接 `SKILL.md`。GitHub 目录会保留附属脚本、参考资料和资源，全部文件固定到同一提交；其他站点的直接链接只安装该 Markdown 文件。GitHub URL 的 ref 使用单个路径段；含 `/` 的分支可改用提交 SHA。暂不支持 ZIP、私有仓库或任意技能市场介绍页；下载拒绝重定向、内网地址、路径穿越、符号链接和子模块，不覆盖同名技能。
+
+包最多 128 个文件、总计 8 MiB，每次 HTTP 响应最多 2 Mi 字符；下载过程有时间限制。安装只保存文件，不执行脚本、不安装 Python/系统依赖，也不会新增底层工具权限。缺少依赖或 `required_tools` 的技能仍会显示，但不能保证完整运行。标准 `SKILL.md` YAML frontmatter 的 description 可用于自动发现，权限仍以本项目 manifest 和运行时规则为准。
+
+输入框开头输入 `$ `（美元符号后跟一个 ASCII 空格）显示当前注册技能，支持名称/说明过滤、方向键浏览、Enter/Tab 或点击选择、Escape 关闭。选择后输入 `$ <技能名> <任务>` 即显式调用，包括 `allow_auto=false` 的技能；原有 `调用 <技能名> skill ...` 仍兼容。菜单每次打开重新查询注册表，安装后的技能无需重启即可出现。未显式选择时，Agent 仍可根据摘要通过 `skill_load` 按需调用允许自动加载的技能。
 
 ## 原生工具协议
 

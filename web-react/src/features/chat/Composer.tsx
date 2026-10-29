@@ -1,3 +1,4 @@
+import { SkillCommandInput } from './SkillCommandInput';
 import { BoardMentionInput } from '../board/BoardMentionInput';
 import '../board/board.css';
 import { Camera, FileText, Image as ImageIcon, Loader2, Paperclip, Send, X } from 'lucide-react';
@@ -193,7 +194,8 @@ export function Composer({
         disabled={disabled}
         onFocusInput={() => { ref.current?.focus(); }}
       >
-        {({ handleKeyDown, menuId, activeOptionId }) => <>
+        {({ handleKeyDown, menuId, activeOptionId }) => <SkillCommandInput text={draft} onChange={onDraftChange} disabled={disabled} onFocusInput={() => ref.current?.focus()}>
+          {({ handleSkillKey, menuId: skillMenuId, activeOptionId: skillOptionId }) => <>
           <label className="sr-only" htmlFor="composer-file-input">
             添加文件或图片
           </label>
@@ -222,9 +224,9 @@ export function Composer({
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
-            aria-expanded={!!(boardMenuId || menuId)}
-            aria-controls={boardMenuId || menuId}
-            aria-activedescendant={boardOptionId || activeOptionId}
+            aria-expanded={!!(skillMenuId || boardMenuId || menuId)}
+            aria-controls={skillMenuId || boardMenuId || menuId}
+            aria-activedescendant={skillOptionId || boardOptionId || activeOptionId}
             className="composer-input"
             placeholder="发张图片、问问文件，或说“帮我记住…”"
             rows={1}
@@ -233,7 +235,7 @@ export function Composer({
             disabled={disabled}
             onKeyDown={event => {
               if (event.nativeEvent.isComposing) return;
-              if (!event.shiftKey && (handleBoardKey(event.key) || handleKeyDown(event.key))) { event.preventDefault(); return; }
+              if (!event.shiftKey && (handleSkillKey(event.key) || handleBoardKey(event.key) || handleKeyDown(event.key))) { event.preventDefault(); return; }
               keyDown(event);
             }}
             onChange={(event) => { const text = event.target.value; setMentions(validMentions(text, mentions)); onDraftChange(text); }}
@@ -249,6 +251,7 @@ export function Composer({
             <Send size={20} />
           </button>
         </>}
+        </SkillCommandInput>}
       </TaskCommandInput>}</BoardMentionInput>
       {items.length ? (
         <div className="composer-attachments composer-upload-list" aria-live="polite">
@@ -279,7 +282,7 @@ export function Composer({
         <label><input type="checkbox" checked={compress} onChange={event => setCompress(event.target.checked)} /> 压缩聊天图片，减少流量</label>
         <p className="composer-hint">压缩后发送 JPEG 副本，保存到资料时也会使用此副本。HEIC 照片会尝试转换为 JPEG。文档保持原文件。</p>
       </BottomSheet>}
-      <div className="composer-hint">{canUseEnterToSend ? 'Enter 发送 · Shift+Enter 换行' : '点击发送按钮提交'}</div>
+      <div className="composer-hint">{canUseEnterToSend ? 'Enter 发送 · Shift+Enter 换行 · $ 空格选择技能' : '点击发送按钮提交'}</div>
     </div>
   );
 }

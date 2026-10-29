@@ -40,6 +40,9 @@ class InputParser:
     @staticmethod
     def parse_user_input(text: str) -> Tuple[Optional[str], str]:
         """解析用户输入，返回 (技能名, 清理后的文本)"""
+        explicit = re.match(r'^\$ ([A-Za-z0-9_-]+)(?:\s+|$)', text)
+        if explicit:
+            return explicit.group(1), text[explicit.end():].strip()
         skill_name = InputParser.extract_skill_call(text)
         if skill_name:
             text = InputParser.remove_skill_call(text)

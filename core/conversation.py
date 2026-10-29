@@ -75,7 +75,10 @@ class ConversationManager:
     
     def inject_skill_context(self, skill_name: str, skill_content: str):
         """注入技能上下文"""
-        self.add_system_message(f"## 激活技能：{skill_name}\n{skill_content}")
+        message = self._build_message("system", f"## 激活技能：{skill_name}\n{skill_content}")
+        if self.branch_engine is not None and self.active_node_id is not None:
+            self.active_node_id = self.branch_engine.append_message(self.active_node_id, message)
+        self._messages.append(message)
     
     def switch_branch(self, node_id: str) -> List[Dict[str, Any]]:
         """切换活跃路径到指定节点。

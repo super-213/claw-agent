@@ -16,6 +16,9 @@ def foundation_services(*, registry, project_root, generated_files_dir, executor
     }
     if skill_registry is not None:
         result['skills'] = skill_registry
+        from skills.installer import SkillInstaller
+        result['skill_installer'] = SkillInstaller(skill_registry,
+            lambda args: io._http_request(args, allowed_http_domains, max_response_chars=2 * 1024 * 1024))
     if home_assistant_service is not None:
         result['home_assistant'] = home_assistant_service
     return result

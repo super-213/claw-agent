@@ -10,7 +10,7 @@
 | files | 文本读写、用户文件归属 | Web / CLI |
 | public_http | 公网 GET/HEAD，保留域名与私网访问检查 | Web / CLI |
 | shell | 命令执行与原沙箱、审批策略 | CLI；Web 不注册 |
-| skills | `skill_load` 控制桥接 | Web / CLI，需要技能注册表 |
+| skills | `skill_load` 控制桥接、按需 `skill_install` | Web / CLI，需要技能注册表 |
 | attached | 显式连接的浏览器、应用回调 | 仅宿主实际提供回调时 |
 | home_assistant | 白名单设备查询与控制 | 配置成功且存在允许实体时 |
 | family_tasks | 日程、备忘、草稿及事项操作 | Web，需要家庭服务 |

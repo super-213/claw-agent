@@ -3,6 +3,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 import json
 import re
+import yaml
 from threading import RLock
 from typing import Any, Dict, List, Optional, Tuple
 from .base import BaseSkill
@@ -117,6 +118,17 @@ class SkillRegistry:
         tools_path = skill_dir / "tools.json"
         if not path.exists():
             payload: dict[str, Any] = {"name": skill_name}
+            source = next((p for p in self._skill_files(skill_dir, skill_name) if p.is_file()), None)
+            text = source.read_text(encoding="utf-8") if source else ""
+            header = re.match(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", text, re.S)
+            if header:
+                try:
+                    metadata = yaml.safe_load(header.group(1))
+                except yaml.YAMLError as exc:
+                    raise ValueError(f"技能 {skill_name} frontmatter 无效") from exc
+                if isinstance(metadata, dict) and isinstance(metadata.get("description"), str):
+                    payload["description"] = metadata["description"]
+                # Foreign frontmatter is descriptive data, never a grant of tools/permissions.
         else:
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
@@ -146,7 +158,7 @@ class SkillRegistry:
             return discovered
         
         for skill_dir in self.skills_dir.iterdir():
-            if not skill_dir.is_dir():
+            if skill_dir.name.startswith(".") or not skill_dir.is_dir():
                 continue
             
             skill_name = skill_dir.name

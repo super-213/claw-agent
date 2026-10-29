@@ -12,16 +12,32 @@
     "registry"
   ],
   "requested_permissions": [
-    "skill:read"
+    "skill:read",
+    "skill:install",
+    "network:public-read"
   ],
   "optional_tools": true,
   "tool_metadata": {
     "skill_load": {
       "group": "other",
       "keywords": []
+    },
+    "skill_install": {
+      "group": "other",
+      "keywords": [
+        "skill",
+        "安装",
+        "技能",
+        "链接",
+        "GitHub"
+      ]
     }
   },
   "aliases": {
-    "skill.load": "skill_load"
-  }
+    "skill.load": "skill_load",
+    "skill.install": "skill_install"
+  },
+  "optional_services": [
+    "skill_installer"
+  ]
 }

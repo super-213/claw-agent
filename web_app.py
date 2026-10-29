@@ -736,7 +736,8 @@ def _skill_payload(skill_name: str) -> dict:
         return {"name": skill_name}
     
     file_path = getattr(skill, "file_path", None)
-    payload = {"name": skill_name}
+    payload = {"name": skill_name, "summary": skill.summary(),
+               "allow_auto": skill.manifest.allow_auto, "version": skill.manifest.version}
     if file_path:
         stat = Path(file_path).stat()
         payload.update({
@@ -2257,7 +2258,7 @@ async def chat(
         await asyncio.to_thread(_load_authorized_session, session_id, user, write=True)
         task_context = _task_chat_context(payload_data, user, session_id)
         auto_skills: list[str] = []
-        if not task_context["invocation"] and not task_context.get("object_context") and not images and not attachments:
+        if not task_context["invocation"] and not task_context.get("object_context") and not images and not attachments and not user_message.startswith("$ "):
             route = await intent_router.route(user_message, user, session_id)
             if route.action == "direct_response" and route.reply:
                 messages = await asyncio.to_thread(
@@ -2582,7 +2583,7 @@ async def chat_stream(
 
     task_context = _task_chat_context(payload_data, user, session_id)
     auto_skills: list[str] = []
-    if not task_context["invocation"] and not task_context.get("object_context") and not images and not attachments:
+    if not task_context["invocation"] and not task_context.get("object_context") and not images and not attachments and not user_message.startswith("$ "):
         route = await intent_router.route(user_message, user, session_id)
         if route.action == "direct_response" and route.reply:
             async def direct_intent_stream():

@@ -109,6 +109,7 @@ def _file_write(args: dict[str, Any], root: Path) -> dict[str, Any]:
 def _http_request(
     args: dict[str, Any],
     allowed_domains: tuple[str, ...] = (),
+    *, max_response_chars: int = 100000,
 ) -> dict[str, Any]:
     url = str(args["url"])
     parsed = urlparse(url)
@@ -124,7 +125,7 @@ def _http_request(
     headers = {str(k): str(v) for k, v in dict(args.get("headers") or {}).items()}
     headers.setdefault("User-Agent", "Claw-Agent-Runtime/1.0")
     request = Request(quote(url, safe=":/?#[]@!$&'()*+,;=%"), method=method, headers=headers)
-    max_chars = max(1, min(int(args.get("max_chars") or 20000), 100000))
+    max_chars = max(1, min(int(args.get("max_chars") or 20000), max_response_chars))
     opener = (pinned_opener(pinned_addresses, _NoRedirectHandler()) if pinned_addresses
               else build_opener(_NoRedirectHandler()))
     with opener.open(request, timeout=10) as response:

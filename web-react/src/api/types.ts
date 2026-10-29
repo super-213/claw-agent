@@ -87,6 +87,9 @@ export interface SessionDetail extends SessionSummary {
 
 export interface Skill {
   name: string;
+  summary?: string;
+  version?: string;
+  allow_auto?: boolean;
   path?: string;
   bytes?: number;
   updated_at?: string;
