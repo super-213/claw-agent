@@ -100,11 +100,37 @@ class FakeLLM:
     async def __aexit__(self, *_):
         return None
     async def achat_with_tools(self, messages, schemas):
-        assert any(s['function']['name'] == 'family_timed_memo_create' for s in schemas)
+        available = {s['function']['name'] for s in schemas}
+        missing = [call.name for call in self.calls if call.name not in available]
+        if self.turn == 0 and missing:
+            assert 'tool_load' in available
+            return AgentModelResponse(tool_calls=[ToolCall('load-family-tools', 'tool_load', {'names': missing})])
         self.turn += 1
         return AgentModelResponse(tool_calls=self.calls) if self.turn == 1 else AgentModelResponse(content='处理结果以工具回执为准。')
     async def astream_with_tools(self, messages, schemas):
         yield {'type': 'done', 'response': await self.achat_with_tools(messages, schemas)}
+
+
+def test_loaded_file_tool_preserves_upload_ownership_for_web_aliases(api, tmp_path, monkeypatch):
+    _, _, users, _ = api
+    generated = tmp_path / 'files'
+    for user in users[:2]:
+        directory = generated / 'uploads' / user['id']
+        directory.mkdir(parents=True)
+        (directory / 'notes.txt').write_text('owned-upload')
+    monkeypatch.setattr(web_app, 'GENERATED_DIR', generated)
+    monkeypatch.setattr(web_app, 'tool_registry', build_tool_registry(project_root=tmp_path,
+        generated_files_dir=generated, executor=CommandExecutor(cwd=generated), family_mode=True))
+    monkeypatch.setattr(web_app, '_new_llm_client', lambda: FakeLLM([]))
+    agent = web_app._build_orchestrator(users[0]['id'])
+    agent.tool_loading.discover({'names': ['file_read']})
+    for prefix in ('/generated/', '/files/'):
+        owned = prefix + f"uploads/{users[0]['id']}/notes.txt"
+        other = prefix + f"uploads/{users[1]['id']}/notes.txt"
+        result = asyncio.run(agent.tool_registry.invoke(ToolCall('read-own', 'file_read', {'path': owned})))
+        assert result.success and result.output['content'] == 'owned-upload'
+        result = asyncio.run(agent.tool_registry.invoke(ToolCall('read-other', 'file_read', {'path': other})))
+        assert not result.success and result.error == 'file_not_found'
 
 
 @pytest.mark.parametrize('stream', [False, True])

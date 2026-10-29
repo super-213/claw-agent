@@ -83,6 +83,7 @@ python scripts/migrate_family_tasks.py --rollback .data/home/backups/task-migrat
 - **分层架构**：`agent_runtime`、`core`、`services`、`skills`、`web-react` 边界清晰，便于扩展和测试。
 - **异步 Agent 编排**：CLI 和 Web 使用同一 async 主流程，支持模型流式输出和原生工具执行循环。
 - **结构化工具调用**：通过 OpenAI-compatible `tools/tool_calls` 协议选择工具，统一执行参数校验、超时、重试、输出截断和结果回灌。
+- **按任务加载工具**：默认仅发送工具和 Skill 加载入口；通过 `tool_load` 查找相关工具，下一轮才携带参数定义。匹配数和任务内保留数不设硬上限，新任务重新加载，并支持 checkpoint 恢复；详见 [按需加载说明](docs/tool-loading.md)。
 - **运行状态与恢复**：每个任务生成独立 `run_id`，持久化模型步骤、工具步骤、预算和审批状态，支持中断恢复。
 - **统一审批**：覆盖文件覆盖、Shell 写操作和 Home Assistant 控制等高风险工具，审批令牌绑定单次工具调用。
 - **插件化技能系统**：支持 `.md` 和 `.skill` 技能文件，CLI/Web 均可添加和热重载技能。

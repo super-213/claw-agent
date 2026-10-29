@@ -783,10 +783,15 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
                 approval_policy=lambda args: _file_write_needs_approval(args, user_files))
         elif definition.name == 'file_read':
             def read_for_actor(args):
-                raw = Path(args['path'])
-                local = (raw if raw.is_absolute() else PROJECT_ROOT / raw).resolve()
-                if not raw.is_absolute() and not local.exists():
-                    local = (user_files / raw).resolve()
+                source = str(args['path'])
+                raw = Path(source)
+                if source.startswith(('/generated/', '/files/')):
+                    from services.media_input import MediaInputReader
+                    local = MediaInputReader(GENERATED_DIR).local_path(source)
+                else:
+                    local = (raw if raw.is_absolute() else PROJECT_ROOT / raw).resolve()
+                    if not raw.is_absolute() and not local.exists():
+                        local = (user_files / raw).resolve()
                 if GENERATED_DIR.resolve() in local.parents:
                     _authorize_generated_path(user_store.get_user(user_id), local)
                 return _file_read({**args, 'path': str(local)}, (PROJECT_ROOT, GENERATED_DIR), PROTECTED_TASK_PATHS)

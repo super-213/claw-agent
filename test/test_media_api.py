@@ -69,6 +69,8 @@ def test_uploaded_image_and_document_reach_model_and_survive_reload(tmp_path, mo
         payload = calls[-1]
         assert payload["model"] == "qwen3.8-27b"
         assert payload["tools"] and payload["tool_choice"] == "auto"
+        exposed = {schema["function"]["name"] for schema in payload["tools"]}
+        assert "tool_load" in exposed and exposed <= {"tool_load", "skill_load"}
         content = next(message["content"] for message in payload["messages"] if message["role"] == "user")
         assert "ORDER-9421" in content[0]["text"]
         assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")

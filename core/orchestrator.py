@@ -31,6 +31,7 @@ from utils.parser import InputParser
 from services.knowledge_context import has_knowledge, fresh_knowledge_context
 from services.board_chat import BOARD_INTENT
 from agent_runtime.card_presenter import builtin_card_presenter
+from agent_runtime.tool_loading import ToolLoadingSession
 
 
 class AgentOrchestrator:
@@ -85,6 +86,9 @@ class AgentOrchestrator:
             max_empty_turns=max(1, max_empty_turns),
         )
         self.active_skill_allowed_tools: set[str] | None = None
+        self.tool_loading = ToolLoadingSession(
+            tool_registry, lambda: self.active_skill_allowed_tools,
+        ) if tool_registry is not None else None
         self.checkpoint_callback = checkpoint_callback
         self.run: Dict[str, Any] | None = None
         self.pending_approval_token: str | None = None
@@ -336,6 +340,7 @@ class AgentOrchestrator:
         self.conversation.inject_skill_context(skill_name, skill_content)
         self.context.activate_skill(skill_name)
         self.active_skill_allowed_tools = skill.allowed_tools()
+        self._load_skill_tools(skill)
         print(f"[加载技能]: {skill_name}")
         return True
     
@@ -397,6 +402,8 @@ class AgentOrchestrator:
                 "model": self.llm_client.model,
                 "message_count": len(messages),
                 "tool_count": len(schemas),
+                "tool_names": [schema["function"]["name"] for schema in schemas],
+                "tool_schema_chars": len(json.dumps(schemas, ensure_ascii=False)),
             }
 
             self._append_run_event({
@@ -406,6 +413,8 @@ class AgentOrchestrator:
                 "configured_model": self.llm_client.model,
                 "message_count": len(messages),
                 "tool_count": len(schemas),
+                "tool_names": [schema["function"]["name"] for schema in schemas],
+                "tool_schema_chars": len(json.dumps(schemas, ensure_ascii=False)),
             })
             response: AgentModelResponse
             task_guard = getattr(self, 'task_answer_guard', None)
@@ -584,8 +593,10 @@ class AgentOrchestrator:
                 "message": f"调用工具：{call.name}",
                 "tool_call": call.as_dict(),
             })
-            definition = self.tool_registry.get(call.name) if self.tool_registry else None
-            _routed, validation_errors = self.tool_registry.router.route(call)
+            control = self.tool_loading.controls if self.tool_loading else None
+            registry = control if control and control.get(call.name) else self.tool_registry
+            definition = registry.get(call.name) if registry else None
+            _routed, validation_errors = registry.router.route(call)
             if validation_errors:
                 result = ToolResult(
                     call.id, call.name, "error", error="; ".join(validation_errors)
@@ -606,7 +617,7 @@ class AgentOrchestrator:
             if (
                 definition
                 and self.active_skill_allowed_tools is not None
-                and definition.name != "skill_load"
+                and definition.name not in {"skill_load", "tool_load"}
                 and definition.name not in {
                     self.tool_registry.resolve_name(name)
                     for name in self.active_skill_allowed_tools
@@ -629,11 +640,16 @@ class AgentOrchestrator:
                     "tool_result": result.as_dict(), "success": False, "output": content,
                 })
                 continue
+            if self.tool_loading and definition.name not in {"skill_load", "tool_load"}:
+                # A known name from earlier conversation can also demand-load
+                # just that tool. Permission checks above still apply.
+                self.tool_loading.load([definition.name])
+                self._update_run(loaded_tools=list(self.tool_loading.loaded))
             fingerprint = argument_hash(call.name, call.arguments)
             ledger = dict(((self.run or {}).get("tool_ledger") or {}).get(call.id) or {})
             if ledger.get("fingerprint") and ledger.get("fingerprint") != fingerprint:
                 result = ToolResult(call.id, call.name, "error", error="tool_call_id_reused_with_different_arguments")
-            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and not call.name.startswith(("family_", "knowledge_", "mcp_")):
+            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and call.name != "tool_load" and not call.name.startswith(("family_", "knowledge_", "mcp_")):
                 cached = ledger["result"]
                 result = ToolResult(
                     call_id=str(cached.get("call_id") or call.id),
@@ -701,7 +717,7 @@ class AgentOrchestrator:
                         idempotent=bool(definition and definition.idempotent),
                     )
             if result is None:
-                result = await self.tool_registry.executor.execute(
+                result = await registry.executor.execute(
                     call,
                     approved=first_call_approved and index == 0,
                     timeout_override=self._remaining_runtime(),
@@ -725,11 +741,14 @@ class AgentOrchestrator:
                 if skill:
                     self.context.activate_skill(skill_name)
                     self.active_skill_allowed_tools = skill.allowed_tools()
+                    self._load_skill_tools(skill)
                     self._update_run(
                         active_skill=skill_name,
                         active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
                         if self.active_skill_allowed_tools is not None else None,
                     )
+            if self.tool_loading:
+                self._update_run(loaded_tools=list(self.tool_loading.loaded))
             if task_changed:
                 events.append(task_changed)
                 events.append({'type': 'resource_changed', 'resource_type': 'family_task',
@@ -984,6 +1003,11 @@ class AgentOrchestrator:
     def _start_run(self, *, session_id: str, goal: str) -> None:
         active_skill = self.context.active_skill
         self.context = ExecutionContext(active_skill=active_skill)
+        if self.tool_loading:
+            self.tool_loading.loaded = []
+            skill = self.skill_registry.get(active_skill) if active_skill else None
+            if skill:
+                self._load_skill_tools(skill)
         self._run_started_monotonic = time.monotonic()
         self._run_elapsed_before_start = 0.0
         self.loop_guard = LoopGuard(
@@ -1005,6 +1029,7 @@ class AgentOrchestrator:
                 active_skill=active_skill,
                 family_task_context=self.family_task_context,
                 actor_user_id=self.user_id,
+                loaded_tools=list(self.tool_loading.loaded) if self.tool_loading else [],
                 active_skill_allowed_tools=sorted(self.active_skill_allowed_tools or [])
                 if self.active_skill_allowed_tools is not None else None,
             )
@@ -1019,6 +1044,7 @@ class AgentOrchestrator:
                 "tokens_used": 0,
                 "cost_used": 0.0,
                 "cancel_requested": False,
+                "loaded_tools": list(self.tool_loading.loaded) if self.tool_loading else [],
             }
 
     def _append_run_step(self, step: Dict[str, Any]) -> None:
@@ -1140,12 +1166,16 @@ class AgentOrchestrator:
         )
 
     def _tool_schemas(self) -> List[Dict[str, Any]]:
-        if not self.tool_registry:
-            return []
-        allowed = self.active_skill_allowed_tools
-        if allowed is not None:
-            allowed = set(allowed) | {"skill_load"}
-        return self.tool_registry.schemas(allowed_tools=allowed)
+        return self.tool_loading.schemas() if self.tool_loading else []
+
+    def _load_skill_tools(self, skill) -> None:
+        if not self.tool_loading:
+            return
+        self.tool_loading.restore(self.tool_loading.loaded)
+        required = getattr(getattr(skill, "manifest", None), "required_tools", ())
+        eligible = {tool.name for tool in self.tool_loading.eligible()}
+        names = [self.tool_registry.resolve_name(name) for name in required]
+        self.tool_loading.load([name for name in names if name in eligible])
 
     def _persist_working_memory(self, final_content: str) -> None:
         if not self.memory_store or not self.run or not final_content.strip():
@@ -1174,6 +1204,8 @@ class AgentOrchestrator:
             self.context.activate_skill(skill_name)
         stored = self.run.get("active_skill_allowed_tools")
         self.active_skill_allowed_tools = set(stored) if isinstance(stored, list) else None
+        if self.tool_loading:
+            self.tool_loading.restore(self.run.get("loaded_tools") or [])
 
     @staticmethod
     def _parse_datetime(value: Any) -> datetime | None:
@@ -1227,6 +1259,14 @@ class AgentOrchestrator:
             if validate:
                 messages = await asyncio.to_thread(validate, messages)
         dynamic_system: List[Dict[str, Any]] = []
+        if self.tool_loading:
+            dynamic_system.append({"role": "system", "content":
+                "## 按需工具目录\n默认只提供加载入口，不提供所有工具的参数。普通问答和看图无需加载工具。"
+                "需要操作时先调用 tool_load，用 query 描述目标、group 指定类别或 names 指定已知名称；"
+                "它按任务加载匹配工具，下一轮 tools 才提供完整参数定义，再调用具体工具。"
+                "没有找到时换词查询，不能因未加载而声称没有相关能力。"
+                "已加载工具在本任务内保留，新任务重新按需加载；加载不代表获得执行权限或已完成操作。\n"
+                + self.tool_loading.catalog()})
         task_context = (self.run or {}).get('family_task_context') or self.family_task_context
         if task_context:
             dynamic_system.append({'role': 'system', 'content':
