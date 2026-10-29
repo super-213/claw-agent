@@ -7,23 +7,15 @@ from pathlib import Path
 import re
 import shlex
 import socket
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import unquote, urlparse, quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from services.executor import CommandExecutor
-from services.home_assistant_service import HomeAssistantService, POWER_DOMAINS
 from services.media_input import IMAGE_EXTENSIONS
 from services.public_http import is_fake_ip, is_public_ip, resolve_fake_ip, pinned_opener
 
-from .models import ToolDefinition
 from .registry import ToolRegistry
-
-try:
-    from skills.registry import SkillRegistry
-except ImportError:  # pragma: no cover - optional embedding boundary
-    SkillRegistry = Any
-
 
 READ_ONLY_SHELL_COMMANDS = {
     "pwd", "ls", "cat", "head", "tail", "wc", "rg", "grep", "stat", "file",
@@ -32,186 +24,23 @@ READ_ONLY_SHELL_COMMANDS = {
 
 
 def build_tool_registry(
-    *,
-    project_root: str | Path,
-    generated_files_dir: str | Path,
-    executor: CommandExecutor,
-    home_assistant_service: HomeAssistantService | None = None,
-    skill_registry: SkillRegistry | None = None,
-    browser_handler: Callable[[dict[str, Any]], Any] | None = None,
-    app_handler: Callable[[dict[str, Any]], Any] | None = None,
-    allowed_http_domains: tuple[str, ...] = (),
-    protected_paths: tuple[Path, ...] = (),
-    family_mode: bool = False,
-    include_plugins: bool = True,
-) -> ToolRegistry:
-    project = Path(project_root).resolve()
-    generated = Path(generated_files_dir).resolve()
+    *, project_root, generated_files_dir, executor, home_assistant_service=None,
+    skill_registry=None, browser_handler=None, app_handler=None,
+    allowed_http_domains=(), protected_paths=(), family_mode=False, include_plugins=True,
+):
+    """Compatibility facade: all schemas and registrations live in plugin packages."""
+    from .plugins import PluginManager, ToolBindingContext
+    from .plugins.assembly import foundation_services
     registry = ToolRegistry()
-
-    if skill_registry is not None:
-        names = [row["name"] for row in skill_registry.catalog(auto_only=True)]
-        if names:
-            registry.register(ToolDefinition(
-                name="skill_load",
-                description=(
-                    "Load the full instructions for one capability package after selecting it "
-                    "from the compact skill catalog."
-                ),
-                input_schema={
-                    "type": "object",
-                    "properties": {"name": {"type": "string", "enum": names}},
-                    "required": ["name"],
-                    "additionalProperties": False,
-                },
-                handler=lambda args: skill_registry.load_for_runtime(
-                    str(args["name"]),
-                    available_tools=(
-                        {tool.name for tool in registry.list()} | set(registry.aliases())
-                    ),
-                    automatic=True,
-                ),
-                idempotent=True,
-                max_retries=1,
-                capabilities=("skill:read",),
-            ))
-
-    if browser_handler is not None:
-        registry.register(ToolDefinition(
-            name="browser_open",
-            description="Open a public URL in an attached browser capability.",
-            input_schema={
-                "type": "object",
-                "properties": {"url": {"type": "string", "minLength": 1, "maxLength": 4096}},
-                "required": ["url"],
-                "additionalProperties": False,
-            },
-            handler=browser_handler,
-            risk_level="medium",
-            requires_confirmation=True,
-            capabilities=("browser:open", "network:external"),
-        ))
-
-    if app_handler is not None:
-        registry.register(ToolDefinition(
-            name="app_control",
-            description="Control an explicitly attached application capability.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "app": {"type": "string", "minLength": 1, "maxLength": 200},
-                    "action": {"type": "string", "enum": ["open", "focus", "close"]},
-                },
-                "required": ["app", "action"],
-                "additionalProperties": False,
-            },
-            handler=app_handler,
-            risk_level="critical",
-            requires_confirmation=True,
-            capabilities=("system:application-control",),
-        ))
-    registry.register(ToolDefinition(
-        name="file_read",
-        description="Read a UTF-8 text file from the project or generated-files directory. Uploaded images are already visual inputs; do not use this tool to view images.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "minLength": 1, "maxLength": 1024},
-                "max_chars": {"type": "integer"},
-            },
-            "required": ["path"],
-            "additionalProperties": False,
-        },
-        handler=lambda args: _file_read(args, (project, generated), protected_paths),
-        idempotent=True,
-        max_retries=1,
-    ))
-    registry.register(ToolDefinition(
-        name="file_write",
-        description="Write UTF-8 text inside the generated-files directory.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "minLength": 1, "maxLength": 1024},
-                "content": {"type": "string"},
-                "mode": {"type": "string", "enum": ["create", "overwrite", "append"]},
-            },
-            "required": ["path", "content"],
-            "additionalProperties": False,
-        },
-        handler=lambda args: _file_write(args, generated),
-        risk_level="medium",
-        approval_policy=lambda args: _file_write_needs_approval(args, generated),
-    ))
-    registry.register(ToolDefinition(
-        name="http_request",
-        description="Perform a public HTTP GET or HEAD request and return a bounded text response.",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "minLength": 1, "maxLength": 4096},
-                "method": {"type": "string", "enum": ["GET", "HEAD"]},
-                "headers": {"type": "object", "additionalProperties": {"type": "string"}},
-                "max_chars": {"type": "integer"},
-            },
-            "required": ["url"],
-            "additionalProperties": False,
-        },
-        handler=lambda args: _http_request(args, allowed_http_domains),
-        timeout=20,
-        idempotent=True,
-        max_retries=2,
-        capabilities=("network:public-read",),
-        allowed_domains=allowed_http_domains,
-    ))
-    if not family_mode:
-        registry.register(ToolDefinition(
-            name="shell_execute",
-            description=(
-                "Execute one non-interactive shell command in the generated-files directory. "
-                "Prefer dedicated datetime, file and HTTP tools when available."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {"command": {"type": "string", "minLength": 1, "maxLength": 20000}},
-                "required": ["command"],
-                "additionalProperties": False,
-            },
-            handler=lambda args: _shell_execute(args, executor),
-            risk_level="high",
-            approval_policy=_shell_needs_approval,
-            timeout=max(1, executor.timeout + 2),
-        ))
-
-
-    if (
-        home_assistant_service is not None
-        and home_assistant_service.configured
-        and home_assistant_service.rules
-    ):
-        _register_home_assistant(registry, home_assistant_service)
-    aliases = {
-        "file.read": "file_read",
-        "file.write": "file_write",
-        "http.request": "http_request",
-        "shell.execute": "shell_execute",
-        "skill.load": "skill_load",
-        "browser.open": "browser_open",
-        "app.control": "app_control",
-        "home_assistant.list_devices": "home_assistant_list_devices",
-        "home_assistant.get_state": "home_assistant_get_state",
-        "home_assistant.turn_on": "home_assistant_turn_on",
-        "home_assistant.turn_off": "home_assistant_turn_off",
-    }
-    for alias, target in aliases.items():
-        if registry.get(target) is not None:
-            registry.register_alias(alias, target)
-    if include_plugins:
-        from .plugins import PluginManager, ToolBindingContext
-        PluginManager.default().bind(registry, ToolBindingContext(runtime="cli"))
-
+    services = foundation_services(registry=registry, project_root=project_root,
+        generated_files_dir=generated_files_dir, executor=executor, skill_registry=skill_registry,
+        home_assistant_service=home_assistant_service, browser_handler=browser_handler,
+        app_handler=app_handler, allowed_http_domains=allowed_http_domains,
+        protected_paths=protected_paths, family_mode=family_mode)
+    manager = PluginManager.default()
+    manager.bind(registry, ToolBindingContext(runtime='web' if family_mode else 'cli', services=services),
+                 bundled_only=not include_plugins)
     return registry
-
 
 def _resolve_path(path_value: str, roots: tuple[Path, ...], *, default_root: Path) -> Path:
     raw = Path(path_value).expanduser()
@@ -382,60 +211,3 @@ def _shell_execute(args: dict[str, Any], executor: CommandExecutor) -> dict[str,
     if not result.success:
         raise RuntimeError(json.dumps(payload, ensure_ascii=False))
     return payload
-
-
-def _register_home_assistant(registry: ToolRegistry, service: HomeAssistantService) -> None:
-    descriptions = {row["name"]: row for row in service.tools_schema()}
-    allowed_ids = sorted(service.rules)
-    power_ids = [
-        entity_id
-        for entity_id in allowed_ids
-        if entity_id.split(".", 1)[0] in POWER_DOMAINS
-    ]
-    name_map = {
-        "home_assistant_list_devices": "home_assistant.list_devices",
-        "home_assistant_get_state": "home_assistant.get_state",
-        "home_assistant_turn_on": "home_assistant.turn_on",
-        "home_assistant_turn_off": "home_assistant.turn_off",
-    }
-    for public_name, service_name in name_map.items():
-        schema = descriptions[service_name]
-        if service_name.endswith(("turn_on", "turn_off")) and not power_ids:
-            continue
-        input_schema = dict(schema["parameters"])
-        input_schema["properties"] = dict(input_schema.get("properties") or {})
-        if "entity_id" in input_schema["properties"]:
-            entity_ids = power_ids if service_name.endswith(("turn_on", "turn_off")) else allowed_ids
-            input_schema["properties"]["entity_id"] = {
-                "type": "string",
-                "enum": entity_ids,
-            }
-        description = schema["description"]
-        if service_name.endswith("get_state"):
-            description += (
-                " Use this only for the listed smart-home entities, never for a "
-                "general public weather or web query."
-            )
-        registry.register(ToolDefinition(
-            name=public_name,
-            description=description,
-            input_schema=input_schema,
-            handler=lambda args, name=service_name: _call_home_assistant(service, name, args),
-            risk_level="high" if service_name.endswith(("turn_on", "turn_off")) else "low",
-            requires_confirmation=service_name.endswith(("turn_on", "turn_off")),
-            timeout=max(2, service.request_timeout + 2),
-            idempotent=service_name.endswith(("list_devices", "get_state")),
-            max_retries=1,
-        ))
-
-
-def _call_home_assistant(
-    service: HomeAssistantService,
-    name: str,
-    args: dict[str, Any],
-) -> Any:
-    if name == "home_assistant.turn_on":
-        return service.set_power(str(args.get("entity_id") or ""), True, confirmed=True)
-    if name == "home_assistant.turn_off":
-        return service.set_power(str(args.get("entity_id") or ""), False, confirmed=True)
-    return service.call_tool(name, args)

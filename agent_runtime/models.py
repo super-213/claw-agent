@@ -38,6 +38,9 @@ class ToolDefinition:
     capabilities: tuple[str, ...] = ()
     allowed_domains: tuple[str, ...] = ()
 
+    replay_policy: str = "cache"
+    card_kind: str = ""
+    card_resource_types: tuple[str, ...] = ()
     group: str = ""
     keywords: tuple[str, ...] = ()
     plugin_source: dict[str, str] = field(default_factory=dict)

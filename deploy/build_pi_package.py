@@ -20,6 +20,7 @@ SINGLE_FILES = (
     "requirements.txt",
     "config/tool-plugins.example.toml",
     "scripts/migrate_family_tasks.py",
+    "scripts/tool_plugins.py",
     "deploy/pi-start.sh",
     "deploy/pi-status.sh",
     "deploy/pi-stop.sh",

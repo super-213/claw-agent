@@ -1,0 +1,35 @@
+{
+  "id": "attached",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web",
+    "cli"
+  ],
+  "requires_services": [],
+  "requested_permissions": [
+    "browser:open",
+    "network:external",
+    "system:application-control"
+  ],
+  "optional_tools": true,
+  "tool_metadata": {
+    "browser_open": {
+      "group": "public_web",
+      "keywords": []
+    },
+    "app_control": {
+      "group": "public_web",
+      "keywords": []
+    }
+  },
+  "aliases": {
+    "browser.open": "browser_open",
+    "app.control": "app_control"
+  },
+  "optional_services": [
+    "browser_handler",
+    "app_handler"
+  ]
+}

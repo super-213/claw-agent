@@ -1,0 +1,1 @@
+{"id":"mcp","version":"1.0.0","api_version":1,"entrypoint":"plugin.py:create_plugin","runtimes":["web"],"requires_services":["mcp","family_members"],"requested_permissions":["mcp","read_only"],"dynamic_tools":true,"tool_metadata":{}}

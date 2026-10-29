@@ -1,0 +1,92 @@
+{
+  "id": "family_tasks",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web"
+  ],
+  "requires_services": [
+    "family_tasks",
+    "runtime"
+  ],
+  "requested_permissions": [],
+  "tool_metadata": {
+    "family_member_resolve": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_archive": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_cancel": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_claim": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_complete": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_draft_discard": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_draft_get": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_get": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_leave": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_list": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_pause": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_reopen": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_resume": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_skip": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_task_update": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_timed_memo_create": {
+      "group": "tasks",
+      "keywords": []
+    },
+    "family_undated_memo_create": {
+      "group": "tasks",
+      "keywords": []
+    }
+  },
+  "cards": {
+    "kind": "task",
+    "resource_types": [
+      "family_task",
+      "task_draft"
+    ]
+  },
+  "extension_order": 100
+}

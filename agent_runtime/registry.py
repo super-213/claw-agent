@@ -18,10 +18,14 @@ class ToolApprovalRequired(Exception):
 
 class ToolRegistry:
     def __init__(self):
+        from .plugins.hooks import RuntimeHooks
+        self.hooks = RuntimeHooks()
         self._tools: dict[str, ToolDefinition] = {}
         self._aliases: dict[str, str] = {}
         self.router = ToolRouter(self)
         self.executor = ToolExecutor(self.router)
+        from .plugins.history import HistoricalToolPolicy
+        self.hooks.add(HistoricalToolPolicy(self), priority=-1000)
 
     def register(self, definition: ToolDefinition) -> None:
         name = (definition.name or "").strip()

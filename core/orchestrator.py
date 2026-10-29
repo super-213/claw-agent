@@ -28,9 +28,8 @@ from .context_compressor import ContextCompressor
 from services.llm_client import LLMClient
 from skills.registry import SkillRegistry
 from utils.parser import InputParser
-from services.knowledge_context import has_knowledge, fresh_knowledge_context
-from services.board_chat import BOARD_INTENT
-from agent_runtime.card_presenter import builtin_card_presenter
+from agent_runtime.card_presenter import CardPresenter
+from agent_runtime.plugins.hooks import RuntimeHooks
 from agent_runtime.tool_loading import ToolLoadingSession
 
 
@@ -80,7 +79,8 @@ class AgentOrchestrator:
         self.memory_store = memory_store
         self.user_id = user_id
         self.family_task_context = None
-        self.card_presenter = builtin_card_presenter()
+        self.card_presenter = CardPresenter()
+        self._empty_hooks = RuntimeHooks()
         self.loop_guard = LoopGuard(
             max_repeated_calls=max(2, max_repeated_calls),
             max_empty_turns=max(1, max_empty_turns),
@@ -376,8 +376,8 @@ class AgentOrchestrator:
     ) -> AsyncIterator[Dict[str, Any]]:
         """Native function-calling loop with budgets, approvals and checkpoints."""
         iteration = 0
-        task_guard_retries = 0
-        self._task_answer_feedback = None
+        answer_guard_retries = 0
+        self._answer_feedback = None
         while True:
             budget_reason = self._budget_reason(iteration)
             if budget_reason:
@@ -417,13 +417,8 @@ class AgentOrchestrator:
                 "tool_schema_chars": len(json.dumps(schemas, ensure_ascii=False)),
             })
             response: AgentModelResponse
-            task_guard = getattr(self, 'task_answer_guard', None)
-            task_context = (self.run or {}).get('family_task_context') or self.family_task_context or {}
-            from services.task_commands import CREATE_TEXT
-            defer_task_output = bool(task_guard and (task_context.get('invocation')
-                or task_context.get('pending_draft') or CREATE_TEXT.search(task_context.get('raw_input', ''))
-                or BOARD_INTENT.search(task_context.get('raw_input', ''))
-                or task_context.get('raw_input', '').lstrip().startswith('@ ')))
+            hooks = self.hooks
+            defer_task_output = hooks.any('defer_output')
             try:
                 remaining_runtime = self._remaining_runtime()
                 if stream_model and hasattr(self.llm_client, "astream_with_tools"):
@@ -480,20 +475,22 @@ class AgentOrchestrator:
                 "finish_reason": response.finish_reason,
             })
 
-            finalize = getattr(self, 'knowledge_answer_finalizer', None)
-            if finalize and not response.tool_calls and response.content.strip():
-                response.content = await asyncio.to_thread(finalize, response.content, messages)
-            if task_guard and not response.tool_calls:
-                response.content, feedback = await asyncio.to_thread(task_guard,
-                    response.content, self.conversation.get_messages(), task_guard_retries)
+            if not response.tool_calls:
+                if response.content.strip():
+                    response.content = await asyncio.to_thread(hooks.transform, 'finalize_answer', response.content, messages)
+                response.content, feedback = await asyncio.to_thread(hooks.validate_answer,
+                    response.content, self.conversation.get_messages(), answer_guard_retries)
                 if feedback:
-                    task_guard_retries += 1
-                    self._task_answer_feedback = feedback
-                    yield {'type': 'step', 'stage': 'task_verification', 'message': '正在核实事项是否已保存', 'iteration': iteration}
+                    if answer_guard_retries >= 2:
+                        self.context.stop()
+                        self._update_run(status='failed', error='answer_verification_failed')
+                        yield {'type': 'error', 'stage': 'verification', 'message': '无法核实操作结果，请检查工具记录。'}
+                        break
+                    answer_guard_retries += 1
+                    self._answer_feedback = feedback
+                    yield {'type': 'step', 'stage': 'task_verification', 'message': '正在核实操作结果', 'iteration': iteration}
                     continue
-            if task_guard and any(call.name in {'family_timed_memo_create', 'family_undated_memo_create'} for call in response.tool_calls):
-                # Creation has not executed yet; do not persist a premature receipt.
-                response.content = ''
+            response.content = hooks.transform('normalize_response', response.content, response.tool_calls)
             tool_payloads = [call.as_openai() for call in response.tool_calls]
             final_blocks = {}
             if not response.tool_calls:
@@ -649,7 +646,7 @@ class AgentOrchestrator:
             ledger = dict(((self.run or {}).get("tool_ledger") or {}).get(call.id) or {})
             if ledger.get("fingerprint") and ledger.get("fingerprint") != fingerprint:
                 result = ToolResult(call.id, call.name, "error", error="tool_call_id_reused_with_different_arguments")
-            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and call.name != "tool_load" and not call.name.startswith(("family_", "knowledge_", "mcp_")):
+            elif ledger.get("status") == "completed" and isinstance(ledger.get("result"), dict) and call.name != "tool_load" and definition.replay_policy == "cache":
                 cached = ledger["result"]
                 result = ToolResult(
                     call_id=str(cached.get("call_id") or call.id),
@@ -724,9 +721,9 @@ class AgentOrchestrator:
                 )
 
             assert result is not None
-            task_changed = result.output.get('task_changed') if result.success and isinstance(result.output, dict) else None
             resource_changed = result.output.get('resource_changed') if result.success and isinstance(result.output, dict) else None
-            ui_blocks = self.card_presenter.present(result)
+            ui_blocks = self.card_presenter.present(result, definition)
+            extension_events = self.hooks.collect('resource_events', result)
             if ui_blocks:
                 result.metadata['ui_blocks'] = ui_blocks
             if self.artifact_store:
@@ -749,10 +746,7 @@ class AgentOrchestrator:
                     )
             if self.tool_loading:
                 self._update_run(loaded_tools=list(self.tool_loading.loaded))
-            if task_changed:
-                events.append(task_changed)
-                events.append({'type': 'resource_changed', 'resource_type': 'family_task',
-                               'resource_ids': task_changed['task_ids'], 'revision': task_changed['revision']})
+            events.extend(extension_events)
             if ui_blocks:
                 events.append({'type': 'ui_blocks', 'blocks': ui_blocks})
             if resource_changed:
@@ -1186,7 +1180,7 @@ class AgentOrchestrator:
     def _persist_working_memory(self, final_content: str) -> None:
         if not self.memory_store or not self.run or not final_content.strip():
             return
-        if has_knowledge(self.conversation.get_messages()):
+        if self.hooks.any('avoid_memory', self.conversation.get_messages()):
             # Library-derived facts have independent deletion, version and ACL lifecycles.
             return
         goal = str(self.run.get("goal") or "").strip()
@@ -1201,6 +1195,10 @@ class AgentOrchestrator:
             )
         except Exception as exc:
             self._append_run_event({"type": "memory_error", "error": str(exc)})
+
+    @property
+    def hooks(self):
+        return self.tool_registry.hooks if self.tool_registry else self._empty_hooks
 
     def _plugin_snapshot(self) -> dict:
         return {tool.name: dict(tool.plugin_source) for tool in self.tool_registry.list()
@@ -1239,7 +1237,7 @@ class AgentOrchestrator:
     async def _build_model_context(self) -> tuple[List[Dict[str, Any]], List[str]]:
         """构建模型请求上下文，并返回本轮 assistant 需要记录的上下文节点。"""
         context_node_ids: List[str] = []
-        knowledge_history = has_knowledge(self.conversation.get_messages())
+        protected_history = self.hooks.any('preserve_history', self.conversation.get_messages())
         if (self.conversation.branch_engine is not None
                 and self.conversation.active_node_id is not None):
             branch_messages = self.conversation.branch_engine.build_context(
@@ -1248,11 +1246,11 @@ class AgentOrchestrator:
             context_node_ids = [
                 msg["node_id"] for msg in branch_messages if "node_id" in msg
             ]
-            if self.context_compressor and not knowledge_history:
+            if self.context_compressor and not protected_history:
                 messages = await self.context_compressor.build_messages_async(self.conversation)
             else:
                 messages = branch_messages
-        elif self.context_compressor and not knowledge_history:
+        elif self.context_compressor and not protected_history:
             messages = await self.context_compressor.build_messages_async(self.conversation)
         else:
             messages = self.conversation.get_messages()
@@ -1261,8 +1259,8 @@ class AgentOrchestrator:
         current_prompt = getattr(self, 'system_prompt_override', None)
         if current_prompt and messages and messages[0].get('role') == 'system':
             messages = [{**messages[0], 'content': current_prompt}, *messages[1:]]
-        if knowledge_history:
-            messages = fresh_knowledge_context(messages)
+        if protected_history:
+            messages = self.hooks.transform('prepare_history', messages)
             # Remove whole old turns to preserve native tool-call/result groups.
             if self.context_compressor:
                 while not self.context_compressor._within_budget(messages):
@@ -1270,9 +1268,7 @@ class AgentOrchestrator:
                     if len(users) < 2:
                         break
                     messages = [m for m in messages[:users[1]] if m.get('role') == 'system'] + messages[users[1]:]
-            validate = getattr(self, 'knowledge_context_filter', None)
-            if validate:
-                messages = await asyncio.to_thread(validate, messages)
+        messages = await asyncio.to_thread(self.hooks.transform, 'filter_context', messages)
         dynamic_system: List[Dict[str, Any]] = []
         if self.tool_loading:
             dynamic_system.append({"role": "system", "content":
@@ -1283,32 +1279,9 @@ class AgentOrchestrator:
                 "已加载工具在本任务内保留，新任务重新按需加载；加载不代表获得执行权限或已完成操作。\n"
                 + self.tool_loading.catalog()})
         task_context = (self.run or {}).get('family_task_context') or self.family_task_context
-        if task_context:
-            dynamic_system.append({'role': 'system', 'content':
-                '本次事项选择（标签或用户自然语言，服务端确定的空间和性质不得覆盖）：' + json.dumps(task_context.get('invocation'), ensure_ascii=False) +
-                '\n本次当地时间：' + str(task_context.get('as_of')) +
-                '\n用户自然语言明确要求记录/安排/提醒即可创建，无需输入 / 标签或重复确认。默认个人；只有明确要求家庭共享才用家庭空间。'
-                '例如“帮我记一下，明天这个时候叫我去上海”应直接调用 family_timed_memo_create。'
-                'due_at 使用带时区的 ISO 时间；“明天此时”依据本次当地时间，缺少日期才询问。'
-                '\n事项必须调用 family_task 工具查询或执行。只有本轮创建工具成功返回才可说已保存，历史回复不是保存证据。'
-                '保存后立即可见，不是到期才显示。每周完成仅完成本期；不发送消息或通知。'})
-            if task_context.get('pending_draft'):
-                dynamic_system.append({'role': 'system', 'content': '用户正在接续本分支待保存草稿，原日期和内容如下，请调用创建工具保存，不重复要求标签：' +
-                    json.dumps(task_context['pending_draft'], ensure_ascii=False)})
-        if task_context:
-            dynamic_system.append({'role': 'system', 'content':
-                '便笺/留言板与日程备忘是独立业务。写便笺使用 family_board_post_create；'
-                '图文、接收人、长期或限时通过交互卡片配置。@ 成员表示接收范围；@ 所有人仅表示当前家庭。'
-                '只代写或字段不足时返回未发布草稿；明确发布且信息完整时直接发布。'
-                '以 @ 成员开头的“我要……”若没有明确日程/备忘意图，调用便笺创建工具返回待配置草稿。'
-                '正文中的聚餐等时间不是便笺到期；只有明确保留到/有效期才配置截止。'
-                '不要把便笺创建为事项，不得用旧历史声称仍可见。收到工具成功结果后才能说已保存，不会发送通知。'})
-        if getattr(self, '_task_answer_feedback', None):
-            dynamic_system.append({'role': 'system', 'content': self._task_answer_feedback})
-        if task_context and task_context.get('object_context'):
-            dynamic_system.append({'role': 'system', 'content':
-                '用户从家庭视图选择的对象（仅为定位数据，所有读取和写入仍需工具校验权限）：' +
-                json.dumps(task_context['object_context'], ensure_ascii=False)})
+        dynamic_system.extend(self.hooks.collect('system_messages'))
+        if getattr(self, '_answer_feedback', None):
+            dynamic_system.append({'role': 'system', 'content': self._answer_feedback})
         catalog = self.skill_registry.catalog(auto_only=True)
         if catalog:
             dynamic_system.append({
@@ -1320,7 +1293,7 @@ class AgentOrchestrator:
                     + "\n".join(f"- {row['summary']}" for row in catalog)
                 ),
             })
-        if self.memory_store and self.run and not knowledge_history:
+        if self.memory_store and self.run and not protected_history:
             session_id = str(self.run.get("session_id") or "")
             scopes = [("session", session_id)]
             if self.user_id and not (task_context or {}).get("shared"):

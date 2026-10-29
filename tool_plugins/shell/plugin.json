@@ -1,0 +1,24 @@
+{
+  "id": "shell",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "cli"
+  ],
+  "requires_services": [
+    "executor",
+    "family_mode"
+  ],
+  "requested_permissions": [],
+  "optional_tools": true,
+  "tool_metadata": {
+    "shell_execute": {
+      "group": "files",
+      "keywords": []
+    }
+  },
+  "aliases": {
+    "shell.execute": "shell_execute"
+  }
+}

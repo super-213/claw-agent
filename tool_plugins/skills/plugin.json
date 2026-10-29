@@ -1,0 +1,27 @@
+{
+  "id": "skills",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web",
+    "cli"
+  ],
+  "requires_services": [
+    "skills",
+    "registry"
+  ],
+  "requested_permissions": [
+    "skill:read"
+  ],
+  "optional_tools": true,
+  "tool_metadata": {
+    "skill_load": {
+      "group": "other",
+      "keywords": []
+    }
+  },
+  "aliases": {
+    "skill.load": "skill_load"
+  }
+}

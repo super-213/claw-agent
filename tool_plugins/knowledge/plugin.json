@@ -1,0 +1,42 @@
+{
+  "id": "knowledge",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web"
+  ],
+  "requires_services": [
+    "knowledge",
+    "runtime",
+    "knowledge_resolve_file"
+  ],
+  "requested_permissions": [],
+  "tool_metadata": {
+    "knowledge_document_save": {
+      "group": "knowledge",
+      "keywords": []
+    },
+    "knowledge_get": {
+      "group": "knowledge",
+      "keywords": []
+    },
+    "knowledge_record_save": {
+      "group": "knowledge",
+      "keywords": []
+    },
+    "knowledge_search": {
+      "group": "knowledge",
+      "keywords": []
+    },
+    "knowledge_source": {
+      "group": "knowledge",
+      "keywords": []
+    },
+    "knowledge_update": {
+      "group": "knowledge",
+      "keywords": []
+    }
+  },
+  "extension_order": 300
+}

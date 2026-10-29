@@ -1,0 +1,53 @@
+{
+  "id": "board",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web"
+  ],
+  "requires_services": [
+    "board",
+    "runtime",
+    "board_resolve_source"
+  ],
+  "requested_permissions": [],
+  "tool_metadata": {
+    "family_board_draft_get": {
+      "group": "board",
+      "keywords": []
+    },
+    "family_board_draft_update": {
+      "group": "board",
+      "keywords": []
+    },
+    "family_board_post_create": {
+      "group": "board",
+      "keywords": []
+    },
+    "family_board_post_get": {
+      "group": "board",
+      "keywords": []
+    },
+    "family_board_post_list": {
+      "group": "board",
+      "keywords": []
+    },
+    "family_board_post_update": {
+      "group": "board",
+      "keywords": []
+    },
+    "family_board_post_withdraw": {
+      "group": "board",
+      "keywords": []
+    }
+  },
+  "cards": {
+    "kind": "board_post",
+    "resource_types": [
+      "board_post",
+      "board_post_draft"
+    ]
+  },
+  "extension_order": 200
+}

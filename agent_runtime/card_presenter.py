@@ -25,8 +25,9 @@ class CardPresenter:
                 raise ValueError('card_tool_already_registered')
             self._tools[tool] = (kind, set(resource_types))
 
-    def present(self, result):
-        registration = self._tools.get(result.name)
+    def present(self, result, definition=None):
+        registration = ((definition.card_kind, set(definition.card_resource_types))
+                        if definition and definition.card_kind else self._tools.get(result.name))
         if not registration:
             return []
         candidates = result.metadata.get('ui_blocks') or (result.output.get('ui_blocks', []) if isinstance(result.output, dict) else [])
@@ -55,13 +56,11 @@ class CardPresenter:
 
 
 def builtin_card_presenter():
+    """Compatibility facade reading plugin-owned declarations without importing code."""
+    from .plugins import PluginManager
     presenter = CardPresenter()
-    presenter.register('board_post', {'board_post', 'board_post_draft'}, {
-        'family_board_post_create', 'family_board_post_get', 'family_board_post_update',
-        'family_board_post_withdraw', 'family_board_draft_get', 'family_board_draft_update'})
-    presenter.register('task', {'family_task', 'task_draft'}, {
-        'family_timed_memo_create', 'family_undated_memo_create', 'family_task_get',
-        'family_task_update', 'family_task_complete', 'family_task_reopen', 'family_task_claim',
-        'family_task_archive', 'family_task_pause', 'family_task_resume', 'family_task_cancel',
-        'family_task_skip', 'family_task_draft_get'})
+    for _, manifest, _ in PluginManager.default().catalog.values():
+        card = manifest.get('cards')
+        if card:
+            presenter.register(card['kind'], card['resource_types'], manifest['tool_metadata'])
     return presenter

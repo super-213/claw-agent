@@ -89,7 +89,7 @@ def test_disabled_code_never_imported_and_grants_runtime_dependencies(tmp_path):
     assert not registry.list() and not manager.errors
     enable(config)  # no grant and no service
     manager, registry = bind(root, config)
-    assert not registry.list() and manager.errors == {'counter': 'plugin_bind_failed'}
+    assert not registry.list() and manager.errors == {'counter': 'plugin_dependencies_or_grants_missing'}
     root2 = tmp_path/'only_web'
     root2.mkdir()
     # Runtime filtering happens before code import.
@@ -213,7 +213,7 @@ def test_cli_builder_discovers_enabled_package_without_registration_edits(tmp_pa
     monkeypatch.setattr(PluginManager, 'default', classmethod(lambda cls: manager))
     registry = build_tool_registry(project_root=tmp_path, generated_files_dir=tmp_path/'files',
                                    executor=CommandExecutor())
-    assert registry.get('file_read') and registry.get('counter_read')
+    assert registry.get('counter_read')  # This injected catalog intentionally contains only the test plugin.
     assert asyncio.run(registry.invoke(ToolCall('read', 'counter_read', {'n':1}))).success
 
 

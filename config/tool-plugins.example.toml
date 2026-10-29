@@ -1,11 +1,21 @@
 # Copy to config/tool-plugins.toml, or set TOOL_PLUGINS_CONFIG to an absolute path.
-# Only the reviewed datetime plugin is enabled by default. Restart after installing code.
+# Reviewed bundled packages use host-owned default grants and are enabled when
+# their host dependencies exist. Other plugin IDs require explicit enablement.
+# Code/manifest changes require a restart; revocations are checked at execution.
 [plugins.datetime]
 enabled = true
 permissions = []
 
-# Other directories must be explicitly enabled. Grants are host authority,
-# not inferred from plugin manifests or Skill permissions.
+# Disable a bundled capability without editing Python:
+# [plugins.public_http]
+# enabled = false
+
+# An installed external plugin must be explicitly enabled and granted permissions:
 # [plugins.weather]
 # enabled = true
 # permissions = ["network:public-read"]
+# services = ["public_http"]
+
+# MCP servers retain separate MCP_CONFIG / user/tool allowlists and read-only limits.
+# [plugins.mcp]
+# enabled = false

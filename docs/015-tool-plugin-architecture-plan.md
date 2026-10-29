@@ -1,7 +1,7 @@
 # 工具插件化架构与渐进实施计划
 
 日期：2026-10-29  
-状态：P0 基线核对与 P1 最小插件闭环已实施；P2–P4 待实施，P5 为可选增强。
+状态：P0–P4 已实施；本轮验证结果见第 12 节，P5 为可选增强。
 依据：当前工作区代码及 `docs/tool-loading.md`；工具匹配数量与任务内保留数量不设硬上限。
 目标：让新增普通工具通过独立插件包和启用配置接入，避免持续修改主入口、编排器和中央工具分类表。
 
@@ -227,6 +227,8 @@ skills/<skill>/manifest.json           # 继续使用 required_tools / allowed_t
 
 ## 11. 实施记录（2026-10-29）
 
+以下第 11 节保留 P1 交付时的历史状态；P2–P4 当前状态以第 12 节为准。
+
 ### P0 基线与迁移归属
 
 | 工具族 | 本轮处理 | 权限/审批/恢复基线 |
@@ -251,3 +253,40 @@ skills/<skill>/manifest.json           # 继续使用 required_tools / allowed_t
 ### 验证与范围
 
 已完成插件专项 17 项测试，覆盖第二插件接入、最终 SDK 请求、流式事件、会话/Run 持久化、账号隔离、撤权、审批恢复、冲突和发布清单。相关后端回归最终运行 **128 项通过**（Python 3.12；涵盖 Agent 运行时、工具加载、模型协议、媒体、MCP、任务、资料、留言板及 Runtime API）。插件与 macOS 部署测试合并运行时 20 项通过，1 项真实 Nginx 检查被沙箱禁止 sysctl 调用而失败；未将其判断为应用代码缺陷。`git diff --check` 通过。开发中发现并修复的兼容问题见 [BUG-003](lessons-learned/BUG-003.md)。插件专项使用本地测试插件与模拟 SDK 响应，不访问真实模型或外部网络服务。整体回归曾意外进入未隔离的意图模型路径，该测试问题已修复，见 [BUG-004](lessons-learned/BUG-004.md)；不将该路径作为真实模型验收。未执行生产服务重启。P2 的文件权限访问器抽取、P3 的业务钩子迁移、P4 的 MCP 统一及 P5 热重载尚未实施，不能把最小插件闭环视为全部阶段完成。
+
+## 12. P2–P4 实施记录（2026-10-29）
+
+### P2：基础工具插件与宿主服务
+
+文件、公网 HTTP、Shell、Skill 桥接、显式浏览器/应用回调、Home Assistant 的定义均迁入 `tool_plugins/`。`builtin_tools.py` 的构建函数改为统一装配门面；原文件/网络/命令安全 helper 暂保兼容导出，保持既有安全测试的可替换边界。
+
+新增 `FileToolAccess` 与 `foundation_services`：Web 不再按 `file_read` / `file_write` 名称替换 handler，用户文件目录、上传归属检查、生成链接及文件授权记录均在宿主访问器中处理。CLI 复用同一装配服务。Web 不注册 Shell；公网访问仍保留原内网限制与 Fake-IP 处理；设备实体白名单与控制审批保留。
+
+宿主仅为当前代码库内已审核的内置包提供默认开关/权限基线；外部插件显式启用，并分别授予 `permissions` 与 `services`。插件收到的服务映射仅包含其清单声明且宿主批准的依赖。
+
+### P3：业务插件与通用钩子
+
+- 家庭任务、留言板、知识库的工具实现迁至各插件的 `tools.py`；原 `agent_runtime/*_tools.py` 保留旧 import 路径。
+- 动态上下文、输出缓冲、回答证据守卫、来源补全、授权过滤、资源刷新与防止私有资料进入通用记忆的规则分别迁入插件扩展。
+- 编排器使用通用钩子调度，不再 import 家庭任务/便笺/知识上下文模块，也不再按业务工具名前缀选择恢复方式。`family_task_context` 持久化字段为旧 Run 兼容暂保留，字段名不构成业务执行分支。
+- `ToolDefinition.replay_policy` 显式决定结果复用；卡片由 `card_kind` 和 `card_resource_types` 声明，通用展示器继续清除任意 HTML/回调。
+- 钩子按固定目录顺序组合，首个回答拒绝不可被后续钩子覆盖，最多两次修正；未通过则停止发布最终回答。
+- 新增通用历史证据策略：未知、已移除或需要重新授权的历史工具不直接贡献旧结果或通用记忆。插件停用后不会因钩子消失而失去这条保护；持久化树与历史界面不改写。
+- 迁移中发现的普通聊天和空回执回归已修复，证据见 [BUG-006](lessons-learned/BUG-006.md)。
+
+### P4：MCP 统一来源与运维
+
+`tool_plugins/mcp` 使用原 MCPAdapter 动态产生定义，不另造客户端。保留总开关、用户与工具白名单、只读限制、审批、资源限制、审计和不可信内容封装；增加来源配置摘要，参与恢复兼容检查。
+
+新增 `scripts/tool_plugins.py list/validate` 和管理员 `GET /api/runtime/plugins`，提供不导入插件、不联系 MCP 的清单诊断。`GET /api/runtime/tools` 继续展示用户实际绑定的工具。发布包包含插件目录、诊断脚本和示例配置，不包含实际本地启用配置。开发与故障说明见 [插件开发文档](../tool_plugins/README.md)。
+
+### 本轮验收与未执行项
+
+- 新增 P2–P4 专项覆盖基础工具来源、Web Shell 排除、停用后历史证据、钩子拒绝顺序、无中央映射的新卡片、真实本地 MCP stdio 握手/审批/结果持久化、诊断无副作用、文件撤权、宿主服务隔离及 P1 时间摘要兼容。
+- 前端 Vitest：22 个文件、99 项通过。未修改前端实现。
+- 后端最终回归 **576 项通过，1 项 deselected**（38.05 秒，29 条现存/依赖弃用警告）。执行命令：`PYTHONPATH=/tmp:/tmp/claw-plugin-test-deps python3.12 -m pytest -p claw_offline_guard test --ignore=test/browser --ignore=test/web-react -k 'not test_real_nginx_spa_proxy_cache_and_stream' -q --disable-warnings`。临时网络保护位于 `/tmp/claw_offline_guard.py`，允许 loopback，禁止外部连接及 DNS；它是本次验证环境辅助文件，不是产品代码。
+- 唯一排除的后端用例是已知在当前沙箱被 `sysctl` 权限限制阻断的真实 Nginx 集成；其余 macOS 部署静态测试已纳入。浏览器端到端脚本未执行。
+- 11 个插件清单通过 `scripts/tool_plugins.py validate --runtime web`；Git 索引通过 `scripts/audit_repository.py --check-index`；`git diff --check` 通过。索引检查不等于对新文件或 Git 历史做完整安全审计。
+- 广回归通过临时 pytest 网络保护禁止公网连接，模型响应由测试替身提供；MCP 仅运行仓库的本地只读测试服务。不进行真实模型、真实设备或外部副作用验收。
+- 新测试依赖仅安装于 `/tmp/claw-plugin-test-deps`，不更新项目依赖文件、系统安装或运行环境。已补齐 hypothesis、cbor2、WebAuthn、PyMuPDF 1.25.5 和 Web Push 相关依赖；它们只通过本次 pytest 的 PYTHONPATH 使用。初次缺依赖的失败不视为代码根因，补齐后完整回归已通过。
+- P5 的热重载、前端管理页面、隔离执行与插件分发不在本轮范围。未重启运行服务，未构建正式发布包或部署。

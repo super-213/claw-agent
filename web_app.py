@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import datetime
 import json
 import os
@@ -59,16 +59,15 @@ from services.message_media import normalize_attachments, normalize_images
 from services.model_catalog import ModelCatalogError, fetch_available_models
 from skills import SkillRegistry
 from agent_runtime import ArtifactStore, MemoryStore, RunStore
-from agent_runtime.builtin_tools import build_tool_registry, _file_read, _file_write, _file_write_needs_approval, _resolve_path
+from agent_runtime.builtin_tools import build_tool_registry, _resolve_path
+from agent_runtime.plugins.assembly import foundation_services
+from agent_runtime.plugins.access import FileToolAccess
 from agent_runtime.plugins import PluginManager, ToolBindingContext
 from agent_runtime.registry import ToolRegistry
 from agent_runtime.mcp_adapter import MCPAdapter
-from agent_runtime.family_task_tools import register_family_task_tools
-from agent_runtime.family_board_tools import register_family_board_tools
 from services.board_store import BoardStore
 from services.board_service import BoardPostService
 from services.board_api import board_router
-from services.board_chat import guard_board_answer, current_board_context
 from services.family_member_service import FamilyMemberService
 from services.family_task_service import FamilyTaskService
 from services.family_task_api import task_router
@@ -79,7 +78,6 @@ from services.knowledge_service import KnowledgeService
 from services.knowledge_api import knowledge_router
 from services.offline_api import offline_router
 from services.passkeys import PasskeyService, passkey_router
-from agent_runtime.knowledge_tools import register_knowledge_tools
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -771,38 +769,9 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
         token_estimator=token_estimator,
     )
     bound_registry = ToolRegistry()
+    # Explicit non-plugin host extensions remain supported; plugins bind per actor below.
     for definition in tool_registry.list():
-        # Plugins must be rebound for this Web actor, never copied from a CLI/global binding.
-        if definition.plugin_source:
-            continue
-        if definition.name == 'file_write':
-            def write_for_actor(args):
-                result = _file_write(args, user_files)
-                session_id = (orchestrator.run or {}).get('session_id')
-                if session_id:
-                    with file_access_store.transaction() as doc:
-                        doc.setdefault('file_grants', {})[str(Path(result['path']).resolve())] = {
-                            'owner_user_id': user_id, 'session_id': session_id}
-                result['url'] = '/generated/' + str(Path(result['path']).relative_to(GENERATED_DIR))
-                return result
-            definition = replace(definition, handler=write_for_actor,
-                approval_policy=lambda args: _file_write_needs_approval(args, user_files))
-        elif definition.name == 'file_read':
-            def read_for_actor(args):
-                source = str(args['path'])
-                raw = Path(source)
-                if source.startswith(('/generated/', '/files/')):
-                    from services.media_input import MediaInputReader
-                    local = MediaInputReader(GENERATED_DIR).local_path(source)
-                else:
-                    local = (raw if raw.is_absolute() else PROJECT_ROOT / raw).resolve()
-                    if not raw.is_absolute() and not local.exists():
-                        local = (user_files / raw).resolve()
-                if GENERATED_DIR.resolve() in local.parents:
-                    _authorize_generated_path(user_store.get_user(user_id), local)
-                return _file_read({**args, 'path': str(local)}, (PROJECT_ROOT, GENERATED_DIR), PROTECTED_TASK_PATHS)
-            definition = replace(definition, handler=read_for_actor)
-        if definition.name != "shell_execute":
+        if not definition.plugin_source:
             bound_registry.register(definition)
     for alias, target in tool_registry.aliases().items():
         if bound_registry.get(target):
@@ -862,40 +831,27 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
             if not can_write_session(user_store.get_user(user_id), session):
                 raise TaskError('forbidden', status=403)
         return context
-    if user_id:
-        from services.task_chat import guard_task_answer, CREATE_TOOLS
-        register_family_task_tools(bound_registry, family_tasks, lambda: user_store.get_user(user_id), execution_context)
-        register_family_board_tools(bound_registry, family_board, lambda: user_store.get_user(user_id), execution_context, _board_resolve_source)
-        def finalize_task_answer(content, messages, retries):
-            run = orchestrator.run or {}
-            context = run.get('family_task_context') or task_context or {}
-            results = [step['tool_result'] for step in run.get('steps', [])
-                       if (step.get('tool_result') or {}).get('name') in CREATE_TOOLS]
-            saved = None
-            if any(result.get('status') == 'success' for result in results):
-                saved = family_tasks.created_in_request(user_store.get_user(user_id), context.get('request_id') or run.get('id'))
-            content, feedback = guard_task_answer(content, messages, context, retries, saved_tasks=saved, creation_results=results,
-                member_names={member['member_id']: member['display_name'] for member in family_members.list()})
-            board_results = [step['tool_result'] for step in run.get('steps', [])
-                             if str((step.get('tool_result') or {}).get('name', '')).startswith('family_board_')]
-            content, board_feedback = guard_board_answer(content, messages, context, retries, results=board_results)
-            return content, board_feedback or feedback
-        orchestrator.task_answer_guard = finalize_task_answer
-        register_knowledge_tools(bound_registry, knowledge, lambda: user_store.get_user(user_id), execution_context, _knowledge_resolve_file)
-        mcp_adapter.register(bound_registry, lambda: user_store.get_user(user_id), family_members, execution_context)
-        orchestrator.knowledge_context_filter = lambda messages: current_board_context(knowledge.current_tool_context(messages, user_store.get_user(user_id)), family_board, user_store.get_user(user_id), execution_context)
-        orchestrator.knowledge_answer_finalizer = lambda content, messages: knowledge.finalize_answer(user_store.get_user(user_id), content, messages)
     def authorize_plugin(_plugin_id, _arguments):
         actor = user_store.get_user(user_id) if user_id else None
         return bool(actor and actor.get('status') == 'active'
                     and execution_context().get('user_id') == user_id)
 
-    plugin_manager.bind(bound_registry, ToolBindingContext(
-        runtime="web",
+    services = foundation_services(registry=bound_registry, project_root=PROJECT_ROOT,
+        generated_files_dir=GENERATED_DIR, executor=executor, skill_registry=skill_registry,
+        home_assistant_service=home_assistant_service, protected_paths=PROTECTED_TASK_PATHS,
+        allowed_http_domains=tuple(item.strip().lower() for item in str(config['http_allowed_domains']).split(',') if item.strip()),
+        family_mode=True, files=FileToolAccess(PROJECT_ROOT, GENERATED_DIR,
+            protected_paths=PROTECTED_TASK_PATHS, user_id=user_id,
+            get_user=lambda: user_store.get_user(user_id) if user_id else None,
+            authorize_generated=_authorize_generated_path, grants=file_access_store,
+            execution_context=execution_context))
+    if user_id:
+        services.update(runtime=lambda: orchestrator, family_tasks=family_tasks, board=family_board,
+            knowledge=knowledge, mcp=mcp_adapter, family_members=family_members,
+            board_resolve_source=_board_resolve_source, knowledge_resolve_file=_knowledge_resolve_file)
+    plugin_manager.bind(bound_registry, ToolBindingContext(runtime='web', services=services,
         get_user=lambda: user_store.get_user(user_id) if user_id else None,
-        get_execution_context=execution_context,
-        authorize=authorize_plugin,
-    ))
+        get_execution_context=execution_context, authorize=authorize_plugin))
     return orchestrator
 
 
@@ -1831,7 +1787,7 @@ def update_config(
                 home_assistant_service=home_assistant_service,
                 skill_registry=skill_registry,
                 family_mode=True,
-                protected_paths=PROTECTED_TASK_PATHS,
+                include_plugins=False,                protected_paths=PROTECTED_TASK_PATHS,
                 allowed_http_domains=tuple(
                     item.strip().lower() for item in str(config["http_allowed_domains"]).split(",")
                     if item.strip()
@@ -2350,6 +2306,11 @@ async def session_runs(
             public["pending_approval"] = pending
         public_rows.append(public)
     return {"runs": public_rows}
+
+
+@app.get("/api/runtime/plugins", tags=["runtime"])
+async def runtime_plugins(_admin: dict[str, Any] = Depends(require_admin)):
+    return {"validation": "manifest-only", "plugins": plugin_manager.describe("web")}
 
 
 @app.get("/api/runtime/tools", tags=["runtime"])

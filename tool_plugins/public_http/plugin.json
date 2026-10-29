@@ -1,0 +1,26 @@
+{
+  "id": "public_http",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web",
+    "cli"
+  ],
+  "requires_services": [
+    "public_http",
+    "allowed_http_domains"
+  ],
+  "requested_permissions": [
+    "network:public-read"
+  ],
+  "tool_metadata": {
+    "http_request": {
+      "group": "public_web",
+      "keywords": []
+    }
+  },
+  "aliases": {
+    "http.request": "http_request"
+  }
+}

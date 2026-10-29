@@ -1,0 +1,28 @@
+{
+  "id": "files",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web",
+    "cli"
+  ],
+  "requires_services": [
+    "files"
+  ],
+  "requested_permissions": [],
+  "tool_metadata": {
+    "file_read": {
+      "group": "files",
+      "keywords": []
+    },
+    "file_write": {
+      "group": "files",
+      "keywords": []
+    }
+  },
+  "aliases": {
+    "file.read": "file_read",
+    "file.write": "file_write"
+  }
+}

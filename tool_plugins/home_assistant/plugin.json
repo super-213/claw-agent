@@ -1,0 +1,39 @@
+{
+  "id": "home_assistant",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web",
+    "cli"
+  ],
+  "requires_services": [
+    "home_assistant"
+  ],
+  "requested_permissions": [],
+  "optional_tools": true,
+  "tool_metadata": {
+    "home_assistant_list_devices": {
+      "group": "home_assistant",
+      "keywords": []
+    },
+    "home_assistant_get_state": {
+      "group": "home_assistant",
+      "keywords": []
+    },
+    "home_assistant_turn_on": {
+      "group": "home_assistant",
+      "keywords": []
+    },
+    "home_assistant_turn_off": {
+      "group": "home_assistant",
+      "keywords": []
+    }
+  },
+  "aliases": {
+    "home_assistant.list_devices": "home_assistant_list_devices",
+    "home_assistant.get_state": "home_assistant_get_state",
+    "home_assistant.turn_on": "home_assistant_turn_on",
+    "home_assistant.turn_off": "home_assistant_turn_off"
+  }
+}
