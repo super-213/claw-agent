@@ -217,7 +217,7 @@ class ReminderSnoozeRequest(BaseModel):
 
 
 app = FastAPI(
-    title="Claw Agent API",
+    title="Home Agent API",
     description="Web UI 和会话 API 服务",
     version="1.0.0",
 )
@@ -858,7 +858,7 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
 
 @app.get("/", include_in_schema=False)
 def index():
-    return {"service": "Claw Agent API"}
+    return {"service": "Home Agent API"}
 
 
 def _authorize_generated_path(user, path):

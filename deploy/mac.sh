@@ -217,7 +217,7 @@ main() {
   local action="${1:-menu}"
   if [[ "$action" == menu ]]; then
     [[ -t 0 ]] || fail '请在交互式终端运行，或指定 status/start/stop 等子命令。'
-    printf '\nClaw Agent · macOS 部署\n1) 首次部署 / 更新（安装依赖并构建）\n2) 启动 / 重启\n3) 停止\n4) 状态\n5) 查看最近日志\n6) Cloudflare Tunnel 接入\n0) 退出\n'
+    printf '\nHome Agent · macOS 部署\n1) 首次部署 / 更新（安装依赖并构建）\n2) 启动 / 重启\n3) 停止\n4) 状态\n5) 查看最近日志\n6) Cloudflare Tunnel 接入\n0) 退出\n'
     ask '请选择' 4
     case "$REPLY" in 1) action=deploy;; 2) action=restart;; 3) action=stop;; 4) action=status;; 5) action=logs;; 6) action=tunnel;; 0) return;; *) fail '无效选项。';; esac
   fi

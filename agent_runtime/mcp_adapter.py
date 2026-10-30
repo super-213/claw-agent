@@ -142,7 +142,7 @@ class StdioClient:
                 return result
         try:
             init = send('initialize', {'protocolVersion': PROTOCOL, 'capabilities': {},
-                'clientInfo': {'name': 'claw-agent', 'version': '1.0'}})
+                'clientInfo': {'name': 'home-agent', 'version': '1.0'}})
             if init.get('protocolVersion') not in {PROTOCOL, '2025-06-18'} or 'tools' not in init.get('capabilities', {}):
                 raise ValueError('mcp_unsupported_server')
             send('notifications/initialized', notification=True)

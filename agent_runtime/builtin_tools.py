@@ -123,7 +123,7 @@ def _http_request(
     pinned_addresses = _reject_private_host(parsed.hostname)
     method = str(args.get("method") or "GET").upper()
     headers = {str(k): str(v) for k, v in dict(args.get("headers") or {}).items()}
-    headers.setdefault("User-Agent", "Claw-Agent-Runtime/1.0")
+    headers.setdefault("User-Agent", "Home-Agent-Runtime/1.0")
     request = Request(quote(url, safe=":/?#[]@!$&'()*+,;=%"), method=method, headers=headers)
     max_chars = max(1, min(int(args.get("max_chars") or 20000), max_response_chars))
     opener = (pinned_opener(pinned_addresses, _NoRedirectHandler()) if pinned_addresses

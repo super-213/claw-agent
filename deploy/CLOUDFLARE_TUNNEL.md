@@ -1,6 +1,6 @@
 # 树莓派安装 Cloudflare Tunnel 并绑定自定义域名
 
-本教程适用于运行 Raspberry Pi OS 或 Debian、使用 systemd 的树莓派。先完成 [Claw Agent 部署](README.md)，再把自己的域名绑定到树莓派上的 Nginx。示例域名为 `agent.example.com`，操作时替换成你自己的域名。
+本教程适用于运行 Raspberry Pi OS 或 Debian、使用 systemd 的树莓派。先完成 [Home Agent 部署](README.md)，再把自己的域名绑定到树莓派上的 Nginx。示例域名为 `agent.example.com`，操作时替换成你自己的域名。
 
 采用 Cloudflare 控制台管理 Tunnel 的方式，`cloudflared` 直接安装在树莓派系统中。完成后可通过 `https://agent.example.com` 从外网访问，树莓派、项目服务和 Tunnel 都需要保持运行。
 
@@ -23,7 +23,7 @@ Tunnel 由树莓派主动连接 Cloudflare，无需公网 IP，也无需在路�
 需要准备：
 
 - 一台可以联网、可以使用 `sudo` 的树莓派。
-- 已在局域网正常运行的 Claw Agent。
+- 已在局域网正常运行的 Home Agent。
 - Cloudflare 账号和一个自己持有的域名。
 
 在 [Cloudflare 控制台](https://dash.cloudflare.com/) 添加域名，按页面引导检查现有 DNS 记录，然后到域名注册商处把域名的 nameserver 改为 Cloudflare 提供的地址。等 Cloudflare 显示该域名为 Active 后再继续。已有网站或邮件时，应保留它们需要的 DNS 记录。

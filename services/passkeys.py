@@ -68,7 +68,7 @@ class PasskeyService:
             if kind == 'register':
                 if len(credentials) >= 10:
                     raise TaskError('passkey_limit', status=409)
-                options = generate_registration_options(rp_id=self.rp_id, rp_name='Claw Agent',
+                options = generate_registration_options(rp_id=self.rp_id, rp_name='Home Agent',
                     user_id=user['id'].encode(), user_name=user['username'], exclude_credentials=credentials,
                     authenticator_selection=AuthenticatorSelectionCriteria(resident_key=ResidentKeyRequirement.REQUIRED,
                         user_verification=UserVerificationRequirement.REQUIRED))

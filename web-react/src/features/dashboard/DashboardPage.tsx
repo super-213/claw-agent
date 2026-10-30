@@ -416,7 +416,7 @@ export function DashboardPage() {
       <main className="dashboard-main">
         <header className="dashboard-topbar">
           <div>
-            <span className="dashboard-kicker">Claw Agent</span>
+            <span className="dashboard-kicker">Home Agent</span>
             <h1>后台看板</h1>
             <p>{subtitle}</p>
           </div>

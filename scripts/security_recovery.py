@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline operator recovery. Stop Claw first; never logs hashes or passwords."""
+"""Offline operator recovery. Stop Home Agent first; never logs hashes or passwords."""
 import argparse
 import getpass
 import json
@@ -65,6 +65,6 @@ if __name__ == '__main__':
             users.reset_password(identity, password)
             sessions.revoke_user(identity)
             passkeys.revoke_user(identity)
-        print(f'Reset {len(replacements)} accounts. Restart Claw to discard all in-memory sessions.')
+        print(f'Reset {len(replacements)} accounts. Restart Home Agent to discard all in-memory sessions.')
     elif affected:
         print('Stop the server, then run this script with --apply to set NEW passwords and revoke sessions/passkeys.')

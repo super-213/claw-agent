@@ -40,11 +40,11 @@ for site in /etc/nginx/sites-enabled/*; do
   esac
 done
 if [[ -e "$SITE_LINK" && ! -L "$SITE_LINK" ]]; then
-  echo "已有非符号链接的 Claw Agent 站点：$SITE_LINK" >&2
+  echo "已有非符号链接的 Home Agent 站点：$SITE_LINK" >&2
   exit 1
 fi
 if [[ -L "$SITE_LINK" && "$(readlink -f "$SITE_LINK")" != "$SITE_CONF" ]]; then
-  echo "Claw Agent 站点链接指向其他配置：$SITE_LINK" >&2
+  echo "Home Agent 站点链接指向其他配置：$SITE_LINK" >&2
   exit 1
 fi
 if [[ -e "$DEFAULT_LINK" && ! -L "$DEFAULT_LINK" ]]; then

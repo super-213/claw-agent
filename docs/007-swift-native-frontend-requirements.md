@@ -22,7 +22,7 @@
 
 ## 3. 产品定位
 
-Swift App 是 Claw Agent 的原生移动前端。
+Swift App 是 Home Agent 的原生移动前端。
 
 它不是新的后端，不保存权威业务数据，不直接调用模型 API，不执行命令，不管理本地 Agent 文件。它只通过现有后端 API 完成：
 
@@ -91,7 +91,7 @@ Swift App 是 Claw Agent 的原生移动前端。
 ```text
 Swift App
 ├── App
-│   ├── ClawAgentApp
+│   ├── HomeAgentApp
 │   ├── AppRouter
 │   └── AppEnvironment
 ├── Core

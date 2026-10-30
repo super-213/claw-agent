@@ -68,7 +68,7 @@ fi
 echo "配置 systemd 后端服务…"
 sudo tee "/etc/systemd/system/$SERVICE_NAME.service" >/dev/null <<EOF
 [Unit]
-Description=Claw Agent API
+Description=Home Agent API
 After=network-online.target
 Wants=network-online.target
 

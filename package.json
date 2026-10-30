@@ -1,5 +1,5 @@
 {
-  "name": "agent",
+  "name": "home-agent",
   "version": "1.0.0",
   "description": "基于分层架构和插件化设计的智能 Agent 系统。",
   "main": "index.js",

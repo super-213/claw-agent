@@ -14,7 +14,7 @@ for line in sys.stdin:
         result = {'protocolVersion': '2025-11-25', 'capabilities': {'tools': {}},
                   'serverInfo': {'name': 'claw-local-status', 'version': '1.0'}}
     elif method == 'tools/list':
-        result = {'tools': [{'name': 'service_status', 'description': 'Read local Claw service health',
+        result = {'tools': [{'name': 'service_status', 'description': 'Read local Home Agent service health',
                             'inputSchema': SCHEMA, 'annotations': {'readOnlyHint': True}}]}
     elif method == 'tools/call' and request['params']['name'] == 'service_status':
         try:
@@ -22,7 +22,7 @@ for line in sys.stdin:
                 healthy = response.status == 200
         except OSError:
             healthy = False
-        result = {'content': [{'type': 'text', 'text': 'Claw API reachable' if healthy else 'Claw API unavailable'}],
+        result = {'content': [{'type': 'text', 'text': 'Home Agent API reachable' if healthy else 'Home Agent API unavailable'}],
                   'structuredContent': {'service': 'claw', 'healthy': healthy}}
     else:
         print(json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'error': {'code': -32601, 'message': 'Unknown method'}}), flush=True)

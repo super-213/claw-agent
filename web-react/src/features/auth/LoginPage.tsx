@@ -117,7 +117,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated?: () => void } 
           <Bot size={19} />
         </div>
         <div className="auth-title">
-          <span>Claw</span> Agent
+          <span>Home</span> Agent
         </div>
         <div className="auth-subtitle">
           {onAuthenticated ? '登录已过期，请重新登录。原页面中的输入仍然保留。' : bootstrapMode ? '首次使用需要初始化管理员账号' : '登录后继续使用工作台'}

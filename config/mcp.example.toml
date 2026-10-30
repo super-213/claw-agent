@@ -5,7 +5,7 @@ id = "home"
 enabled = true
 # Absolute executable and script paths must be reviewed by the operator.
 command = "/usr/bin/python3"
-args = ["/absolute/path/to/claw-agent/scripts/mcp_status_server.py"]
+args = ["/absolute/path/to/home-agent/scripts/mcp_status_server.py"]
 tools = ["service_status"]
 user_ids = ["REPLACE_WITH_BOUND_USER_ID"]
 timeout = 5

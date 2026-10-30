@@ -1,4 +1,4 @@
-# Claw Agent 现代 Web 技术升级计划
+# Home Agent 现代 Web 技术升级计划
 
 > 项目仓库：<https://github.com/super-213/claw-agent>  
 > 计划版本：v1.0  
@@ -8,7 +8,7 @@
 
 ## 1. 背景与目标
 
-Claw Agent 面向本地部署的家庭 AI Agent 场景。根据此前对公开仓库说明、依赖和部分配置的初步评估，项目已有 React、TypeScript、Vite、FastAPI、PWA、流式响应，以及 Agent 工具调用、审批与任务恢复的基础。**本计划并不等于完整源码审计**；每个涉及既有功能的结论均须在实施前复核。
+Home Agent 面向本地部署的家庭 AI Agent 场景。根据此前对公开仓库说明、依赖和部分配置的初步评估，项目已有 React、TypeScript、Vite、FastAPI、PWA、流式响应，以及 Agent 工具调用、审批与任务恢复的基础。**本计划并不等于完整源码审计**；每个涉及既有功能的结论均须在实施前复核。
 
 目标：
 

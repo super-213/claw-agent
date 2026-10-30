@@ -8,11 +8,11 @@ if [[ "$(id -u)" -eq 0 ]]; then
   exit 1
 fi
 
-echo "停止并禁用 Claw Agent 后端…"
+echo "停止并禁用 Home Agent 后端…"
 sudo systemctl disable --now claw-agent.service
 
 if [[ -L "$SITE_LINK" ]]; then
-  echo "停用 Claw Agent 的 Nginx 站点…"
+  echo "停用 Home Agent 的 Nginx 站点…"
   sudo unlink "$SITE_LINK"
   sudo nginx -t
   if systemctl is-active --quiet nginx; then
@@ -23,4 +23,4 @@ elif [[ -e "$SITE_LINK" ]]; then
   exit 1
 fi
 
-echo "Claw Agent 已关闭。重新启动：bash ~/claw-agent/deploy/pi-start.sh"
+echo "Home Agent 已关闭。重新启动：bash ~/claw-agent/deploy/pi-start.sh"

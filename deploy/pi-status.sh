@@ -4,7 +4,7 @@ set -u
 APP_DIR="$HOME/claw-agent"
 SITE_LINK="/etc/nginx/sites-enabled/claw-agent"
 
-echo "Claw Agent 状态"
+echo "Home Agent 状态"
 echo "项目目录：$APP_DIR"
 if [[ -d "$APP_DIR" ]]; then
   echo "代码：已安装"

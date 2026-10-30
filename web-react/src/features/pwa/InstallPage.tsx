@@ -20,7 +20,7 @@ export function InstallPage() {
   return <main className="pwa-install">
     <Link className="pwa-back" to="/home"><ArrowLeft size={18} /> 返回首页</Link>
     <img className="pwa-app-icon" src="/apple-touch-icon.png" width="80" height="80" alt="" />
-    <p className="pwa-eyebrow">CLAW HOME AGENT</p>
+    <p className="pwa-eyebrow">HOME AGENT</p>
     <h1>{installed ? '已在独立窗口中打开' : '把家庭助手放到主屏幕'}</h1>
     <p>点桌面图标直接打开，留更多空间给对话和生活资料。</p>
     {installed ? <Link className="pwa-primary" to="/home">进入家庭助手</Link> : <>
