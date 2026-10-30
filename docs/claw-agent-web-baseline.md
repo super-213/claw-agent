@@ -39,7 +39,7 @@ React/TypeScript SPA → FastAPI Cookie 鉴权 → 业务服务（事项/留言�
 新增模块：
 
 - `agent_runtime/mcp_adapter.py` / `mcp_launcher.py`：显式白名单、工具发现、完整 JSON Schema 校验、既有审批、无继承密钥环境、超时/输出/并发/CPU 限制、进程组清理、元数据审计。
-- `services/offline_api.py` 与前端 `features/offline`：显式启用的元数据快照、作用域隔离的 IndexedDB、个人备忘同步与人工冲突处理。
+- 前端 `features/offline/responseCache.ts`：页面数据自动缓存，按账号隔离，原页面断网回退；旧 `services/offline_api.py` 快照和备忘队列仅保留兼容。
 - `services/passkeys.py` 与前端认证模块：密码确认后的注册、浏览器和会话绑定的一次性 challenge、WebAuthn 验证库、设备管理和密码后备。
 - Container Queries 改善对话卡片、事项行与工作台；主题切换选择性使用 View Transitions；快捷菜单使用 Popover，保留原浏览器降级、方向键与 Escape。
 

@@ -1,3 +1,4 @@
+import { bindCacheUser, clearResponseCache } from '../features/offline/responseCache';
 import { create } from 'zustand';
 import type {
   ChatRunStatus,
@@ -71,6 +72,8 @@ export const useAppStore = create<AppState>((set) => ({
   })),
   setPendingChatMessage: (pendingChatMessage) => set({ pendingChatMessage }),
   setCurrentUser: (currentUser) => set((state) => {
+    if (currentUser) void bindCacheUser(currentUser);
+    else void clearResponseCache();
     const changed = state.currentUser?.id !== currentUser?.id;
     if (changed) Object.values(state.streams).forEach(stream => stream.abortController?.abort());
     return {

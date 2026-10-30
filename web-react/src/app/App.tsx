@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { initializeOfflinePrivacy } from '../features/offline/storage';
-import { cancelOfflineSync, refreshOffline } from '../features/offline/sync';
+import { cancelOfflineSync } from '../features/offline/sync';
 import { Fragment, useEffect, useState } from 'react';
-import { useRoutes } from 'react-router-dom';
+import { useLocation, useNavigate, useRoutes } from 'react-router-dom';
 import { routes } from './router';
 import { PwaStatus } from '../features/pwa/PwaStatus';
 import { useMobileViewport } from '../features/pwa/useMobileViewport';
@@ -21,6 +21,8 @@ function Reauthenticate({ onClose }: { onClose: () => void }) {
 
 export function App() {
   const element = useRoutes(routes);
+  const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const userId = useAppStore(state => state.currentUser?.id);
   const [expired, setExpired] = useState(false);
@@ -28,18 +30,15 @@ export function App() {
   useEffect(() => initializeTheme(), []);
   useEffect(() => initializeOfflinePrivacy(), []);
   useEffect(() => {
-    const validate = () => { if (window.navigator.onLine) void refreshOffline().catch(() => undefined); };
-    const clear = () => { cancelOfflineSync(); useAppStore.getState().setCurrentUser(null); queryClient.clear(); };
-    window.addEventListener('online', validate);
+    const clear = () => { cancelOfflineSync(); useAppStore.getState().setCurrentUser(null); queryClient.clear(); setExpired(false); navigate('/login', { replace: true }); };
+    const refresh = () => { void queryClient.invalidateQueries(); };
     window.addEventListener('claw-auth-cleared', clear);
-    document.addEventListener('visibilitychange', validate);
-    validate();
+    window.addEventListener('online', refresh);
     return () => {
-      window.removeEventListener('online', validate);
       window.removeEventListener('claw-auth-cleared', clear);
-      document.removeEventListener('visibilitychange', validate);
+      window.removeEventListener('online', refresh);
     };
-  }, [queryClient]);
+  }, [navigate, queryClient]);
 
   useEffect(() => {
     const onUnauthorized = () => {
@@ -54,6 +53,6 @@ export function App() {
   }, []);
 
   return <div className="react-route-shell"><Fragment key={userId}>{element}</Fragment><PwaStatus />
-    {expired && <Reauthenticate onClose={() => setExpired(false)} />}
+    {expired && userId && location.pathname !== '/login' && <Reauthenticate onClose={() => setExpired(false)} />}
   </div>;
 }

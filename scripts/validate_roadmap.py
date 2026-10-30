@@ -1,4 +1,4 @@
-"""Production-browser acceptance: offline isolation, memo replay, WebAuthn, layouts.
+"""Production-browser acceptance: automatic data caching, WebAuthn, layouts.
 
 Run npm run web:build first. Uses isolated accounts and Chrome virtual passkeys.
 """
@@ -38,6 +38,7 @@ env = {**os.environ, 'HOME010_API_PORT': str(api_port), 'VITE_API_TARGET': f'htt
        'PASSKEY_ENABLED': 'true', 'PASSKEY_RP_ID': 'localhost', 'PASSKEY_ORIGIN': origin,
        'PATH': node + os.pathsep + os.environ['PATH']}
 processes = []
+skip_passkey = os.environ.get('ROADMAP_SKIP_PASSKEY') == '1'
 try:
     api_log = (OUT / 'api.log').open('w')
     processes.append(subprocess.Popen([sys.executable, str(ROOT / 'test/browser/roadmap_server.py')], cwd=ROOT,
@@ -85,46 +86,53 @@ try:
                 expect(page.get_by_role('navigation', name='手机主导航')).to_be_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.screenshot(path=str(OUT / f'home-{width}.png'))
-        page.goto(origin + '/offline')
-        page.get_by_role('button', name='启用／同步离线查看').click()
-        expect(page.get_by_text('最后同步：', exact=False)).to_be_visible()
-        page.screenshot(path=str(OUT / 'offline-online.png'))
+        # Cache full data through the regular UI; no opt-in page or button.
+        page.goto(origin + '/chat')
+        expect(page.get_by_role('heading', name='周末准备清单')).to_be_visible()
+        page.wait_for_load_state('networkidle')
+        page.goto(origin + '/home/items')
+        expect(page.get_by_text('示例·牛奶', exact=False).first).to_be_visible()
+        page.wait_for_load_state('networkidle')
         context.set_offline(True)
         page.reload()
-        expect(page.get_by_text('最后同步：', exact=False)).to_be_visible()
-        page.get_by_label('备忘内容', exact=True).fill('浏览器离线幂等测试备忘')
-        page.get_by_role('button', name='保存到本地待同步队列').click()
-        expect(page.get_by_role('heading', name='待同步备忘（1）')).to_be_visible()
-        page.screenshot(path=str(OUT / 'offline-390.png'))
+        expect(page.get_by_text('示例·牛奶', exact=False).first).to_be_visible()
+        expect(page.get_by_text('当前离线，已缓存的数据可继续查看，内容可能不是最新。修改与 AI 操作需要联网。')).to_be_visible()
+        page.screenshot(path=str(OUT / 'automatic-cache-home.png'))
+        page.goto(origin + '/chat')
+        expect(page.get_by_role('heading', name='周末准备清单')).to_be_visible()
+        page.screenshot(path=str(OUT / 'automatic-cache-chat.png'))
         context.set_offline(False)
-        page.get_by_role('button', name='验证权限并同步').click()
-        expect(page.get_by_role('heading', name='待同步备忘（1）')).to_have_count(0)
-        payload = context.request.get(origin + '/api/home/tasks?limit=200').json()
-        assert sum(row['task']['title'] == '浏览器离线幂等测试备忘' for row in payload['items']) == 1
-        # A second tab exercises the storage-event fallback without BroadcastChannel.
+        page.goto(origin + '/offline')
+        page.wait_for_url('**/home')
         other = context.new_page()
         other.add_init_script('delete window.BroadcastChannel')
-        other.goto(origin + '/offline')
-        other.get_by_role('button', name='启用／同步离线查看').click()
-        expect(other.get_by_text('最后同步：', exact=False)).to_be_visible()
+        other.goto(origin + '/home')
+        expect(other.locator('.home-shell')).to_be_visible()
         # Real browser registration/login against a virtual authenticator.
         page.bring_to_front()
-        cdp = context.new_cdp_session(page)
-        cdp.send('WebAuthn.enable')
-        cdp.send('WebAuthn.addVirtualAuthenticator', {'options': {'protocol': 'ctap2', 'transport': 'internal',
-            'hasResidentKey': True, 'hasUserVerification': True, 'isUserVerified': True,
-            'automaticPresenceSimulation': True}})
-        page.goto(origin + '/home/more?section=account')
-        page.get_by_label('当前密码（新增与移除时验证）').fill('Home010-test')
-        page.get_by_role('button', name='添加通行密钥').click()
-        expect(page.get_by_role('button', name='移除此密钥')).to_be_visible()
+        if not skip_passkey:
+            cdp = context.new_cdp_session(page)
+            cdp.send('WebAuthn.enable')
+            cdp.send('WebAuthn.addVirtualAuthenticator', {'options': {'protocol': 'ctap2', 'transport': 'internal',
+                'hasResidentKey': True, 'hasUserVerification': True, 'isUserVerified': True,
+                'automaticPresenceSimulation': True}})
+            page.goto(origin + '/home/more?section=account')
+            page.get_by_label('当前密码（新增与移除时验证）').fill('Home010-test')
+            page.get_by_role('button', name='添加通行密钥').click()
+            expect(page.get_by_role('button', name='移除此密钥')).to_be_visible()
+        else:
+            page.goto(origin + '/home/more?section=account')
         page.get_by_role('button', name='退出登录', exact=True).click()
         page.wait_for_url('**/login')
-        expect(other.get_by_text('最后同步：', exact=False)).to_have_count(0)
+        other.wait_for_url('**/login')
         page.get_by_label('用户名', exact=True).fill('home010')
-        page.get_by_role('button', name='使用通行密钥登录').click()
+        if skip_passkey:
+            page.get_by_label('密码', exact=True).fill('Home010-test')
+            page.get_by_role('button', name='登录', exact=True).click()
+        else:
+            page.get_by_role('button', name='使用通行密钥登录').click()
         page.wait_for_url('**/home')
-        # Account switch leaves neither metadata nor memo drafts in IndexedDB.
+        # Account switch leaves no previous user response in IndexedDB.
         page.goto(origin + '/home/more?section=account')
         page.get_by_role('button', name='退出登录', exact=True).click()
         page.wait_for_url('**/login')
@@ -132,9 +140,20 @@ try:
         page.get_by_label('密码', exact=True).fill('Home010-test')
         page.get_by_role('button', name='登录', exact=True).click()
         page.wait_for_url('**/home')
-        page.goto(origin + '/offline')
-        expect(page.get_by_text('浏览器离线幂等测试备忘', exact=True)).to_have_count(0)
-        expect(page.get_by_text('最后同步：', exact=False)).to_have_count(0)
+        cached_owner = page.evaluate("localStorage.getItem('claw-response-cache-owner')")
+        assert cached_owner == context.request.get(origin + '/api/auth/me').json()['user']['id']
+        assert page.evaluate('''async () => {
+            const db = await new Promise((resolve, reject) => {
+                const req = indexedDB.open('claw-response-cache', 1);
+                req.onsuccess = () => resolve(req.result); req.onerror = reject;
+            });
+            const rows = await new Promise((resolve, reject) => {
+                const req = db.transaction('responses').objectStore('responses').getAll();
+                req.onsuccess = () => resolve(req.result); req.onerror = reject;
+            });
+            db.close();
+            return rows.every(row => row.owner === localStorage.getItem('claw-response-cache-owner'));
+        }''')
         other.close()
         page.emulate_media(reduced_motion='reduce')
         page.goto(origin + '/home')
@@ -143,8 +162,8 @@ try:
         browser.close()
         (OUT / 'result.json').write_text(json.dumps({'status': 'passed', 'checks': [
             '390/768/1440 layouts', 'native popover keyboard and Escape', 'offline reload',
-            'memo idempotent sync', 'WebAuthn browser registration and login',
-            'logout/account cache isolation', 'cross-tab storage fallback', 'reduced motion', 'no page errors']}, ensure_ascii=False, indent=2))
+            'automatic full page and conversation cache', *([] if skip_passkey else ['WebAuthn browser registration and login']),
+            'logout/account cache isolation', 'cross-tab storage fallback', 'reduced motion', 'no page errors'], 'skipped': ['WebAuthn browser registration and login'] if skip_passkey else []}, ensure_ascii=False, indent=2))
         print('Roadmap browser acceptance passed: ' + str(OUT))
 finally:
     for process in reversed(processes):

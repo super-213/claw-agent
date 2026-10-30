@@ -237,7 +237,7 @@ export function ChatWorkspace({
     if (!active) return;
     let mounted = true;
     const boot = async () => {
-      await Promise.all([loadSkills(), loadConfig()]);
+      await Promise.allSettled([loadSkills(), loadConfig()]);
       const loadedSessions = await loadSessions();
       if (!mounted) return;
       const target = requestedSessionId || params.sessionId || useAppStore.getState().currentSessionId || loadedSessions[0]?.id;

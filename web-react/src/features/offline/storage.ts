@@ -1,3 +1,4 @@
+import { clearResponseCache } from './responseCache';
 // Explicit opt-in only. One active account/household scope per browser database.
 export interface Scope { user_id: string; household_id: string; member_id: string }
 export interface Metadata { id: string; title: string; version?: number; due_date?: string; space_type?: string; temporal_type?: string }
@@ -67,6 +68,7 @@ export async function readOffline(): Promise<State> {
 
 export function clearOffline(broadcast = true, signOut = false): Promise<void> {
   generation++;
+  const cacheCleared = clearResponseCache();
   window.dispatchEvent(new Event('claw-offline-cleared'));
   try { sessionStorage.removeItem(PERMIT); } catch { /* Still purge IndexedDB when session storage is blocked. */ }
   if (broadcast) {
@@ -75,7 +77,7 @@ export function clearOffline(broadcast = true, signOut = false): Promise<void> {
     try { localStorage.setItem(REVOKE, JSON.stringify(notice)); } catch { /* BroadcastChannel remains available where storage is blocked. */ }
   }
   changed();
-  const job = serial.catch(() => undefined).then(async () => { await transact(() => empty()); changed(); });
+  const job = serial.catch(() => undefined).then(async () => { await transact(() => empty()); await cacheCleared; changed(); });
   serial = job;
   return job;
 }

@@ -176,6 +176,7 @@ it('keeps four primary destinations and groups miscellaneous tools without dupli
   expect(screen.getByRole('heading', { name: '个人设置' })).toBeTruthy();
   expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
   expect(screen.queryByRole('link', { name: /最近对话/ })).toBeNull();
+  expect(screen.queryByRole('link', { name: /离线随身页/ })).toBeNull();
   expect(screen.queryByRole('heading', { name: '管理员工具' })).toBeNull();
   expect(screen.queryByRole('group', { name: '外观' })).toBeNull();
   fireEvent.click(screen.getByRole('link', { name: /物品操作记录/ }));

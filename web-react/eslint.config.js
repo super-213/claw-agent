@@ -21,6 +21,8 @@ export default [
         sessionStorage: 'readonly',
         indexedDB: 'readonly',
         IDBDatabase: 'readonly',
+        IDBObjectStore: 'readonly',
+        IDBRequest: 'readonly',
         BroadcastChannel: 'readonly',
         crypto: 'readonly',
         atob: 'readonly',

@@ -7,7 +7,6 @@ import {
   CalendarDays,
   Download,
   LayoutDashboard,
-  NotebookPen,
   Users,
   Settings,
 } from 'lucide-react';
@@ -91,9 +90,6 @@ export function MoreView({
           <section className="home-more-group" aria-labelledby="more-tools">
             <h2 id="more-tools">便捷使用</h2>
             <div className="home-more-menu">
-              <Link to="/offline"><NotebookPen size={21} aria-hidden="true" />
-                <span>离线随身页<small>离线查看资料与记录个人备忘</small></span>
-                <ArrowRight size={18} aria-hidden="true" /></Link>
               <Link to="/install"><Download size={21} aria-hidden="true" />
                 <span>添加到主屏幕<small>从手机桌面快速打开</small></span>
                 <ArrowRight size={18} aria-hidden="true" /></Link>

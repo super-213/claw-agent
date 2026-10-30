@@ -1,3 +1,5 @@
+import { useAppStore } from '../stores/appStore';
+import { cacheableRead, cacheContext, cachedResponse, saveResponse, clearResponseCache, invalidateResponseCache } from '../features/offline/responseCache';
 import { createNdjsonParseState, flushNdjson, isTerminalStreamError, parseNdjsonChunk } from './stream';
 import type { ChatStreamEvent } from './types';
 import { beginActivity } from '../features/pwa/activity';
@@ -23,6 +25,7 @@ const emitUnauthorized = () => {
 const parseJson = async (response: Response): Promise<any> => {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if ([401, 403].includes(response.status)) await clearResponseCache();
     if (response.status === 401) emitUnauthorized();
     throw new ApiError(data.message || data.error || '请求失败', response, data);
   }
@@ -33,16 +36,34 @@ export const jsonRequest = async <T>(url: string, options: RequestInit = {}): Pr
   const writing = options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase());
   if (writing && !window.navigator.onLine) throw new Error('当前离线，请联网后重试。');
   const finish = writing ? beginActivity() : () => undefined;
+  const context = cacheContext(useAppStore.getState().currentUser?.id);
+  const cacheRead = !writing && (options.method || 'GET').toUpperCase() === 'GET' && cacheableRead(url);
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Accept: 'application/json',
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(options.headers || {}),
-      },
-    });
-    return await parseJson(response) as T;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          Accept: 'application/json',
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers || {}),
+        },
+      });
+    } catch (error) {
+      if (cacheRead && !options.signal?.aborted && error instanceof TypeError) {
+        const cached = await cachedResponse(url, context);
+        if (cached) {
+          window.dispatchEvent(new Event('claw-cache-fallback'));
+          return cached.data as T;
+        }
+      }
+      throw error;
+    }
+    const data = await parseJson(response) as T;
+    if (cacheRead) window.dispatchEvent(new Event('claw-cache-fresh'));
+    if (writing) await invalidateResponseCache(url);
+    else if (cacheRead && url !== '/api/auth/me') await saveResponse(url, data, context);
+    return data;
   } finally { finish(); }
 };
 
@@ -56,7 +77,9 @@ export const formRequest = async <T>(url: string, formData: FormData, options: R
       body: formData,
       headers: { Accept: 'application/json', ...(options.headers || {}) },
     });
-    return await parseJson(response) as T;
+    const data = await parseJson(response) as T;
+    await invalidateResponseCache(url);
+    return data;
   } finally { finish(); }
 };
 

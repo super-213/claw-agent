@@ -38,5 +38,5 @@ export const authApi = {
     await Promise.race([clearLocalPush().catch(() => undefined), new Promise(resolve => window.setTimeout(resolve, 2000))]);
     return result;
   },
-  me: () => jsonRequest<{ user: User }>('/api/auth/me'),
+  me: (signal?: AbortSignal) => jsonRequest<{ user: User }>('/api/auth/me', { signal }),
 };

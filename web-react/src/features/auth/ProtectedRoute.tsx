@@ -10,8 +10,9 @@ export function ProtectedRoute() {
 
   const query = useQuery({
     queryKey: ['auth', 'me'],
-    queryFn: async () => {
-      const data = await authApi.me();
+    queryFn: async ({ signal }) => {
+      const data = await authApi.me(signal);
+      if (signal.aborted) throw new Error('登录状态读取已取消');
       setCurrentUser(data.user);
       return data.user;
     },

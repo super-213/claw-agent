@@ -4,6 +4,15 @@ import { hasUnsavedWork } from './activity';
 
 export function PwaStatus() {
   const online = useOnline();
+  const [cached, setCached] = useState(false);
+  useEffect(() => {
+    const fallback = () => setCached(true);
+    const restored = () => setCached(false);
+    window.addEventListener('claw-cache-fallback', fallback);
+    window.addEventListener('online', restored);
+    window.addEventListener('claw-cache-fresh', restored);
+    return () => { window.removeEventListener('claw-cache-fallback', fallback); window.removeEventListener('online', restored); window.removeEventListener('claw-cache-fresh', restored); };
+  }, []);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration>();
   const [available, setAvailable] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -59,7 +68,7 @@ export function PwaStatus() {
     registration.waiting.postMessage({ type: 'APPLY_UPDATE' }, [channel.port2]);
   };
   return <>
-    {!online && <div className="pwa-status pwa-offline" role="status">当前离线，输入暂留本页。<a href="/offline">查看已授权离线数据与个人备忘</a></div>}
+    {(!online || cached) && <div className="pwa-status pwa-offline" role="status">{online ? '网络暂时不可用' : '当前离线'}，已缓存的数据可继续查看，内容可能不是最新。修改与 AI 操作需要联网。</div>}
     {(available || notice) && <aside className="pwa-status" aria-label="应用状态"><span role="status">{notice || '有新版本可用'}</span>{available && <button type="button" disabled={updating || !online} onClick={update}>更新</button>}<button type="button" aria-label="关闭提示" onClick={() => { setNotice(''); setAvailable(false); }}>关闭</button></aside>}
     {updating && <div className="pwa-update-cover" role="alert" aria-busy="true">正在更新，请稍候…</div>}
   </>;
