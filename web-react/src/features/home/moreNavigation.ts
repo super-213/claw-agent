@@ -1,5 +1,6 @@
 export const moreSections: Record<string, string> = {
-  account: '账号与设置',
+  account: '账号',
+  settings: '设置',
   activity: '物品操作记录',
   skills: '技能',
   admin: '家庭成员管理',

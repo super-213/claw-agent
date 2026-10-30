@@ -1,4 +1,4 @@
-import { PasskeySettings } from '../auth/PasskeySettings';
+import { AccountView } from '../auth/AccountView';
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -8,10 +8,10 @@ import {
   Download,
   LayoutDashboard,
   Users,
+  UserRound,
   Settings,
   Wrench,
 } from 'lucide-react';
-import { authApi } from '../../api/auth';
 import { homeApi } from '../../api/home';
 import { isAdmin, useAppStore } from '../../stores/appStore';
 import { formatTime } from '../../utils/format';
@@ -84,8 +84,13 @@ export function MoreView({
               <h2 id="more-personal">个人设置</h2>
               <div className="home-more-menu">
                 <Link to="/home/more?section=account">
+                  <UserRound size={21} aria-hidden="true" />
+                  <span>账号<small>个人资料、密码与登录安全</small></span>
+                  <ArrowRight size={18} aria-hidden="true" />
+                </Link>
+                <Link to="/home/more?section=settings">
                   <Settings size={21} aria-hidden="true" />
-                  <span>账号与设置<small>外观、通知、通行密钥与登录</small></span>
+                  <span>设置<small>外观与回复通知</small></span>
                   <ArrowRight size={18} aria-hidden="true" />
                 </Link>
               </div>
@@ -122,30 +127,19 @@ export function MoreView({
       )}
       {section === 'skills' && <SkillsView />}
       {section === 'admin' && isAdmin(user) && <TaskAdmin />}
-      {section === 'account' && (
-        <div className="home-account">
-          <h2>{user?.display_name || user?.username}</h2>
-          <p className="home-muted">账号：{user?.username}</p>
+      {section === 'account' && <AccountView key={user?.id} />}
+      {section === 'settings' && (
+        <div className="account-preferences home-preferences">
           <ThemeSelector />
           <ChatNotificationSettings />
-          <PasskeySettings />
-          {isAdmin(user) && (
-            <button type="button" onClick={onSettings}>
-              模型与设备设置（管理员）
+          {isAdmin(user) && <section aria-labelledby="admin-settings-heading">
+            <h2 id="admin-settings-heading">管理员设置</h2>
+            <button className="account-action-row" type="button" onClick={onSettings}>
+              <Settings size={20} aria-hidden="true" />
+              <span>模型与设备<small>配置模型服务与家庭设备连接</small></span>
+              <ArrowRight size={18} aria-hidden="true" />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() =>
-              void authApi
-                .logout()
-                .then(() => window.location.assign('/login'))
-                .catch((e) => setSessionError(e.message))
-            }
-          >
-            退出登录
-          </button>
-          {sessionError && <p role="alert">{sessionError}</p>}
+          </section>}
         </div>
       )}
       {section === 'sessions' && (

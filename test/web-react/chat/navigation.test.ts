@@ -44,7 +44,7 @@ it('keeps account and admin shortcuts in the single global Agent menu', () => {
   mount();
   expect(screen.queryByRole('button', { name: '打开账号与管理菜单' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '家庭 Agent 快捷导航' }));
-  expect(screen.getByRole('link', { name: '账号与设置' })).toHaveAttribute('href', '/home/more?section=account');
+  expect(screen.getByRole('link', { name: '账号' })).toHaveAttribute('href', '/home/more?section=account');
 });
 
 it('shows connection loss in the header and restores the current task status only after a fresh response', () => {

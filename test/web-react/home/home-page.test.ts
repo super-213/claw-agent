@@ -11,6 +11,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { HomePage } from '../../../web-react/src/features/home/HomePage';
+import { authApi } from '../../../web-react/src/api/auth';
 import { homeApi } from '../../../web-react/src/api/home';
 import { tasksApi, type TaskList } from '../../../web-react/src/api/tasks';
 import { useAppStore } from '../../../web-react/src/stores/appStore';
@@ -188,11 +189,12 @@ it('keeps four primary destinations and groups miscellaneous tools without dupli
   expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
 });
 
-it('opens account settings with appearance controls and a deterministic return on a direct link', async () => {
+it('opens account without application preferences and returns from a direct link', async () => {
   window.history.replaceState(null, '', '/home/more?section=account');
   mount();
-  expect(screen.getByRole('heading', { name: '账号与设置' })).toHaveFocus();
-  expect(screen.getByRole('group', { name: '外观' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: '账号' })).toHaveFocus();
+  expect(screen.queryByRole('group', { name: '外观' })).toBeNull();
+  expect(screen.getByRole('heading', { name: '个人资料' })).toBeTruthy();
   fireEvent.click(screen.getByRole('link', { name: '返回更多' }));
   expect(window.location.search).toBe('');
   expect(screen.getByRole('heading', { name: '更多' })).toHaveFocus();
@@ -215,4 +217,51 @@ it.each(['unknown', 'admin', 'toString'])('recovers invalid or unauthorized More
   await waitFor(() => expect(window.location.search).toBe(''));
   expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
   expect(screen.queryByText('家庭成员绑定与迁移核对（管理员）')).toBeNull();
+});
+
+
+it('separates settings from account and hides administrator configuration for regular users', async () => {
+  window.history.replaceState(null, '', '/home/more');
+  mount();
+  expect(screen.getByRole('link', { name: /账号.*个人资料/ })).toHaveAttribute('href', '/home/more?section=account');
+  fireEvent.click(screen.getByRole('link', { name: /设置.*外观与回复通知/ }));
+  expect(screen.getByRole('heading', { name: '设置' })).toHaveFocus();
+  expect(screen.getByRole('group', { name: '外观' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '退出登录' })).toBeNull();
+  expect(screen.queryByText('管理员设置')).toBeNull();
+});
+
+it('edits the display name and refreshes the current identity', async () => {
+  window.history.replaceState(null, '', '/home/more?section=account');
+  const updated = { ...useAppStore.getState().currentUser!, display_name: '新的称呼' };
+  const cacheUpdate = vi.spyOn(client, 'setQueryData');
+  const save = vi.spyOn(authApi, 'updateProfile').mockResolvedValue({ ok: true, user: updated });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: '修改显示名称' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '显示名称' }), { target: { value: ' 新的称呼 ' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存名称' }));
+  await screen.findByText('显示名称已更新。');
+  expect(save).toHaveBeenCalledWith('新的称呼');
+  expect(useAppStore.getState().currentUser?.display_name).toBe('新的称呼');
+  expect(cacheUpdate).toHaveBeenCalledWith(['auth', 'me'], updated);
+});
+
+it('validates password confirmation, reports server errors and clears secrets when collapsed', async () => {
+  window.history.replaceState(null, '', '/home/more?section=account');
+  const save = vi.spyOn(authApi, 'changePassword').mockRejectedValue(new Error('当前密码不正确'));
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: /修改密码/ }));
+  fireEvent.change(screen.getByLabelText('当前密码'), { target: { value: 'wrong-password' } });
+  fireEvent.change(screen.getByLabelText('新密码', { exact: true }), { target: { value: 'new-password' } });
+  fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'different-password' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存并重新登录' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('两次输入的新密码不一致');
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'new-password' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存并重新登录' }));
+  await screen.findByText('当前密码不正确');
+  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  fireEvent.click(screen.getByRole('button', { name: /修改密码/ }));
+  expect(screen.getByLabelText('当前密码')).toHaveValue('');
+  expect(screen.getByLabelText('新密码', { exact: true })).toHaveValue('');
 });

@@ -16,6 +16,12 @@ export interface BootstrapAdminPayload extends LoginPayload {
 }
 
 export const authApi = {
+  updateProfile: (display_name: string) => jsonRequest<{ ok: true; user: User }>('/api/auth/profile', {
+    method: 'PATCH', body: JSON.stringify({ display_name }),
+  }),
+  changePassword: (current_password: string, new_password: string) => jsonRequest<{ ok: true }>('/api/auth/change-password', {
+    method: 'POST', body: JSON.stringify({ current_password, new_password }),
+  }),
   bootstrapStatus: () => jsonRequest<{ admin_exists: boolean }>('/api/auth/bootstrap-status'),
   usernames: () => jsonRequest<{ usernames: string[] }>('/api/auth/usernames'),
   bootstrapAdmin: (payload: BootstrapAdminPayload) =>

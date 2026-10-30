@@ -180,3 +180,55 @@ def test_new_login_invalidates_the_previous_cookie(tmp_path, monkeypatch):
     assert previous != client.cookies.get(AUTH_COOKIE_NAME)
     from web_app import auth_sessions
     assert auth_sessions.get_user_id(previous) is None
+
+
+def test_self_profile_is_authenticated_scoped_and_persisted(tmp_path, monkeypatch):
+    client, users, _ = _client_with_auth_state(tmp_path, monkeypatch)
+    assert client.patch('/api/auth/profile', json={'display_name': '称呼'}).status_code == 401
+    admin = users.create_user(username='admin', password='secret123', role='admin')
+    alice = users.create_user(username='alice', password='secret123')
+    client.post('/api/auth/login', json={'username': 'alice', 'password': 'secret123'})
+    for extra in ({'role': 'admin'}, {'user_id': admin['id']}, {'username': 'changed'}, {'status': 'disabled'}):
+        assert client.patch('/api/auth/profile', json={'display_name': 'Alice', **extra}).status_code == 422
+    assert client.patch('/api/auth/profile', json={'display_name': ' '}).status_code == 400
+    assert client.patch('/api/auth/profile', json={'display_name': 'x' * 81}).status_code == 422
+    result = client.patch('/api/auth/profile', json={'display_name': ' 新称呼 '})
+    assert result.status_code == 200
+    assert result.json()['user']['display_name'] == '新称呼'
+    assert 'password_hash' not in result.json()['user']
+    persisted = UserStore(users.path)
+    assert persisted.get_user(alice['id'])['display_name'] == '新称呼'
+    assert persisted.get_user(alice['id'])['role'] == 'user'
+    assert persisted.get_user(admin['id'])['display_name'] == 'admin'
+    assert client.get('/api/auth/me').json()['user']['display_name'] == '新称呼'
+
+
+def test_self_password_change_checks_password_revokes_sessions_and_keeps_passkeys(tmp_path, monkeypatch):
+    client, users, _ = _client_with_auth_state(tmp_path, monkeypatch)
+    assert client.post('/api/auth/change-password', json={'current_password': 'secret123', 'new_password': 'newpass123'}).status_code == 401
+    actor = users.create_user(username='alice', password='secret123', role='admin')
+    client.post('/api/auth/login', json={'username': 'alice', 'password': 'secret123', 'remember_me': True})
+    token = client.cookies.get(AUTH_COOKIE_NAME)
+    from web_app import auth_sessions, passkeys
+    other_token = auth_sessions.create(actor['id'])
+    with passkeys.store.transaction() as doc:
+        doc.setdefault('credentials', {})['fixture-key'] = {'user_id': actor['id']}
+    for payload, status in [
+        ({'current_password': 'wrong', 'new_password': 'newpass123'}, 400),
+        ({'current_password': 'secret123', 'new_password': 'short'}, 422),
+        ({'current_password': 'secret123', 'new_password': 'secret123'}, 400),
+        ({'current_password': 'secret123', 'new_password': 'newpass123', 'user_id': 'other'}, 422),
+    ]:
+        assert client.post('/api/auth/change-password', json=payload).status_code == status
+        assert users.verify_password('alice', 'secret123')
+        assert auth_sessions.get_user_id(token) == actor['id']
+    result = client.post('/api/auth/change-password', json={'current_password': 'secret123', 'new_password': 'newpass123'})
+    assert result.status_code == 200
+    assert 'max-age=0' in result.headers['set-cookie'].lower()
+    assert auth_sessions.get_user_id(token) is None
+    assert auth_sessions.get_user_id(other_token) is None
+    assert client.get('/api/auth/me').status_code == 401
+    assert not UserStore(users.path).verify_password('alice', 'secret123')
+    assert UserStore(users.path).verify_password('alice', 'newpass123')
+    assert 'fixture-key' in passkeys.store.snapshot()['credentials']
+    assert client.post('/api/auth/login', json={'username': 'alice', 'password': 'newpass123'}).status_code == 200

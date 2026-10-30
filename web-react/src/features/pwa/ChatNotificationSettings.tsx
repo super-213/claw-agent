@@ -26,7 +26,7 @@ export function ChatNotificationSettings() {
     <h3>回复通知</h3>
     <p>离开应用后继续生成，完成时提醒你。锁屏通知不显示问题或回答正文。</p>
     {!supported && <p>iPhone 请先<Link to="/install">添加到主屏幕</Link>，从桌面图标打开后开启通知。</p>}
-    {settings && !settings.configured && <p role="status">{settings.reason}</p>}
+    {settings && !settings.configured && <p role="status">回复通知暂不可用，请稍后重试或联系管理员。</p>}
     {settings?.devices.some(device => device.last_error) && <p role="status">上次通知未能送达。回复会保留在对话中；可以检查系统权限，或关闭后重新开启通知。</p>}
     <button type="button" disabled={!supported || !settings || (!enabled && !settings.configured) || busy} onClick={() => void toggle()}>{busy ? '正在处理…' : enabled ? '关闭回复通知' : '开启回复通知'}</button>
     {notice && <p role="status">{notice}</p>}

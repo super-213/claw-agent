@@ -890,3 +890,78 @@ body.home-route .home-shell {
 
 .home-skills-toolbar { display: flex; flex-wrap: wrap; gap: 12px; }
 .home-skills-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
+
+/* Personal account and application preferences share a quiet, divided list. */
+.home-shell .account-preferences {
+  width: 100%;
+  max-width: 720px;
+  display: grid;
+  gap: 32px;
+  justify-items: stretch;
+}
+.home-shell .account-preferences > section,
+.home-shell .account-preferences > fieldset { min-width: 0; }
+.home-shell .account-preferences h2,
+.home-shell .account-preferences h3,
+.home-shell .account-preferences legend {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.home-shell .account-info-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  border-bottom: 1px solid var(--home-outline);
+}
+.home-shell .account-info-row > span { color: var(--home-muted); }
+.home-shell .account-info-row strong { font-weight: 500; overflow-wrap: anywhere; }
+.home-shell .account-info-row button { border: 0; }
+.home-shell .account-action-row {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--home-outline);
+  padding: 18px 0;
+  gap: 14px;
+}
+.home-shell .account-action-row > span { flex: 1; min-width: 0; }
+.home-shell .account-action-row small { display: block; margin-top: 2px; }
+.home-shell .account-action-row[aria-expanded="true"] > svg:last-child { transform: rotate(90deg); }
+.home-shell .account-edit-form {
+  display: grid;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--home-outline);
+}
+.home-shell .account-edit-form label { display: grid; gap: 8px; }
+.home-shell .account-edit-form input {
+  width: 100%;
+  max-width: 420px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--home-outline);
+  border-radius: 8px;
+  color: var(--home-ink);
+  background: var(--home-surface);
+  font: inherit;
+}
+.home-shell .account-form-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.home-shell .account-signout { padding-top: 20px; border-top: 1px solid var(--home-outline); }
+.home-shell .account-signout button { color: var(--home-danger); }
+.home-shell .account-preferences [role="alert"] { color: var(--home-danger); }
+.home-shell .account-passkey-list { list-style: none; padding: 0; }
+.home-shell .account-passkey-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; overflow-wrap: anywhere; }
+.home-shell .account-edit-form > section { display: grid; gap: 16px; }
+.home-shell .home-preferences > fieldset { margin: 0; }
+.home-shell .home-preferences > section { border-block: 0; border-top: 1px solid var(--home-outline); padding-block: 24px 0; }
+.home-shell .home-preferences .chat-notification-settings { display: grid; gap: 12px; justify-items: start; }
+.home-shell .home-preferences .chat-notification-settings h3 { margin: 0; }
+@media (max-width: 480px) {
+  .home-shell .account-info-row { grid-template-columns: 76px minmax(0, 1fr) auto; gap: 8px; }
+}

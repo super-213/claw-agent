@@ -341,7 +341,7 @@ export function HomePage() {
               type="button"
               className="home-avatar"
               onClick={() => go('/home/more?section=account')}
-              aria-label="账号与设置"
+              aria-label="账号"
             >
               {(
                 currentUser?.display_name ||

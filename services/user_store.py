@@ -170,6 +170,22 @@ class UserStore:
             self._write(data)
         return self._public_user(user)
 
+    def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+        """Verify and replace a user's own password under the same storage lock."""
+        self._validate_password(new_password)
+        with self._lock:
+            data = self._read()
+            user = self._find_by_id(data.setdefault('users', []), user_id)
+            if not user or user.get('status') != 'active':
+                raise ValueError('invalid_credentials')
+            if not self.check_password(current_password, user.get('password_hash', '')):
+                raise ValueError('incorrect_password')
+            if current_password == new_password:
+                raise ValueError('password_unchanged')
+            user['password_hash'] = self.hash_password(new_password)
+            user['updated_at'] = self._now_iso()
+            self._write(data)
+
     def verify_password(self, username: str, password: str) -> dict[str, Any] | None:
         user = self.get_user_by_username(username, include_password=True)
         if not user or user.get("status") != "active":

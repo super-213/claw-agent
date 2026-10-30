@@ -15,7 +15,7 @@ import uuid
 
 from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 import uvicorn
 
 from config import ConfigManager
@@ -200,6 +200,17 @@ class UserUpdateRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     password: str | None = None
+
+
+class ProfileUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    display_name: str = Field(min_length=1, max_length=80)
+
+
+class PasswordChangeRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=6)
 
 
 class ShareUpdateRequest(BaseModel):
@@ -1073,6 +1084,30 @@ async def auth_me(user: dict[str, Any] | None = Depends(current_user)):
 
 
 app.include_router(passkey_router(passkeys, require_user, lambda: user_store, _response_with_login_cookie, AUTH_COOKIE_NAME))
+
+
+@app.patch('/api/auth/profile', tags=['auth'])
+def auth_update_profile(payload: ProfileUpdateRequest, user=Depends(require_user)):
+    name = payload.display_name.strip()
+    if not name:
+        return _error('invalid_display_name', 400)
+    return {'ok': True, 'user': user_store.update_user(user['id'], display_name=name)}
+
+
+@app.post('/api/auth/change-password', tags=['auth'])
+def auth_change_password(payload: PasswordChangeRequest, request: Request, response: Response,
+                         user=Depends(require_user)):
+    try:
+        user_store.change_password(user['id'], payload.current_password, payload.new_password)
+    except ValueError as exc:
+        return _error(str(exc), 400)
+    auth_sessions.revoke_user(user['id'])
+    if chat_background is not None:
+        chat_background.notifications.logout(auth_fingerprint(request.cookies.get(AUTH_COOKIE_NAME)))
+    # The remember-me middleware must not restore a revoked cookie.
+    request.state.auth_cookie_refresh = None
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return {'ok': True}
 
 
 @app.get('/api/admin/mcp/status', tags=['admin'])

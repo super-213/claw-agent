@@ -2,14 +2,15 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Bot, CalendarDays, ChevronRight, Download, LayoutDashboard,
-  MessageCircle, Settings, Users,
+  MessageCircle, Settings, UserRound, Users,
 } from 'lucide-react';
 import { isAdmin, useAppStore } from '../../stores/appStore';
 
 const shortcuts = [
   { path: '/chat', label: '最近对话', icon: MessageCircle },
   { path: '/home/more?section=activity', label: '物品操作记录', icon: CalendarDays },
-  { path: '/home/more?section=account', label: '账号与设置', icon: Settings },
+  { path: '/home/more?section=account', label: '账号', icon: UserRound },
+  { path: '/home/more?section=settings', label: '设置', icon: Settings },
   { path: '/install', label: '添加到主屏幕', icon: Download },
 ];
 const adminShortcuts = [
