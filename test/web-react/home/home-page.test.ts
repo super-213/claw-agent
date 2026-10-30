@@ -141,3 +141,28 @@ it('reports failed writes without removing the item or claiming completion', asy
   expect(screen.getAllByRole('button', { name: /示例牛奶/ })[0]).toBeTruthy();
   expect(screen.queryByText('示例牛奶 已标记用完')).toBeNull();
 });
+
+it('completes an overdue attention item using its original occurrence and refreshes the list', async () => {
+  vi.mocked(homeApi.inventory).mockResolvedValue({ today: list.today, timezone: list.timezone, items: [] });
+  const row: TaskList['items'][number] = {
+    task: { id: 'late', title: '已做完忘勾选', description: '', category: null, created_by: 'A',
+      space_type: 'personal', space_owner_id: 'A', temporal_type: 'timed', actionable: true,
+      assignee_ids: ['A'], related_member_ids: [], completion_mode: 'all', lifecycle: 'active',
+      version: 1, starts_on: null, due_date: '2026-10-21', due_at: null, recurrence: null },
+    occurrence: { id: 'late:once', task_id: 'late', title_snapshot: '已做完忘勾选', due_date: '2026-10-21',
+      due_at: null, status: 'open', version: 3, completion_mode: 'all', assignee_ids: ['A'],
+      member_progress: { A: { status: 'open', completed_at: null } } },
+    overdue: true, assignee_unavailable: [],
+  };
+  vi.mocked(tasksApi.list).mockResolvedValue({ ...list, items: [row], total: 1 });
+  const change = vi.spyOn(tasksApi, 'change').mockImplementation(async () => {
+    vi.mocked(tasksApi.list).mockResolvedValue(list);
+    return {};
+  });
+  mount();
+  await screen.findByRole('heading', { name: '有 1 件事需要关注' });
+  expect(screen.getByText(/已逾期/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '完成', exact: true }));
+  await waitFor(() => expect(change).toHaveBeenCalledWith('late', 'complete', { expected_version: 3 }, 'late:once'));
+  await waitFor(() => expect(screen.queryByText('已做完忘勾选')).toBeNull());
+});

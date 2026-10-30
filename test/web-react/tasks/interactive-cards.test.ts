@@ -138,19 +138,23 @@ it('deduplicates streamed tool references and places the interactive result afte
   expect(screen.queryByText('fallback text')).toBeNull();
 });
 
-it('uses the server transition timestamp to lock a still-open chat card after midnight', async () => {
+it('freezes content after midnight while still allowing late completion', async () => {
   current.server_now = '2026-10-28T23:59:59.900+08:00';
   current.next_transition_at = '2026-10-29T00:00:00+08:00';
   current.time_state = 'in_progress';
   load.mockImplementationOnce(async () => clone(current)).mockImplementation(async () => ({ ...clone(current),
-    server_now: '2026-10-29T00:00:00+08:00', time_state: 'expired', read_only: true, read_only_reason: 'expired',
-    next_transition_at: null, capabilities: { editable_fields: [], actions: [] } }));
+    server_now: '2026-10-29T00:00:00+08:00', time_state: 'expired', read_only: false, read_only_reason: 'expired',
+    next_transition_at: null, capabilities: { editable_fields: [], actions: ['complete'] } }));
   mount();
   expect(await screen.findByText('当天 · 正在进行')).toBeTruthy();
-  await waitFor(() => expect(screen.getByText('已过期 · 只读')).toBeTruthy(), { timeout: 2000 });
+  await waitFor(() => expect(screen.getByText('已过期')).toBeTruthy(), { timeout: 2000 });
   expect(screen.queryByRole('button', { name: '调整事项' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '标记本人完成' })).toBeNull();
-  expect(submit).not.toHaveBeenCalled();
+  expect(screen.getByText('该事项已过期，仍可补标本人完成；其他内容仅供查看。')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '标记本人完成' }));
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+  expect(submit.mock.calls[0][1]).toMatchObject({
+    target: { resource: current.resource }, occurrence_action: { action: 'complete', expected_version: 1 },
+  });
 });
 
 it('retries an uncertain save using the same request identity and payload', async () => {

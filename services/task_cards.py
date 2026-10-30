@@ -5,7 +5,7 @@ import json
 import uuid
 
 from services.task_access import check_version, require_creator, visible_task
-from services.task_card_policy import assert_writable, readonly_reason, temporal_state
+from services.task_card_policy import assert_writable, can_complete_overdue, readonly_reason, temporal_state
 from services.task_recurrence import materialize, monday, parse_date, project
 from services.task_store import TaskError
 
@@ -67,6 +67,9 @@ class TaskCardsMixin:
                 actions.append('reopen' if done else 'complete')
             if task['space_type'] == 'household' and task['actionable'] and not task['assignee_ids']:
                 actions.append('claim')
+        elif (reason == 'expired' and can_complete_overdue(task, occ) and actor in occ['assignee_ids']
+              and occ['member_progress'][actor]['status'] != 'completed'):
+            actions = ['complete']
         elif (reason == 'completed' and task['temporal_type'] == 'timed' and occ and actor in occ['assignee_ids']
               and (occ['member_progress'][actor]['status'] == 'completed' or occ.get('legacy_completion_unknown_actor'))):
             actions = ['reopen']

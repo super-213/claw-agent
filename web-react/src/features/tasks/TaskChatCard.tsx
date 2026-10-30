@@ -145,7 +145,9 @@ function SavedCard({ view, context, editKey, submit, busy, verifying, uncertain,
       <dt>完成情况</dt><dd>{statuses[occ?.status || 'information']}{occ && occ.assignee_ids.length > 1 && ` · ${Object.values(occ.member_progress).filter(p => p.status === 'completed').length}/${occ.assignee_ids.length} 人完成`}</dd>
     </dl>
     <p className="task-card-note">已保存 · {task.space_type === 'household' ? '全家可见' : task.assignee_ids.some(id => id !== task.created_by) ? '你和被指派成员可见' : '个人可见'} · {view.timezone}</p>
-    {view.read_only_reason && <p className="task-card-note">{reasons[view.read_only_reason] || '当前仅供查看。'}</p>}
+    {view.read_only_reason && <p className="task-card-note">{view.read_only_reason === 'expired' && actions.includes('complete')
+      ? '该事项已过期，仍可补标本人完成；其他内容仅供查看。'
+      : reasons[view.read_only_reason] || '当前仅供查看。'}</p>}
     {edit.editing && !view.read_only && <div className="task-card-editor">
       {task.recurrence && <label>修改范围<select aria-label="修改范围" value={form.scope} disabled={locked || dirty} onChange={e => {
         const next = formFor(view, e.target.value);
@@ -158,7 +160,7 @@ function SavedCard({ view, context, editKey, submit, busy, verifying, uncertain,
       {form.space !== edit.baseline.space && <p className="task-card-note">保存后将改为{form.space === 'household' ? '全家可见' : '个人及被指派成员可见'}。</p>}
       {form.temporal === 'timed' ? <><div className="task-card-pair"><label>日期<input type="date" value={form.day} disabled={fieldLocked} onChange={e => update('day', e.target.value)} /></label>
         <label>时间（可选）<input type="time" value={form.time} disabled={fieldLocked} onChange={e => update('time', e.target.value)} /></label></div>
-        {form.day && form.day < view.server_now.slice(0, 10) && <p className="task-card-note">该日期已过去，保存后这张卡片将过期并只读。</p>}
+        {form.day && form.day < view.server_now.slice(0, 10) && <p className="task-card-note">该日期已过去，保存后将无法修改事项内容，未完成时仍可补标完成。</p>}
         {!scopeOccurrence && <div className="task-card-pair"><label>重复<select aria-label="重复" value={form.weekly ? 'weekly' : 'once'} disabled={fieldLocked} onChange={e => update('weekly', e.target.value === 'weekly')}><option value="once">单次</option><option value="weekly">每周</option></select></label>
           {form.weekly && <label>每周安排<select aria-label="每周安排" value={form.weekday} disabled={fieldLocked} onChange={e => update('weekday', e.target.value)}><option value="">周内任选，周日截止</option>{['一', '二', '三', '四', '五', '六', '日'].map((day, i) => <option key={day} value={['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'][i]}>周{day}</option>)}</select></label>}</div>}</>
         : <>{edit.baseline.temporal === 'timed' && <p className="task-card-note">转为备忘后将清除日期、时间和周期。</p>}

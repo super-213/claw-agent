@@ -33,6 +33,9 @@ def readonly_reason(task, occ, now, *, series=False):
 
 def assert_writable(task, occ, now, action='update', *, series=False):
     reason = readonly_reason(task, occ, now, series=series)
+    # A missed checkbox may be recorded later; expiry still freezes all edits.
+    if reason == 'expired' and action == 'complete' and can_complete_overdue(task, occ):
+        return
     if reason == 'expired':
         raise TaskError('task_card_expired', '该事项已过期，无法修改。', status=409,
                         read_only=True, read_only_reason=reason, **temporal_state(task, occ, now))
@@ -45,3 +48,9 @@ def assert_writable(task, occ, now, action='update', *, series=False):
     if reason:
         raise TaskError('task_read_only', '该事项已结束或暂停，当前操作不可用。', status=409,
                         read_only=True, read_only_reason=reason)
+
+
+def can_complete_overdue(task, occ):
+    """Eligibility only; callers still check time, assignee identity and version."""
+    return (task['lifecycle'] == 'active' and task['actionable']
+            and occ is not None and occ['status'] == 'open')

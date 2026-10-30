@@ -88,7 +88,7 @@ def test_failed_status_or_stale_version_rolls_back_entire_save(api):
     assert service.store.snapshot() == doc
 
 
-def test_expiry_server_clock_freezes_old_and_new_write_routes(api):
+def test_expiry_freezes_edits_but_allows_late_completion(api):
     clients, service, users, clock = api
     clock[0] = datetime(2026, 10, 27, 12, tzinfo=service.zone)
     task, _ = create((service, users, clock), inv=invocation(temporal='timed'), items=[{'title': '去上海', 'due_date': '2026-10-28', 'due_at': '2026-10-28T09:00:00+08:00'}])
@@ -98,17 +98,94 @@ def test_expiry_server_clock_freezes_old_and_new_write_routes(api):
     assert before['time_state'] == 'in_progress' and not before['read_only']
     clock[0] += timedelta(seconds=1)
     expired = card(clients, task['id'])
-    assert expired['time_state'] == 'expired' and expired['read_only']
+    assert expired['time_state'] == 'expired' and not expired['read_only']
     assert expired['occurrence']['status'] == 'open'
-    assert not expired['capabilities']['actions']
+    assert expired['capabilities'] == {'editable_fields': [], 'actions': ['complete']}
     frozen = service.store.snapshot()
     response = save(clients, before, definition_patch={'due_date': '2027-01-01', 'due_at': None, 'title': '试图改期'})
     assert response.status_code == 409 and response.json()['error'] == 'task_card_expired'
     legacy = clients[0].patch('/api/home/tasks/' + task['id'], json={'request_id': 'old-api', 'expected_version': before['task']['version'], 'patch': {'title': '绕过按钮'}})
     assert legacy.status_code == 409 and legacy.json()['error'] == 'task_card_expired'
     url = f"/api/home/tasks/{task['id']}/occurrences/{before['occurrence']['id']}/complete"
-    assert clients[0].post(url, json={'request_id': 'late-complete', 'expected_version': before['occurrence']['version']}).status_code == 409
     assert service.store.snapshot() == frozen
+    payload = {'request_id': 'late-complete', 'expected_version': before['occurrence']['version']}
+    done = clients[0].post(url, json=payload)
+    assert done.status_code == 200, done.text
+    assert done.json()['occurrence']['status'] == 'completed'
+    assert clients[0].post(url, json=payload).json() == done.json()
+    stored = service.store.snapshot()['occurrences'][before['occurrence']['id']]
+    assert stored['member_progress']['A']['completed_at'] == clock[0].isoformat()
+    assert card(clients, task['id'])['read_only']
+    assert not clients[0].get('/api/home/tasks?status=open').json()['items']
+
+
+@pytest.mark.parametrize('weekly', [False, True])
+@pytest.mark.parametrize('mode', ['all', 'any'])
+def test_overdue_card_completion_preserves_permissions_rules_and_occurrence(api, weekly, mode):
+    clients, service, users, clock = api
+    item = {'title': '补勾家务', **({'recurrence': {'frequency': 'weekly', 'weekday': None}}
+                              if weekly else {'due_date': '2026-10-24'})}
+    task, rows = create((service, users, clock), inv=invocation(space='household', temporal='timed',
+        ids=['A', 'B'], completion_mode=mode), items=[item])
+    occurrence_id = rows[0]['id']
+    clock[0] += timedelta(days=14)
+    before = card(clients, task['id'], occurrence_id)
+    assert before['capabilities'] == {'editable_fields': [], 'actions': ['complete']}
+    url = f"/api/home/tasks/{task['id']}/occurrences/{occurrence_id}"
+    frozen = service.store.snapshot()
+    unauthorized = clients[2].post(url + '/complete', json={'request_id': 'other', 'expected_version': 1})
+    assert unauthorized.status_code == 403
+    stale = save(clients, before, occurrence_action={'action': 'complete', 'expected_version': 999})
+    assert stale.status_code == 409 and stale.json()['error'] == 'version_conflict'
+    mixed = save(clients, before, request_id='mixed', definition_patch={'title': '不能顺带修改'},
+        occurrence_action={'action': 'complete', 'expected_version': 1})
+    assert mixed.status_code == 409 and mixed.json()['error'] == 'task_card_expired'
+    assert service.store.snapshot() == frozen
+    done = save(clients, before, occurrence_action={'action': 'complete', 'expected_version': 1})
+    assert done.status_code == 200, done.text
+    result = done.json()
+    assert result['resource']['instance_id'] == occurrence_id
+    assert result['occurrence']['status'] == ('open' if mode == 'all' else 'completed')
+    assert result['occurrence']['member_progress']['B']['status'] == 'open'
+    assert result['read_only'] and not result['capabilities']['actions']
+    assert clients[0].post(url + '/reopen', json={'request_id': 'late-reopen', 'expected_version': 2}).status_code == 409
+    if mode == 'all':
+        assert card(clients, task['id'], occurrence_id, actor=1)['capabilities']['actions'] == ['complete']
+        last = clients[1].post(url + '/complete', json={'request_id': 'bob-late', 'expected_version': 2})
+        assert last.status_code == 200 and last.json()['occurrence']['status'] == 'completed'
+    stored = service.store.snapshot()['occurrences']
+    assert all(o['status'] == 'open' for key, o in stored.items()
+               if o['task_id'] == task['id'] and key != occurrence_id)
+
+
+@pytest.mark.parametrize('action', ['cancel', 'skip', 'archive', 'pause'])
+def test_overdue_completion_does_not_unfreeze_ended_or_paused_tasks(api, action):
+    clients, service, users, clock = api
+    task, rows = create((service, users, clock), inv=invocation(temporal='timed'),
+        items=[{'title': '历史事项', 'recurrence': {'frequency': 'weekly', 'weekday': None}}])
+    change((service, users, clock), task, action, occ=rows[0] if action in {'cancel', 'skip'} else None)
+    clock[0] += timedelta(days=14)
+    view = card(clients, task['id'], rows[0]['id'])
+    assert view['read_only'] and not view['capabilities']['actions']
+    response = save(clients, view, occurrence_action={'action': 'complete', 'expected_version': view['occurrence']['version']})
+    assert response.status_code == 409
+
+
+def test_bound_native_tool_can_complete_overdue_occurrence(api):
+    _, service, users, clock = api
+    task, rows = create((service, users, clock), inv=invocation(temporal='timed'),
+        items=[{'title': '补记完成', 'due_date': '2026-10-24'}])
+    clock[0] += timedelta(days=7)
+    registry = ToolRegistry()
+    context = {'user_id': users[0]['id'], 'request_id': 'native-late', 'session_id': 's', 'branch_id': 'main',
+               'task_ref': {'task_id': task['id'], 'occurrence_id': rows[0]['id']}}
+    register_family_task_tools(registry, service, lambda: users[0], lambda: context)
+    result = asyncio.run(registry.invoke(ToolCall('late', 'family_task_complete', {
+        'task_id': task['id'], 'occurrence_id': rows[0]['id'], 'expected_version': rows[0]['version']})))
+    assert not result.error, result
+    stored = service.store.snapshot()['occurrences'][rows[0]['id']]
+    assert stored['status'] == 'completed'
+    assert stored['completed_at'] == clock[0].isoformat()
 
 
 def test_committed_retry_after_midnight_returns_receipt_without_new_write(api):
@@ -119,7 +196,8 @@ def test_committed_retry_after_midnight_returns_receipt_without_new_write(api):
     count = len(service.store.snapshot()['events'])
     clock[0] += timedelta(days=1)
     repeated = save(clients, before, definition_patch={'title': '已保存标题'})
-    assert repeated.status_code == 200 and repeated.json()['read_only']
+    assert repeated.status_code == 200
+    assert repeated.json()['capabilities'] == {'editable_fields': [], 'actions': ['complete']}
     assert len(service.store.snapshot()['events']) == count
 
 
@@ -145,7 +223,8 @@ def test_old_weekly_card_does_not_retarget_and_tool_cannot_bypass(api):
     assert changed.json()['occurrence']['title_snapshot'] == '每周家务'
     clock[0] += timedelta(days=7)
     old = card(clients, task['id'], instance)
-    assert old['resource']['instance_id'] == instance and old['read_only']
+    assert old['resource']['instance_id'] == instance
+    assert old['capabilities'] == {'editable_fields': [], 'actions': ['complete']}
     registry = ToolRegistry()
     context = {'user_id': users[0]['id'], 'request_id': 'native-bypass', 'session_id': 's', 'branch_id': 'main',
                'task_ref': {'task_id': task['id'], 'occurrence_id': instance}}
@@ -211,7 +290,9 @@ def test_draft_creation_commit_replay_and_branch_authorization(api, monkeypatch)
     assert len(service.store.snapshot()['tasks']) == 1
     assert clients[0].get(url, params=params).json()['mode'] == 'saved'
     clock[0] += timedelta(days=2)
-    assert clients[0].get(url, params=params).json()['read_only']
+    late = clients[0].get(url, params=params).json()
+    assert not late['read_only']
+    assert late['capabilities'] == {'editable_fields': [], 'actions': ['complete']}
 
 
 def test_draft_native_confirmation_preserves_original_card_reference(api, monkeypatch):
