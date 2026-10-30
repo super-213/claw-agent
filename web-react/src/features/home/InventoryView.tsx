@@ -153,7 +153,7 @@ export function InventoryView({
         </p>
       )}
       {error && <p role="alert">{error}</p>}
-      <div className="home-list">
+      <div className="home-list inventory-grid">
         {rows.map((item) => (
           <article className="home-list-item" key={item.id}>
             <button
