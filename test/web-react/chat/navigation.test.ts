@@ -46,3 +46,23 @@ it('keeps account and admin shortcuts in the single global Agent menu', () => {
   fireEvent.click(screen.getByRole('button', { name: '家庭 Agent 快捷导航' }));
   expect(screen.getByRole('link', { name: '账号与设置' })).toHaveAttribute('href', '/home/more?section=account');
 });
+
+it('shows connection loss in the header and restores the current task status only after a fresh response', () => {
+  useAppStore.setState({ statusText: '就绪' });
+  mount();
+  const badge = screen.getByRole('status');
+  expect(badge).toHaveTextContent('就绪');
+  fireEvent(window, new Event('claw-cache-fallback'));
+  expect(badge).toHaveTextContent('连接中断');
+  expect(badge).toHaveAttribute('title', expect.stringContaining('已缓存的数据'));
+  // Browser connectivity alone does not confirm that the server has recovered.
+  fireEvent(window, new Event('online'));
+  expect(badge).toHaveTextContent('连接中断');
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+  fireEvent(window, new Event('offline'));
+  expect(badge).toHaveTextContent('离线');
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
+  fireEvent(window, new Event('online'));
+  fireEvent(window, new Event('claw-cache-fresh'));
+  expect(badge).toHaveTextContent('就绪');
+});

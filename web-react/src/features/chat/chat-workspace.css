@@ -83,6 +83,9 @@
 .chat-workspace :is(.tree-toggle-btn,.chat-overlay-back,.mobile-menu-btn) { border: 0; background: transparent; color: var(--home-ink); box-shadow: none; border-radius: 8px; min-height: 40px; padding: 8px; }
 .chat-workspace .chat-overlay-back { gap: 6px; font-size: 13px; }
 .chat-workspace .status-badge { border: 0; background: var(--home-nav); color: var(--home-ink); box-shadow: none; border-radius: 8px; min-height: 32px; padding: 4px 9px; font-size: 12px; }
+.chat-workspace .status-badge.disconnected .dot { background: #d69a45; animation: none; }
+/* The header carries connection status in standalone and overlay chats. */
+body:has(.chat-workspace) .pwa-offline { display: none; }
 .chat-workspace .status-badge.busy { background: var(--home-schedule); }
 .chat-workspace .status-badge .dot { background: var(--home-focus); box-shadow: none; }
 .chat-workspace .chat-session-info { position: relative; }
@@ -157,7 +160,7 @@
   .chat-workspace .topbar-left { gap: 7px; }
   .chat-workspace .topbar-title { font-size: 17px; max-width: 100%; }
   .chat-workspace .topbar-meta { display: flex; gap: 2px; }
-  .chat-workspace .status-badge { display: none; }
+  .chat-workspace .status-badge { display: flex; flex-shrink: 0; }
   .chat-workspace .topbar-eyebrow { font-size: 10px; }
   .chat-workspace .chat-window { padding: 18px 12px; }
   .chat-workspace .messages-wrap { gap: 20px; }

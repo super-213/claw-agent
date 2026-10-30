@@ -21,6 +21,7 @@ import { RunRecoveryPanel } from './RunRecoveryPanel';
 import type { BranchActionState } from './MessageRows';
 import { isAdmin, selectCurrentSession, useAppStore } from '../../stores/appStore';
 import { formatTokens, isImageAttachment } from '../../utils/format';
+import { connectionNotice, useConnectionStatus } from '../pwa/useConnectionStatus';
 import { HomeNav } from '../home/HomeNav';
 
 type ModalKind = 'settings' | 'plugins' | 'users' | null;
@@ -56,6 +57,7 @@ export function ChatWorkspace({
   onClose?: () => void;
   onSessionChange?: (sessionId: string) => void;
 }) {
+  const { online, disconnected } = useConnectionStatus();
   const navigate = useNavigate();
   const params = useParams();
   const currentUser = useAppStore((state) => state.currentUser);
@@ -682,9 +684,10 @@ export function ChatWorkspace({
               <summary aria-label="会话详情" title="会话详情"><Info size={18} /></summary>
               <div className="chat-session-info-body"><strong>会话详情</strong><span>{tokenSummary}</span><span>分支树 · {branchSummary}</span></div>
             </details>
-            <div className={`status-badge${currentBusy ? ' busy' : ''}`}>
-              <div className="dot" />
-              <span>{currentBusy ? '处理中...' : statusText}</span>
+            <div className={`status-badge${disconnected ? ' disconnected' : currentBusy ? ' busy' : ''}`}
+              role="status" title={disconnected ? connectionNotice : undefined}>
+              <div className="dot" aria-hidden="true" />
+              <span>{disconnected ? (online ? '连接中断' : '离线') : currentBusy ? '处理中...' : statusText}</span>
             </div>
             <button
               className="tree-toggle-btn"
