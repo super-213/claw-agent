@@ -1,6 +1,6 @@
-import { Menu, MessageCircle, MoreHorizontal, Plus, RefreshCcw, Wrench, X } from 'lucide-react';
+import { Menu, MessageCircle, MoreHorizontal, SquarePen, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { SessionSummary, Skill, User } from '../../api/types';
+import type { SessionSummary, User } from '../../api/types';
 import { formatTime } from '../../utils/format';
 import { useDialog } from '../../components/ui/useDialog';
 
@@ -8,7 +8,6 @@ interface SessionSidebarProps {
   open: boolean;
   collapsed: boolean;
   sessions: SessionSummary[];
-  skills: Skill[];
   currentSessionId: string | null;
   currentUser: User | null;
   busySessionIds: Set<string>;
@@ -20,9 +19,6 @@ interface SessionSidebarProps {
   onCopySession: (sessionId: string) => void | Promise<void>;
   onDeleteSession: (sessionId: string) => void | Promise<void>;
   onShareSession: (sessionId: string) => void | Promise<void>;
-  onInsertSkill: (skill: Skill) => void;
-  onOpenSkillModal: () => void;
-  onReloadSkills: () => void | Promise<void>;
 }
 
 const canManageShare = (session: SessionSummary, user: User | null) =>
@@ -34,7 +30,6 @@ export function SessionSidebar({
   open,
   collapsed,
   sessions,
-  skills,
   currentSessionId,
   currentUser,
   busySessionIds,
@@ -46,9 +41,6 @@ export function SessionSidebar({
   onCopySession,
   onDeleteSession,
   onShareSession,
-  onInsertSkill,
-  onOpenSkillModal,
-  onReloadSkills,
 }: SessionSidebarProps) {
   const orderedSessions = currentSessionId
     ? [
@@ -71,23 +63,16 @@ export function SessionSidebar({
   return (
     <div className="sidebar-layer" ref={sidebarRef}>
       <div id="chat-session-sidebar" className={`sidebar${open ? ' open' : ''}`} hidden={collapsed && !isMobile} role={isMobile && open ? "dialog" : "complementary"} aria-modal={isMobile && open ? true : undefined} aria-label="历史对话" tabIndex={-1}>
-        <div className="session-sidebar-heading">
-          <h2>对话</h2>
-          <button className="sidebar-close" type="button" aria-label="关闭历史对话" onClick={dismiss}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="sidebar-actions">
-          <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
-            <Plus size={16} />
-            新建对话
-          </button>
-        </div>
-        <div className="history-panel">
+        <div className="session-history-header">
           <div className="history-toggle" id="session-history-heading">
             <span>会话历史</span>
             <strong>{sessions.length}</strong>
           </div>
+          <button className="sidebar-close" type="button" aria-label="关闭历史对话" onClick={dismiss}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="history-panel">
           <div className="session-list" id="session-history-list">
             {orderedSessions.map((session) => {
               const busy = busySessionIds.has(session.id);
@@ -147,33 +132,11 @@ export function SessionSidebar({
           </div>
         </div>
 
-        <div className="sidebar-utilities">
-          <details className="sidebar-section skill-panel">
-            <summary className="sidebar-section-head">
-              <span><Wrench size={15} /> 技能</span>
-              <strong>{skills.length}</strong>
-            </summary>
-            <div className="skill-toolbar">
-              <button className="skill-add-btn" type="button" onClick={onOpenSkillModal}>
-                <Wrench size={14} />
-                添加
-              </button>
-              <button className="skill-reload-btn" type="button" title="重载技能" aria-label="重载技能" onClick={() => void onReloadSkills()}>
-                <RefreshCcw size={14} />
-              </button>
-            </div>
-            <div className="skill-list">
-              {skills.length ? (
-                skills.map((skill) => (
-                  <button key={skill.name} className="skill-item" type="button" title={`插入调用 ${skill.name} skill`} onClick={() => onInsertSkill(skill)}>
-                    {skill.name}
-                  </button>
-                ))
-              ) : (
-                <div className="skill-empty">暂无技能</div>
-              )}
-            </div>
-          </details>
+        <div className="sidebar-actions">
+          <button className="new-btn" type="button" onClick={() => void onCreateSession()}>
+            <SquarePen size={18} aria-hidden="true" />
+            新建对话
+          </button>
         </div>
       </div>
       <div className={`sidebar-backdrop${open ? ' open' : ''}`} aria-hidden="true" onClick={dismiss} />

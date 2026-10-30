@@ -62,7 +62,6 @@ export function ChatWorkspace({
   const params = useParams();
   const currentUser = useAppStore((state) => state.currentUser);
   const sessions = useAppStore((state) => state.sessions);
-  const skills = useAppStore((state) => state.skills);
   const config = useAppStore((state) => state.config);
   const currentSessionId = useAppStore((state) => state.currentSessionId);
   const currentSession = useAppStore(selectCurrentSession);
@@ -614,12 +613,6 @@ export function ChatWorkspace({
     await refreshCurrent();
   };
 
-  const insertSkill = (name: string) => {
-    const prefix = `调用 ${name} skill `;
-    setDraft((current) => (current.trimStart() ? prefix + current.trimStart() : prefix));
-    setMobileSidebarOpen(false);
-  };
-
   const topbarTitle = currentSession?.title || '新对话';
   const tokenSummary = `总计 ${formatTokens(currentSession?.token_usage?.total_tokens)} · 工具 ${formatTokens(currentSession?.token_usage?.tool_tokens)}`;
   const branchSummary = tree ? `${tree.nodes.length} 节点` : '未载入';
@@ -632,7 +625,6 @@ export function ChatWorkspace({
           open={mobileSidebarOpen}
           collapsed={sidebarCollapsed}
           sessions={sessions}
-          skills={skills}
           currentSessionId={currentSessionId}
           currentUser={currentUser}
           busySessionIds={busySessionIds}
@@ -644,14 +636,6 @@ export function ChatWorkspace({
           onCopySession={copySession}
           onDeleteSession={deleteSession}
           onShareSession={(sessionId) => setShareSessionId(sessionId)}
-          onInsertSkill={(skill) => insertSkill(skill.name)}
-          onOpenSkillModal={() => setModal('plugins')}
-          onReloadSkills={async () => {
-            const data = await skillsApi.reload();
-            setSkills(data.skills || []);
-            setStatusText(`技能 ${data.skills?.length || 0}`);
-            setTimeout(() => setStatusText('就绪'), 1200);
-          }}
         />
       ) : null}
 

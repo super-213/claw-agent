@@ -859,3 +859,6 @@ body.home-route .home-shell {
 .home-shell .home-more-intro { margin: 0 0 24px; }
 /* 标题接收路由切换后的朗读焦点，不作为交互控件绘制焦点框。 */
 .home-shell .home-topbar-heading h1:focus { outline: none; }
+
+.home-skills-toolbar { display: flex; flex-wrap: wrap; gap: 12px; }
+.home-skills-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }

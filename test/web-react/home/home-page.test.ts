@@ -175,6 +175,7 @@ it('keeps four primary destinations and groups miscellaneous tools without dupli
   expect(nav.querySelectorAll('a')).toHaveLength(4);
   expect(screen.getByRole('heading', { name: '个人设置' })).toBeTruthy();
   expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: /查看、添加和重载对话技能/ })).toHaveAttribute('href', '/home/more?section=skills');
   expect(screen.queryByRole('link', { name: /最近对话/ })).toBeNull();
   expect(screen.queryByRole('link', { name: /离线随身页/ })).toBeNull();
   expect(screen.queryByRole('heading', { name: '管理员工具' })).toBeNull();

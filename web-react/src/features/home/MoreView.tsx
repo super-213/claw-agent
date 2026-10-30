@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Users,
   Settings,
+  Wrench,
 } from 'lucide-react';
 import { authApi } from '../../api/auth';
 import { homeApi } from '../../api/home';
@@ -17,6 +18,7 @@ import { formatTime } from '../../utils/format';
 import { TaskAdmin } from '../tasks/TaskAdmin';
 import { ChatNotificationSettings } from '../pwa/ChatNotificationSettings';
 import { validMoreSection } from './moreNavigation';
+import { SkillsView } from '../plugins/SkillsView';
 import { ThemeSelector } from '../../components/ui/ThemeSelector';
 
 export function MoreView({
@@ -90,6 +92,9 @@ export function MoreView({
           <section className="home-more-group" aria-labelledby="more-tools">
             <h2 id="more-tools">便捷使用</h2>
             <div className="home-more-menu">
+              <Link to="/home/more?section=skills"><Wrench size={21} aria-hidden="true" />
+                <span>技能<small>查看、添加和重载对话技能</small></span>
+                <ArrowRight size={18} aria-hidden="true" /></Link>
               <Link to="/install"><Download size={21} aria-hidden="true" />
                 <span>添加到主屏幕<small>从手机桌面快速打开</small></span>
                 <ArrowRight size={18} aria-hidden="true" /></Link>
@@ -113,6 +118,7 @@ export function MoreView({
           )}
         </>
       )}
+      {section === 'skills' && <SkillsView />}
       {section === 'admin' && isAdmin(user) && <TaskAdmin />}
       {section === 'account' && (
         <div className="home-account">
