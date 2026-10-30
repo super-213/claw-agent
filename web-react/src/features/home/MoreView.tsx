@@ -75,47 +75,49 @@ export function MoreView({
     return <Navigate to="/home/more" replace />;
   }
   return (
-    <section className="home-section home-more" aria-label="更多内容">
+    <section className={`home-section home-more${!section ? ' home-more-directory' : ''}`} aria-label="更多内容">
       {!section && (
         <>
           <p className="home-muted home-more-intro">管理个人偏好，查找便捷工具。</p>
-          <section className="home-more-group" aria-labelledby="more-personal">
-            <h2 id="more-personal">个人设置</h2>
-            <div className="home-more-menu">
-              <Link to="/home/more?section=account">
-                <Settings size={21} aria-hidden="true" />
-                <span>账号与设置<small>外观、通知、通行密钥与登录</small></span>
-                <ArrowRight size={18} aria-hidden="true" />
-              </Link>
-            </div>
-          </section>
-          <section className="home-more-group" aria-labelledby="more-tools">
-            <h2 id="more-tools">便捷使用</h2>
-            <div className="home-more-menu">
-              <Link to="/home/more?section=skills"><Wrench size={21} aria-hidden="true" />
-                <span>技能<small>查看、添加和重载对话技能</small></span>
-                <ArrowRight size={18} aria-hidden="true" /></Link>
-              <Link to="/install"><Download size={21} aria-hidden="true" />
-                <span>添加到主屏幕<small>从手机桌面快速打开</small></span>
-                <ArrowRight size={18} aria-hidden="true" /></Link>
-              <Link to="/home/more?section=activity"><CalendarDays size={21} aria-hidden="true" />
-                <span>物品操作记录<small>查看家庭物品的添加、修改和使用记录</small></span>
-                <ArrowRight size={18} aria-hidden="true" /></Link>
-            </div>
-          </section>
-          {isAdmin(user) && (
-            <section className="home-more-group" aria-labelledby="more-admin">
-              <h2 id="more-admin">管理员工具</h2>
+          <div className="home-more-groups">
+            <section className="home-more-group" aria-labelledby="more-personal">
+              <h2 id="more-personal">个人设置</h2>
               <div className="home-more-menu">
-                <Link to="/home/more?section=admin"><Users size={21} aria-hidden="true" />
-                  <span>家庭成员管理<small>账号绑定与历史迁移核对</small></span>
+                <Link to="/home/more?section=account">
+                  <Settings size={21} aria-hidden="true" />
+                  <span>账号与设置<small>外观、通知、通行密钥与登录</small></span>
+                  <ArrowRight size={18} aria-hidden="true" />
+                </Link>
+              </div>
+            </section>
+            <section className="home-more-group" aria-labelledby="more-tools">
+              <h2 id="more-tools">便捷使用</h2>
+              <div className="home-more-menu">
+                <Link to="/home/more?section=skills"><Wrench size={21} aria-hidden="true" />
+                  <span>技能<small>查看、添加和重载对话技能</small></span>
                   <ArrowRight size={18} aria-hidden="true" /></Link>
-                <Link to="/dashboard"><LayoutDashboard size={21} aria-hidden="true" />
-                  <span>管理看板<small>查看模型用量与运行统计</small></span>
+                <Link to="/install"><Download size={21} aria-hidden="true" />
+                  <span>添加到主屏幕<small>从手机桌面快速打开</small></span>
+                  <ArrowRight size={18} aria-hidden="true" /></Link>
+                <Link to="/home/more?section=activity"><CalendarDays size={21} aria-hidden="true" />
+                  <span>物品操作记录<small>查看家庭物品的添加、修改和使用记录</small></span>
                   <ArrowRight size={18} aria-hidden="true" /></Link>
               </div>
             </section>
-          )}
+            {isAdmin(user) && (
+              <section className="home-more-group" aria-labelledby="more-admin">
+                <h2 id="more-admin">管理员工具</h2>
+                <div className="home-more-menu">
+                  <Link to="/home/more?section=admin"><Users size={21} aria-hidden="true" />
+                    <span>家庭成员管理<small>账号绑定与历史迁移核对</small></span>
+                    <ArrowRight size={18} aria-hidden="true" /></Link>
+                  <Link to="/dashboard"><LayoutDashboard size={21} aria-hidden="true" />
+                    <span>管理看板<small>查看模型用量与运行统计</small></span>
+                    <ArrowRight size={18} aria-hidden="true" /></Link>
+                </div>
+              </section>
+            )}
+          </div>
         </>
       )}
       {section === 'skills' && <SkillsView />}

@@ -852,8 +852,15 @@ body.home-route .home-shell {
   outline-offset: 2px;
 }
 .home-more { max-width: 840px; }
+.home-more-directory { max-width: none; }
 .home-more-intro { margin: 0 0 24px; }
-.home-more-group { margin-bottom: 28px; }
+.home-more-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: start;
+  gap: 28px 32px;
+}
+.home-more-group { min-width: 0; }
 .home-shell .home-more-group h2 {
   color: var(--home-muted);
   font-size: 13px;
@@ -862,7 +869,7 @@ body.home-route .home-shell {
 }
 .home-more-menu a { text-decoration: none; color: var(--home-ink); }
 .home-more-menu a > svg { flex-shrink: 0; }
-.home-more-menu a > span { min-width: 0; }
+.home-more-menu a > span { min-width: 0; overflow-wrap: anywhere; }
 .home-more-menu small {
   display: block;
   margin-top: 4px;
