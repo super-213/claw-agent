@@ -1,0 +1,75 @@
+.home-shell .home-calendar-edge {
+  display: none;
+}
+@media (max-width: 1199px) {
+  .home-shell .home-calendar-edge {
+    display: grid;
+    place-items: center end;
+    position: fixed;
+    right: 0;
+    top: 20%;
+    bottom: 20%;
+    z-index: 36;
+    width: 24px;
+    min-height: 44px;
+    padding: 0 3px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    touch-action: pan-y;
+    box-shadow: none;
+  }
+  .home-calendar-edge > span {
+    width: 4px;
+    height: 40px;
+    border-radius: 4px;
+    background: var(--home-muted);
+    opacity: .45;
+  }
+  .home-shell .home-calendar-edge:focus-visible { outline: 2px solid var(--home-ink); outline-offset: -3px; }
+}
+.home-calendar-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  overflow: hidden;
+  background: transparent;
+}
+.home-calendar-drawer-backdrop[hidden] { display: none; }
+.home-calendar-drawer-backdrop[aria-hidden="true"] { pointer-events: none; }
+.home-calendar-drawer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(380px, calc(100% - 44px));
+  display: flex;
+  flex-direction: column;
+  background: var(--home-calendar);
+  color: var(--home-ink);
+  border-left: 1px solid var(--home-line);
+  box-shadow: -12px 0 40px #0002;
+  transform: translateX(100%);
+  overscroll-behavior: contain;
+}
+.home-calendar-drawer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px 18px;
+  border-bottom: 1px solid var(--home-line);
+  touch-action: pan-y;
+}
+.home-shell .home-calendar-drawer h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0; }
+.home-shell .home-calendar-drawer > header button { width: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; }
+.home-calendar-drawer-content {
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+  padding-right: env(safe-area-inset-right);
+  overscroll-behavior: contain;
+}
+.home-calendar-drawer .home-schedule { border-radius: 0; }
+.home-calendar-drawer .home-calendar-top > svg,
+.home-calendar-drawer .home-calendar-top > span { display: none; }

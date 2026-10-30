@@ -30,7 +30,7 @@ import { AgentCommandBar } from './AgentCommandBar';
 import { HomeWidgets } from './HomeWidgets';
 import { WorkbenchPanels } from '../board/WorkbenchPanels';
 import { ScheduleCalendar } from './ScheduleCalendar';
-import { HomeDialog } from '../../components/ui/HomeDialog';
+import { CalendarDrawer } from './CalendarDrawer';
 import type { WidgetSize } from './widgetLayout';
 import { AttentionList } from './AttentionList';
 import { KnowledgeView } from '../knowledge/KnowledgeView';
@@ -515,9 +515,10 @@ export function HomePage() {
           </div>
         </div>
       )}
-      {calendarOpen && (
-        <HomeDialog
-          title="家庭日历"
+      {isToday && (
+        <CalendarDrawer
+          open={calendarOpen}
+          onOpen={() => setCalendarOpen(true)}
           onClose={() => {
             setCalendarOpen(false);
             if (calendarDestination.current) {
@@ -536,7 +537,7 @@ export function HomePage() {
               }}
             />
           )}
-        </HomeDialog>
+        </CalendarDrawer>
       )}
       <ConfigModal
         open={settingsOpen}

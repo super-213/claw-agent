@@ -2,6 +2,7 @@
 
 Requires Playwright (Python) and installed Google Chrome. No external model calls.
 Example: python3 scripts/validate_home_workbench.py
+Calendar gestures only: python3 scripts/validate_home_workbench.py --calendar-only
 """
 from pathlib import Path
 import os
@@ -44,8 +45,11 @@ try:
     wait_ready(f'http://127.0.0.1:{api_port}/api/auth/usernames')
     processes.append(subprocess.Popen(['npm', '--prefix', str(root / 'web-react'), 'run', 'dev', '--', '--host', '127.0.0.1', '--port', str(web_port), '--strictPort'], cwd=root, env=env, stdout=subprocess.DEVNULL, start_new_session=True))
     wait_ready(os.environ['HOME010_WEB_ORIGIN'])
-    runpy.run_path(str(root / 'test/browser/home_workbench_checks.py'), run_name='__main__')
-    runpy.run_path(str(root / 'test/browser/family_navigation_checks.py'), run_name='__main__')
+    if '--calendar-only' in sys.argv:
+        runpy.run_path(str(root / 'test/browser/calendar_drawer_checks.py'), run_name='__main__')
+    else:
+        runpy.run_path(str(root / 'test/browser/home_workbench_checks.py'), run_name='__main__')
+        runpy.run_path(str(root / 'test/browser/family_navigation_checks.py'), run_name='__main__')
     print(f'010 browser validation passed. Screenshots: {output}')
 finally:
     for process in reversed(processes):
