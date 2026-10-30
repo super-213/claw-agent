@@ -7,3 +7,6 @@ registerCardAdapter(taskCardAdapter);
 
 import { boardCardAdapter } from '../features/board/boardCardAdapter';
 registerCardAdapter(boardCardAdapter);
+
+import { activityAdapters } from "../features/family-activities/activityAdapters";
+activityAdapters.forEach(registerCardAdapter);

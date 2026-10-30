@@ -1,0 +1,134 @@
+{
+  "id": "family_polls",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web"
+  ],
+  "requires_services": [
+    "family_activities",
+    "runtime"
+  ],
+  "requested_permissions": [],
+  "tool_metadata": {
+    "family_poll_create": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_list": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_get": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_update": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_close": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_delete": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_draft_get": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_draft_update": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_vote": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_poll_withdraw_vote": {
+      "group": "family_polls",
+      "keywords": [
+        "家庭投票",
+        "投票",
+        "选项",
+        "改票",
+        "销毁",
+        "截止"
+      ]
+    }
+  },
+  "cards": {
+    "kind": "poll",
+    "resource_types": [
+      "family_poll",
+      "family_poll_draft"
+    ]
+  },
+  "extension_order": 210
+}

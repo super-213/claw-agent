@@ -72,6 +72,8 @@ def guard_board_answer(content, messages, context, retries=0, results=None):
             return '便笺已保存，可在下方继续调整，也可在留言板查看；共享范围内的成员打开留言板即可看到。', None
         return '便笺尚未保存：' + str((mutations[-1].get('output') or {}).get('message') or mutations[-1].get('error') or '请在卡片中检查配置后重试。'), None
     raw = context.get('raw_input', '')
+    if re.search(r'(?:创建|发起|新建|发布).{0,12}(?:投票|接龙)', raw) and not re.search(r'写.{0,3}便[笺签]', raw):
+        return content, None
     if not BOARD_INTENT.search(raw) or not re.search(r'写|发|留|创建|帮|保存', raw) or re.search(r'不要|不用|如何|怎么|如果|吗[？?]?$', raw):
         return content, None
     if retries < 2:

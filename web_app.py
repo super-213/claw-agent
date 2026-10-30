@@ -67,6 +67,11 @@ from agent_runtime.plugins.access import FileToolAccess
 from agent_runtime.plugins import PluginManager, ToolBindingContext
 from agent_runtime.registry import ToolRegistry
 from agent_runtime.mcp_adapter import MCPAdapter
+from services.family_activity_privacy import sanitize_activity_history, cleanup_activity_history
+from services.family_activity_store import FamilyActivityStore
+from services.family_activity_service import FamilyActivityService
+from services.family_activity_api import activity_router
+from services.family_activity_notifications import deliver_activity_notifications
 from services.board_store import BoardStore
 from services.board_service import BoardPostService
 from services.board_api import board_router
@@ -466,6 +471,9 @@ family_members = FamilyMemberService(home_service, user_store)
 file_access_store = TaskStore(run_root.parent / 'file_access.json')
 family_tasks = FamilyTaskService(TaskStore(home_data_dir / 'tasks.json'), family_members,
                                  timezone_name=config['home_timezone'])
+family_activities = FamilyActivityService(FamilyActivityStore(home_data_dir / 'family-activities.json'), family_members, timezone_name=config['home_timezone'])
+run_store.sanitize_persistence = lambda value: sanitize_activity_history(value, family_activities.store.private_unavailable())
+store.sanitize_persistence = lambda value: sanitize_activity_history(value, family_activities.store.private_unavailable())
 family_board = BoardPostService(BoardStore(home_data_dir / 'board.json'), family_members, timezone_name=config['home_timezone'])
 
 
@@ -868,7 +876,7 @@ def _build_orchestrator(user_id: str | None = None, task_context=None) -> AgentO
             authorize_generated=_authorize_generated_path, grants=file_access_store,
             execution_context=execution_context))
     if user_id:
-        services.update(runtime=lambda: orchestrator, family_tasks=family_tasks, board=family_board,
+        services.update(runtime=lambda: orchestrator, family_tasks=family_tasks, board=family_board, family_activities=family_activities,
             knowledge=knowledge, mcp=mcp_adapter, family_members=family_members,
             board_resolve_source=_board_resolve_source, knowledge_resolve_file=_knowledge_resolve_file)
     plugin_manager.bind(bound_registry, ToolBindingContext(runtime='web', services=services,
@@ -954,6 +962,7 @@ def _board_resolve_source(user, source, session_id=None, node_id=None):
     return path
 
 
+app.include_router(activity_router(lambda: family_activities, lambda: family_board, require_user, _card_session_context))
 app.include_router(board_router(lambda: family_board, require_user, _card_session_context, _board_resolve_source))
 app.include_router(offline_router(require_user, lambda: family_tasks, lambda: family_members,
     lambda: knowledge, _visible_session_metas))
@@ -1376,6 +1385,36 @@ async def _board_cleanup_loop():
         await asyncio.sleep(10)
 
 
+async def _activity_lifecycle_loop():
+    while True:
+        try:
+            await asyncio.to_thread(family_activities.cleanup_expired)
+            await asyncio.to_thread(cleanup_activity_history, family_activities, run_store, store, _chat_background().store)
+            await asyncio.to_thread(deliver_activity_notifications, family_activities, _chat_background().notifications)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"[activity_lifecycle] {type(exc).__name__}")
+        await asyncio.sleep(10)
+
+
+@app.on_event('startup')
+async def _start_activity_lifecycle():
+    if not app.config.get('TESTING'):
+        app.state.activity_lifecycle_task = asyncio.create_task(_activity_lifecycle_loop())
+
+
+@app.on_event('shutdown')
+async def _stop_activity_lifecycle():
+    task = getattr(app.state, 'activity_lifecycle_task', None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
 @app.on_event('startup')
 async def _start_board_cleanup():
     if not app.config.get('TESTING'):
@@ -1713,12 +1752,16 @@ def _private_legacy_notifications(user, limit=100):
 
 
 @app.get('/api/home/notifications', tags=['home'])
-def home_notifications(unread_only: bool = False, limit: int = 100, user=Depends(require_user)):
-    return {'notifications': [r for r in _private_legacy_notifications(user, limit) if not unread_only or not r.get('read_at')]}
+def home_notifications(response: Response, unread_only: bool = False, limit: int = 100, user=Depends(require_user)):
+    response.headers['Cache-Control'] = 'private, no-store'
+    rows = _private_legacy_notifications(user, limit) + family_activities.notifications(user)
+    rows.sort(key=lambda r: r.get('created_at') or '', reverse=True)
+    return {'notifications': [r for r in rows if not unread_only or not r.get('read_at')][:limit]}
 
 
 @app.post('/api/home/notifications/read-all', tags=['home'])
 def home_notification_read_all(user=Depends(require_user)):
+    family_activities.mark_read(user)
     for row in _private_legacy_notifications(user, 500):
         home_service.mark_notification_read(row['id'], user)
     return {'ok': True}
@@ -1726,6 +1769,8 @@ def home_notification_read_all(user=Depends(require_user)):
 
 @app.post('/api/home/notifications/{notification_id}/read', tags=['home'])
 def home_notification_read(notification_id: str, user=Depends(require_user)):
+    if notification_id.startswith('activity:'):
+        return family_activities.mark_read(user, notification_id)
     if notification_id not in {r['id'] for r in _private_legacy_notifications(user, 500)}:
         raise TaskError('notification_not_found', status=404)
     return home_service.mark_notification_read(notification_id, user)
@@ -2710,6 +2755,7 @@ def _chat_background() -> BackgroundChat:
             account = user_store.get_user(user_id)
             return bool(account and account.get('status') == 'active' and auth_sessions.is_active_hash(fingerprint, user_id))
         notices = ChatNotifications(jobs, valid_login)
+        jobs.sanitize_persistence = lambda value: sanitize_activity_history(value, family_activities.store.private_unavailable())
         chat_background = BackgroundChat(jobs, notices)
     return chat_background
 

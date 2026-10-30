@@ -36,6 +36,7 @@ function enqueue(action: () => Promise<unknown>) {
 }
 export function cacheableRead(url: string) {
   const path = url.split('?')[0];
+  if (/^\/api\/home\/(polls|relays|board|notifications)(\/|$)/.test(path)) return false;
   return path === '/api/auth/me' || path === '/api/skills' ||
     (/^\/api\/(home|sessions|knowledge|interactive-cards)(\/|$)/.test(path) &&
       !/\/(share|assets|tasks-migration)(\/|$)/.test(path));

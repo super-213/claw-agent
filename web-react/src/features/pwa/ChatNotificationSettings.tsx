@@ -18,17 +18,17 @@ export function ChatNotificationSettings() {
       if (enabled) await disableChatNotifications();
       else await enableChatNotifications(settings);
       setSettings(await notificationSettings());
-      setNotice(enabled ? '已关闭此登录设备的回复通知。' : '已开启。离开对话后，回复完成会通知你。');
+      setNotice(enabled ? '已关闭此登录设备的回复与家庭活动通知。' : '已开启。回复完成或家庭活动结束会通知你。');
     } catch (error) { setNotice((error as Error).message); }
     finally { setBusy(false); }
   };
-  return <section className="chat-notification-settings" aria-label="回复通知">
-    <h3>回复通知</h3>
-    <p>离开应用后继续生成，完成时提醒你。锁屏通知不显示问题或回答正文。</p>
+  return <section className="chat-notification-settings" aria-label="回复与家庭活动通知">
+    <h3>回复与家庭活动通知</h3>
+    <p>回复完成或你创建的家庭活动结束时提醒你。锁屏通知不显示问题、回答或参与明细。</p>
     {!supported && <p>iPhone 请先<Link to="/install">添加到主屏幕</Link>，从桌面图标打开后开启通知。</p>}
-    {settings && !settings.configured && <p role="status">回复通知暂不可用，请稍后重试或联系管理员。</p>}
+    {settings && !settings.configured && <p role="status">回复与家庭活动通知暂不可用，请稍后重试或联系管理员。</p>}
     {settings?.devices.some(device => device.last_error) && <p role="status">上次通知未能送达。回复会保留在对话中；可以检查系统权限，或关闭后重新开启通知。</p>}
-    <button type="button" disabled={!supported || !settings || (!enabled && !settings.configured) || busy} onClick={() => void toggle()}>{busy ? '正在处理…' : enabled ? '关闭回复通知' : '开启回复通知'}</button>
+    <button type="button" disabled={!supported || !settings || (!enabled && !settings.configured) || busy} onClick={() => void toggle()}>{busy ? '正在处理…' : enabled ? '关闭回复与家庭活动通知' : '开启回复与家庭活动通知'}</button>
     {notice && <p role="status">{notice}</p>}
     <p className="home-muted">通知受网络、专注模式和系统设置影响；退出登录会停止此登录设备的后续推送。</p>
   </section>;

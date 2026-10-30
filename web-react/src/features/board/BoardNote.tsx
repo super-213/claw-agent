@@ -16,14 +16,15 @@ export function BoardBody({ view, onPreview }: { view: BoardView; onPreview: (as
 }
 export function BoardNote({ view, onOpen, onPreview, dragHandle, compact = false }: { view: BoardView; onOpen: () => void; onPreview: (assetId: string) => void; dragHandle?: ReactNode; compact?: boolean }) {
   const { post, members, timezone } = view;
+  const label = view.activity_kind === 'poll' ? '家庭投票' : view.activity_kind === 'relay' ? '家庭接龙' : '便笺';
   const pointer = useRef({ x: 0, y: 0, scrolled: false });
   const names = (ids: string[]) => ids.map(id => members.find(m => m.member_id === id)?.display_name || '家庭成员').join('、');
-  return <article className={`board-paper board-note${compact ? ' board-note-compact' : ''}`} aria-label={`便笺：${post.title || '未命名便笺'}`} onPointerDown={event => { pointer.current = { x: event.clientX, y: event.clientY, scrolled: false }; }} onPointerCancel={() => { pointer.current.scrolled = true; }} onClick={event => {
+  return <article className={`board-paper board-note${compact ? ' board-note-compact' : ''}`} aria-label={`${label}：${post.title || '未命名便笺'}`} onPointerDown={event => { pointer.current = { x: event.clientX, y: event.clientY, scrolled: false }; }} onPointerCancel={() => { pointer.current.scrolled = true; }} onClick={event => {
     if (pointer.current.scrolled || Math.abs(event.clientX - pointer.current.x) + Math.abs(event.clientY - pointer.current.y) > 8) return;
     if ((event.target as HTMLElement).closest('button, a') || window.getSelection()?.toString()) return;
     onOpen();
   }}>
-    <header className={`board-note-header${dragHandle ? ' has-drag-handle' : ''}`}>{dragHandle || <><span>{names([post.created_by])} 留言</span><time dateTime={post.published_at || post.created_at}>{boardTime(post.published_at || post.created_at, timezone)}</time></>}</header>
+    <header className={`board-note-header${dragHandle ? ' has-drag-handle' : ''}`}>{dragHandle || <><span>{names([post.created_by])} {view.activity_kind ? label : '留言'}</span><time dateTime={post.published_at || post.created_at}>{boardTime(post.published_at || post.created_at, timezone)}</time></>}</header>
     <div className="board-note-body" tabIndex={compact ? undefined : 0} aria-label={compact ? '便笺摘要' : '便笺正文，可滚动'} onScroll={() => { pointer.current.scrolled = true; }}><BoardBody view={view} onPreview={compact ? () => onOpen() : onPreview} /></div>
     <footer className="board-note-footer">
       <span title={post.audience_mode === 'household' ? '当前家庭所有有效成员' : names(post.recipient_ids)}><UsersRound size={13} />{post.audience_mode === 'household' ? '所有人' : names(post.recipient_ids)}</span>

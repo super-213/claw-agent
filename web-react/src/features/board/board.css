@@ -138,3 +138,8 @@
 /* Default board view fits both dimensions inside the remaining desktop screen. */
 .board-canvas-viewport { height: var(--board-available-height, 520px); min-height: 0; max-height: none; scrollbar-width: none; }
 .board-canvas-viewport::-webkit-scrollbar { display: none; }
+
+.board-toolbar-heading { flex-wrap: wrap; justify-content: flex-start; }
+.board-toolbar-heading > .home-panel-tabs { margin-right: auto; }
+.board-toolbar-heading > button:not(.board-primary), .board-tools > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--separator); background: var(--surface-solid); color: var(--text-primary); border-radius: 9px; padding: 10px; white-space: nowrap; }
+@media (max-width: 600px) { .board-toolbar-heading > .home-panel-tabs { width: 100%; } .board-toolbar-heading > .board-primary { margin-left: auto; } }

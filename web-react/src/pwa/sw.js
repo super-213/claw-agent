@@ -15,7 +15,7 @@ clientsClaim();
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'CLEAR_CHAT_NOTIFICATIONS') {
     event.waitUntil(self.registration.getNotifications().then(notices => {
-      notices.filter(notice => notice.tag.startsWith('chat-')).forEach(notice => notice.close());
+      notices.filter(notice => notice.tag.startsWith('chat-') || notice.tag.startsWith('activity:')).forEach(notice => notice.close());
     }));
     return;
   }
@@ -45,7 +45,7 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || payload.id || 'home-agent',
     data: { url: target, job_id: payload.job_id },
     requireInteraction: Boolean(payload.requireInteraction),
-    actions: chat ? [] : [
+    actions: chat || payload.kind === 'family_activity' ? [] : [
       { action: 'view', title: '查看' },
       { action: 'done', title: '完成' },
     ],
@@ -61,7 +61,7 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if ('focus' in client && new self.URL(client.url).pathname === url.split('?')[0]) {
-          return client.focus();
+          return client.navigate(url).then(() => client.focus());
         }
       }
       return self.clients.openWindow(url);

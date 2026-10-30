@@ -37,7 +37,7 @@ export const jsonRequest = async <T>(url: string, options: RequestInit = {}): Pr
   if (writing && !window.navigator.onLine) throw new Error('当前离线，请联网后重试。');
   const finish = writing ? beginActivity() : () => undefined;
   const context = cacheContext(useAppStore.getState().currentUser?.id);
-  const cacheRead = !writing && (options.method || 'GET').toUpperCase() === 'GET' && cacheableRead(url);
+  const cacheRead = options.cache !== 'no-store' && !writing && (options.method || 'GET').toUpperCase() === 'GET' && cacheableRead(url);
   try {
     let response: Response;
     try {

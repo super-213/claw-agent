@@ -21,7 +21,7 @@ from .contracts import ToolBindingContext
 # Host-owned defaults apply only to reviewed packages shipped in this repository.
 BUNDLED = {'datetime': (), 'files': (), 'public_http': ('network:public-read',),
            'shell': (), 'skills': ('skill:read', 'skill:install', 'network:public-read'), 'attached': ('browser:open', 'network:external', 'system:application-control'),
-           'home_assistant': (), 'family_tasks': (), 'board': (), 'knowledge': (), 'mcp': ('mcp', 'read_only')}
+           'home_assistant': (), 'family_tasks': (), 'board': (), 'family_polls': (), 'family_relays': (), 'knowledge': (), 'mcp': ('mcp', 'read_only')}
 _NAME = re.compile(r'^[a-z][a-z0-9_]{0,63}$')
 
 

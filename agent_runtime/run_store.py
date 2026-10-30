@@ -70,10 +70,10 @@ class RunStore:
         path = self._path(run_id)
         if not path.exists():
             raise KeyError(f"Run not found: {run_id}")
-        return json.loads(path.read_text(encoding="utf-8"))
+        return getattr(self, "sanitize_persistence", lambda value: value)(json.loads(path.read_text(encoding="utf-8")))
 
     def save(self, run: dict[str, Any]) -> dict[str, Any]:
-        run = dict(run)
+        run = getattr(self, "sanitize_persistence", lambda value: value)(dict(run))
         run["updated_at"] = self._now()
         path = self._path(str(run["id"]))
         tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")

@@ -76,3 +76,15 @@ it('keeps online reads working when browser storage is unavailable', async () =>
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ title: 'online' }));
   expect(await jsonRequest('/api/home/tasks')).toEqual({ title: 'online' });
 });
+
+it('never persists or restores expiring family activity or board responses', async () => {
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ title: '活动私密内容' }));
+  for (const url of ['/api/home/polls/poll_1', '/api/home/relays/relay_1', '/api/home/board/feed']) {
+    await jsonRequest(url);
+    expect(await cachedResponse(url, cacheContext())).toBeUndefined();
+  }
+  await jsonRequest('/api/home/tasks', { cache: 'no-store' });
+  expect(await cachedResponse('/api/home/tasks', cacheContext())).toBeUndefined();
+  fetcher.mockRejectedValue(new TypeError('offline'));
+  await expect(jsonRequest('/api/home/polls/poll_1')).rejects.toThrow('offline');
+});

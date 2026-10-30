@@ -28,7 +28,7 @@ export function SkillsView() {
       setReloading(false);
     }
   };
-  const useSkill = async (skill: Skill) => {
+  const openSkill = async (skill: Skill) => {
     setOpening(true);
     setError('');
     try {
@@ -56,7 +56,7 @@ export function SkillsView() {
       {error && <p role="alert">{error}</p>}
       <div className="home-list">
         {(query.data?.skills || []).map((skill) => (
-          <button className="home-session-row" type="button" key={skill.name} disabled={opening} onClick={() => void useSkill(skill)} aria-label={`使用技能 ${skill.name}`}>
+          <button className="home-session-row" type="button" key={skill.name} disabled={opening} onClick={() => void openSkill(skill)} aria-label={`使用技能 ${skill.name}`}>
             <strong>{skill.name}</strong>
             {skill.summary && <small>{skill.summary}</small>}
           </button>

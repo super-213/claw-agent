@@ -53,6 +53,7 @@ class ChatJobStore:
         db.row_factory = sqlite3.Row
         try:
             db.execute('PRAGMA foreign_keys=ON')
+            db.execute('PRAGMA secure_delete=ON')
             db.execute('BEGIN IMMEDIATE')
             yield db
             db.commit()
@@ -149,6 +150,23 @@ class ChatJobStore:
             if event['type'] != 'model_delta':
                 db.execute('DELETE FROM events WHERE job_id=? AND sequence < COALESCE((SELECT sequence FROM events WHERE job_id=? ORDER BY sequence DESC LIMIT 1 OFFSET 19999),0)', (job_id, job_id))
 
+        if event['type'] != 'model_delta':
+            self.sanitize_events(job_id)
+
+    def sanitize_events(self, job_id=None):
+        sanitizer = getattr(self, 'sanitize_persistence', None)
+        if sanitizer is None:
+            return
+        with self.db() as db:
+            jobs = [job_id] if job_id else [row['job_id'] for row in db.execute('SELECT DISTINCT job_id FROM events')]
+            for identifier in jobs:
+                rows = db.execute('SELECT sequence,data FROM events WHERE job_id=? ORDER BY sequence', (identifier,)).fetchall()
+                original = [json.loads(row['data']) for row in rows]
+                clean = sanitizer(original)
+                for row, before, after in zip(rows, original, clean):
+                    if before != after:
+                        db.execute('UPDATE events SET data=? WHERE sequence=?', (json.dumps(after, ensure_ascii=False), row['sequence']))
+
     def interrupt(self, job_id, reason='任务已停止，请核对已保存的结果。', status='interrupted'):
         with self.db() as db:
             allowed = "('queued','running','interrupted')" if status == 'cancelled' else "('queued','running')"
@@ -169,6 +187,7 @@ class ChatJobStore:
             db.execute("UPDATE chat_outbox SET status='read' WHERE status='pending' AND job_id IN (SELECT id FROM jobs WHERE run_id=? AND user_id=?)", (run_id, user_id))
 
     def events(self, job_id, after):
+        self.sanitize_events(job_id)
         with self.db() as db:
             rows = db.execute('SELECT sequence,data FROM events WHERE job_id=? AND sequence>? ORDER BY sequence LIMIT 200', (job_id, after)).fetchall()
             return [dict(json.loads(row['data']), sequence=row['sequence'], job_id=job_id) for row in rows]

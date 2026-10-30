@@ -28,7 +28,7 @@ const CanvasNote = memo(function CanvasNote({ view, placement, dragging, activat
         title="拖动摆放，方向键微调，Shift 加速；Esc 取消拖动" onClick={e => e.stopPropagation()}
         onPointerDown={e => start(view.post.id, e)} onPointerMove={move} onPointerUp={end}
         onPointerCancel={cancel} onLostPointerCapture={cancel} onKeyDown={e => keyboard(view.post.id, e)}>
-        <span>{author} 留言</span><GripHorizontal size={16} aria-hidden="true" /><time dateTime={view.post.published_at || view.post.created_at}>{boardTime(view.post.published_at || view.post.created_at, view.timezone)}</time>
+        <span>{author} {view.activity_kind === 'poll' ? '发起投票' : view.activity_kind === 'relay' ? '发起接龙' : '留言'}</span><GripHorizontal size={16} aria-hidden="true" /><time dateTime={view.post.published_at || view.post.created_at}>{boardTime(view.post.published_at || view.post.created_at, view.timezone)}</time>
       </button>
     } />
   </div>;

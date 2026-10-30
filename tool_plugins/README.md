@@ -15,6 +15,7 @@
 | home_assistant | 白名单设备查询与控制 | 配置成功且存在允许实体时 |
 | family_tasks | 日程、备忘、草稿及事项操作 | Web，需要家庭服务 |
 | board | 留言板与便笺 | Web，需要留言板服务 |
+| family_polls / family_relays | 家庭投票／接龙、本人参与、草稿与交互卡片 | Web，需要家庭活动服务 |
 | knowledge | 资料、个人记录与来源 | Web，需要知识库服务 |
 | mcp | 受限 stdio 只读工具来源 | Web，需要 MCP 配置和用户授权 |
 

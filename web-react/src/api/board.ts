@@ -11,7 +11,7 @@ export interface BoardPost extends BoardData {
   state: 'draft' | 'active' | 'expired' | 'withdrawn'; missing_fields?: string[];
 }
 export interface BoardView extends CardView {
-  post: BoardPost; timezone: string; current_member_id: string;
+  activity_kind?: 'poll' | 'relay'; post: BoardPost; timezone: string; current_member_id: string;
   members: Array<{ member_id: string; display_name: string; status: string; aliases?: string[] }>;
 }
 export interface BoardList { items: BoardView[]; next_cursor: string | null; server_now: string }
@@ -22,6 +22,7 @@ const base = '/api/home/board';
 const sessionQuery = (context?: CardContext) => context?.sessionId ? `?session_id=${encodeURIComponent(context.sessionId)}` : '';
 export const boardAssetUrl = (id: string) => `${base}/assets/${encodeURIComponent(id)}`;
 export const boardApi = {
+  feed: (cursor?: string | null) => jsonRequest<BoardList>(`${base}/feed?${new URLSearchParams(cursor ? { cursor } : {})}`, { cache: 'no-store' }),
   list: (cursor?: string | null) => jsonRequest<BoardList>(`${base}/posts?${new URLSearchParams(cursor ? { cursor } : {})}`, { cache: 'no-store' }),
   get: (id: string, draft = false, context?: CardContext) => jsonRequest<BoardView>(`${base}/${draft ? 'drafts' : 'posts'}/${encodeURIComponent(id)}${sessionQuery(context)}`, { cache: 'no-store' }),
   createDraft: (id: string, data = emptyBoardData()) => jsonRequest<BoardView>(`${base}/drafts`, { method: 'POST', body: JSON.stringify({ request_id: id, data }) }),

@@ -135,7 +135,7 @@ class ConversationStore:
             data["updated_at"] = self._now_iso()
             self._write_session(session_id, data)
 
-        return self._with_usage(data)
+        return self._with_usage(getattr(self, "sanitize_persistence", lambda value: value)(data))
 
     def delete_session(self, session_id: str) -> None:
         lock = self._session_lock(session_id)
@@ -369,6 +369,7 @@ class ConversationStore:
         return self.root_dir / f"{session_id}.json"
 
     def _write_session(self, session_id: str, data: Dict[str, Any]):
+        data = getattr(self, "sanitize_persistence", lambda value: value)(data)
         path = self._path(session_id)
         # 原子写入：先写 .tmp 再 rename，避免并发读到半写文件
         tmp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")

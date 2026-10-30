@@ -78,7 +78,7 @@ it('offers all household members for bare @ without converting the input to a ta
   expect(change).toHaveBeenCalledWith('@ 小陈 ');
 });
 it('switches workbench panels without discarding widget layout or leaking data across accounts', async () => {
-  vi.spyOn(boardApi, 'list').mockResolvedValue({ items: [], next_cursor: null, server_now: '2026-10-27T04:00:00Z' });
+  vi.spyOn(boardApi, 'feed').mockResolvedValue({ items: [], next_cursor: null, server_now: '2026-10-27T04:00:00Z' });
   const FixtureWidgets = ({ panelSwitch }: { panelSwitch?: React.ReactNode }) => React.createElement('div', null, panelSwitch, '原来的小组件');
   const child = React.createElement(FixtureWidgets);
   render(React.createElement(MemoryRouter, null, React.createElement(QueryClientProvider, { client }, React.createElement(WorkbenchPanels, { userId: 'alice', children: child }))));
@@ -87,7 +87,7 @@ it('switches workbench panels without discarding widget layout or leaking data a
   await screen.findByRole('button', { name: '写便笺', exact: true });
   expect(screen.queryByRole('combobox', { name: '便笺来源' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: '便笺状态' })).toBeNull();
-  expect(boardApi.list).toHaveBeenCalledWith(null);
+  expect(boardApi.feed).toHaveBeenCalledWith(null);
   expect(localStorage.getItem('claw.home.panel.v1.alice')).toBe('board');
   expect(localStorage.getItem('claw.home.panel.v1.bob')).toBeNull();
 });

@@ -1,0 +1,145 @@
+{
+  "id": "family_relays",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "plugin.py:create_plugin",
+  "runtimes": [
+    "web"
+  ],
+  "requires_services": [
+    "family_activities",
+    "runtime"
+  ],
+  "requested_permissions": [],
+  "tool_metadata": {
+    "family_relay_create": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_list": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_get": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_update": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_close": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_delete": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_draft_get": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_draft_update": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_join": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_update_entry": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    },
+    "family_relay_withdraw_entry": {
+      "group": "family_relays",
+      "keywords": [
+        "家庭接龙",
+        "接龙",
+        "报名",
+        "参与",
+        "销毁",
+        "截止"
+      ]
+    }
+  },
+  "cards": {
+    "kind": "relay",
+    "resource_types": [
+      "family_relay",
+      "family_relay_draft"
+    ]
+  },
+  "extension_order": 220
+}

@@ -21,7 +21,7 @@ ticking = [False]
 clock_started = [time.monotonic()]
 def fixture_now():
     return clock[0] + timedelta(seconds=time.monotonic() - clock_started[0]) if ticking[0] else clock[0]
-w.family_tasks.clock = w.family_board.clock = fixture_now
+w.family_tasks.clock = w.family_board.clock = w.family_activities.clock = fixture_now
 w.home_service._now = lambda: clock[0]
 people = [w.user_store.create_user(username='board014' + suffix, password='Board014-test', display_name=name, role='admin' if not suffix else 'user') for suffix, name in [('', '小林'), ('b', '小陈'), ('c', '小周')]]
 for member, person in zip('ABC', people):

@@ -1,0 +1,37 @@
+.activity-card { min-width: 0; }
+.activity-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.activity-fields .activity-check { display: flex; align-items: center; gap: .55rem; }
+.activity-check input { width: auto; }
+.activity-time-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.activity-option-edit, .activity-custom-field { display: flex; align-items: center; gap: .5rem; margin: .5rem 0; }
+.activity-option-edit input, .activity-custom-field input { min-width: 0; flex: 1; }
+.activity-custom-field { flex-wrap: wrap; }
+.activity-ballot { border: 0; margin: 1rem 0; padding: 0; min-width: 0; }
+.activity-ballot legend { margin-bottom: .5rem; font-size: .85rem; }
+.activity-vote-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .7rem; align-items: center; padding: .8rem 0; cursor: pointer; }
+.activity-vote-option > input { width: auto; }
+.activity-vote-option > span { overflow-wrap: anywhere; }
+.activity-vote-track { display: block; height: 4px; border-radius: 5px; background: color-mix(in srgb, currentColor 8%, transparent); margin-top: .45rem; overflow: hidden; }
+.activity-vote-track > span { display: block; height: 100%; background: #668a73; }
+.activity-entries { padding-left: 2rem; max-height: 22rem; overflow: auto; }
+.activity-entries li { padding: .6rem 0; overflow-wrap: anywhere; }
+.activity-entries li span { display: block; white-space: pre-wrap; }
+.activity-participants { margin: .75rem 0; }
+.activity-confirm { padding: 1rem; border: 1px solid currentColor; border-radius: .7rem; margin-top: 1rem; }
+.activity-confirm button { margin-right: .7rem; }
+.board-tools { position: relative; }
+.board-tools-menu { position: absolute; top: calc(100% + .5rem); right: 0; z-index: 20; display: grid; min-width: 180px; padding: .4rem; border-radius: .8rem; background: var(--surface-solid, #fff); color: var(--text-primary, #222); box-shadow: 0 8px 32px #0003; border: 1px solid #8884; }
+.board-tools-menu button { padding: .8rem; text-align: left; white-space: nowrap; border: 0; background: transparent; color: inherit; border-radius: .4rem; }
+.board-tools-menu button:hover, .board-tools-menu button:focus-visible { background: #8882; }
+[data-theme='dark'] .board-tools-menu { background: #252925; color: #eee; }
+@media (max-width: 600px) { .activity-time-grid { grid-template-columns: 1fr; } .activity-vote-option { gap: .4rem; } }
+
+/* Home form defaults are column based; ballots keep their compact row layout. */
+.home-shell .activity-card .activity-vote-option { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 0; }
+.home-shell .activity-card .activity-vote-option > input { width: 18px; height: 18px; min-width: 18px; min-height: 18px; margin: 0; padding: 0; accent-color: #668a73; }
+.home-shell .activity-fields .activity-check { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; }
+.home-shell .activity-fields .activity-check input { width: 18px; min-width: 18px; height: 18px; min-height: 18px; margin: 0; padding: 0; }
+.activity-card > h3, .activity-card > p, .activity-card > .activity-ballot, .activity-card > .activity-participants { margin-left: 20px; margin-right: 20px; }
+.activity-card > h3 { margin-top: 20px; }
+.activity-card > .activity-entries { margin-left: 20px; margin-right: 20px; }
+.activity-card > .activity-confirm { margin: 16px; }
