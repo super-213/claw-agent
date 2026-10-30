@@ -4,9 +4,10 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ElementRef,
 } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CalendarDays, Check } from 'lucide-react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, CalendarDays, Check } from 'lucide-react';
 import { configApi } from '../../api/config';
 import { homeApi, type InventoryLocation } from '../../api/home';
 import { sessionsApi } from '../../api/sessions';
@@ -20,6 +21,7 @@ import { isAdmin, useAppStore } from '../../stores/appStore';
 import { buildAttention, type Attention } from './attention';
 import { InventoryView } from './InventoryView';
 import { useHomeData } from './useHomeData';
+import { moreSections, validMoreSection } from './moreNavigation';
 import { MoreView } from './MoreView';
 import { HomeNav } from './HomeNav';
 import { FamilyNav } from './FamilyNav';
@@ -95,7 +97,12 @@ export function HomePage() {
     setRowError('');
   }, [currentUser?.id]);
   useEffect(() => { if (params.get('panel') === 'board' && params.get('post')) setChatOpen(false); }, [params]);
-  const scrollPath = location.pathname;
+  const moreSection = view === 'more' ? validMoreSection(params.get('section'), isAdmin(currentUser)) : null;
+  const scrollPath = location.pathname + (moreSection ? `?section=${moreSection}` : '');
+  const pageHeading = useRef<ElementRef<'h1'>>(null);
+  useEffect(() => {
+    if (view === 'more') pageHeading.current?.focus({ preventScroll: true });
+  }, [view, moreSection]);
   const closeChat = useCallback(() => {
     setChatOpen(false);
     void refresh();
@@ -309,6 +316,9 @@ export function HomePage() {
         <div className="home-content">
           <header className="home-topbar">
             <div className="home-topbar-heading">
+              {moreSection && <Link className="home-more-back" to="/home/more">
+                <ArrowLeft size={18} aria-hidden="true" /> 返回更多
+              </Link>}
               {isToday ? (
                 <>
                   <button
@@ -322,8 +332,8 @@ export function HomePage() {
                   <h1>{status}</h1>
                 </>
               ) : (
-                <h1>
-                  {{ items: '家庭', tasks: '家庭', library: '家庭', memories: '家庭', more: '更多' }[view]}
+                <h1 ref={pageHeading} tabIndex={-1}>
+                  {moreSection ? moreSections[moreSection] : { items: '家庭', tasks: '家庭', library: '家庭', memories: '家庭', more: '更多' }[view]}
                 </h1>
               )}
             </div>

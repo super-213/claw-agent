@@ -1,11 +1,14 @@
 import { PasskeySettings } from '../auth/PasskeySettings';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
   CalendarDays,
-  MessageCircle,
+  Download,
+  LayoutDashboard,
+  NotebookPen,
+  Users,
   Settings,
 } from 'lucide-react';
 import { authApi } from '../../api/auth';
@@ -14,6 +17,7 @@ import { isAdmin, useAppStore } from '../../stores/appStore';
 import { formatTime } from '../../utils/format';
 import { TaskAdmin } from '../tasks/TaskAdmin';
 import { ChatNotificationSettings } from '../pwa/ChatNotificationSettings';
+import { validMoreSection } from './moreNavigation';
 import { ThemeSelector } from '../../components/ui/ThemeSelector';
 
 export function MoreView({
@@ -31,7 +35,6 @@ export function MoreView({
   sessions: ReturnType<typeof useAppStore.getState>['sessions'];
   loadSessions: () => Promise<void>;
 }) {
-  const navigate = useNavigate();
   const user = useAppStore((s) => s.currentUser);
   const activity = useQuery({
     queryKey: ['home', user?.id, 'activity'],
@@ -67,58 +70,61 @@ export function MoreView({
     'inventory.delete': '删除了',
     'inventory.consume': '使用了',
   };
-  if (section === 'admin' && isAdmin(user)) return <TaskAdmin />;
+  if (section && !validMoreSection(section, isAdmin(user))) {
+    return <Navigate to="/home/more" replace />;
+  }
   return (
-    <section className="home-section home-more">
-      <h1>
-        {section === 'sessions'
-          ? '最近对话'
-          : section === 'activity'
-            ? '家庭动态'
-            : section === 'account'
-              ? '账号与设置'
-              : '更多'}
-      </h1>
+    <section className="home-section home-more" aria-label="更多内容">
       {!section && (
-        <div className="home-more-menu">
-          <Link to="/offline">离线随身页 <ArrowRight size={18} /></Link>
-          <Link to="/install">添加到主屏幕 <ArrowRight size={18} /></Link>
-          <button onClick={() => navigate('/home/more?section=sessions')}>
-            <MessageCircle size={21} />
-            最近对话
-            <ArrowRight size={18} />
-          </button>
-          <button onClick={() => navigate('/home/more?section=activity')}>
-            <CalendarDays size={21} />
-            家庭动态
-            <ArrowRight size={18} />
-          </button>
-          <button onClick={() => navigate('/home/more?section=account')}>
-            <Settings size={21} />
-            账号与设置
-            <ArrowRight size={18} />
-          </button>
-          {isAdmin(user) && (
-            <>
-              <button onClick={() => navigate('/home/more?section=admin')}>
-                成员与迁移管理
-                <ArrowRight size={18} />
-              </button>
-              <Link to="/dashboard">
-                管理看板 <ArrowRight size={18} />
+        <>
+          <p className="home-muted home-more-intro">管理个人偏好，查找便捷工具。</p>
+          <section className="home-more-group" aria-labelledby="more-personal">
+            <h2 id="more-personal">个人设置</h2>
+            <div className="home-more-menu">
+              <Link to="/home/more?section=account">
+                <Settings size={21} aria-hidden="true" />
+                <span>账号与设置<small>外观、通知、通行密钥与登录</small></span>
+                <ArrowRight size={18} aria-hidden="true" />
               </Link>
-            </>
+            </div>
+          </section>
+          <section className="home-more-group" aria-labelledby="more-tools">
+            <h2 id="more-tools">便捷使用</h2>
+            <div className="home-more-menu">
+              <Link to="/offline"><NotebookPen size={21} aria-hidden="true" />
+                <span>离线随身页<small>离线查看资料与记录个人备忘</small></span>
+                <ArrowRight size={18} aria-hidden="true" /></Link>
+              <Link to="/install"><Download size={21} aria-hidden="true" />
+                <span>添加到主屏幕<small>从手机桌面快速打开</small></span>
+                <ArrowRight size={18} aria-hidden="true" /></Link>
+              <Link to="/home/more?section=activity"><CalendarDays size={21} aria-hidden="true" />
+                <span>物品操作记录<small>查看家庭物品的添加、修改和使用记录</small></span>
+                <ArrowRight size={18} aria-hidden="true" /></Link>
+            </div>
+          </section>
+          {isAdmin(user) && (
+            <section className="home-more-group" aria-labelledby="more-admin">
+              <h2 id="more-admin">管理员工具</h2>
+              <div className="home-more-menu">
+                <Link to="/home/more?section=admin"><Users size={21} aria-hidden="true" />
+                  <span>家庭成员管理<small>账号绑定与历史迁移核对</small></span>
+                  <ArrowRight size={18} aria-hidden="true" /></Link>
+                <Link to="/dashboard"><LayoutDashboard size={21} aria-hidden="true" />
+                  <span>管理看板<small>查看模型用量与运行统计</small></span>
+                  <ArrowRight size={18} aria-hidden="true" /></Link>
+              </div>
+            </section>
           )}
-        </div>
+        </>
       )}
-      {!section && <ThemeSelector />}
+      {section === 'admin' && isAdmin(user) && <TaskAdmin />}
       {section === 'account' && (
         <div className="home-account">
           <h2>{user?.display_name || user?.username}</h2>
           <p className="home-muted">账号：{user?.username}</p>
+          <ThemeSelector />
           <ChatNotificationSettings />
           <PasskeySettings />
-          <Link to="/offline">离线随身页与个人备忘同步</Link>
           {isAdmin(user) && (
             <button type="button" onClick={onSettings}>
               模型与设备设置（管理员）

@@ -18,7 +18,7 @@ export function InstallPage() {
     return () => { live = false; document.body.classList.remove('pwa-install-route'); };
   }, [url]);
   return <main className="pwa-install">
-    <Link className="pwa-back" to="/home"><ArrowLeft size={18} /> 返回首页</Link>
+    <Link className="pwa-back" to="/home/more"><ArrowLeft size={18} /> 返回更多</Link>
     <img className="pwa-app-icon" src="/apple-touch-icon.png" width="80" height="80" alt="" />
     <p className="pwa-eyebrow">HOME AGENT</p>
     <h1>{installed ? '已在独立窗口中打开' : '把家庭助手放到主屏幕'}</h1>

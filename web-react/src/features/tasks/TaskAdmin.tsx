@@ -44,8 +44,7 @@ export function TaskAdmin() {
     });
   };
   return (
-    <section className="home-section task-admin-page">
-      <h2>成员与迁移管理</h2>
+    <section className="task-admin-page">
       {error && <p role="alert">{error}</p>}{' '}
       <details className="task-admin">
         <summary

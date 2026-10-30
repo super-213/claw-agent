@@ -814,3 +814,48 @@ body.home-route .home-shell {
   .home-shell .home-command-actions button { padding: 6px; font-size: 11px; }
   .home-shell .home-command form button { width: 44px; padding: 0; }
 }
+
+/* “更多”是四个主入口之一；二级内容通过页头回到目录。 */
+.home-shell .home-more-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  width: fit-content;
+  color: var(--home-ink);
+  text-decoration: none;
+  border-radius: 6px;
+}
+.home-more-back:focus-visible {
+  outline: 3px solid var(--home-focus);
+  outline-offset: 2px;
+}
+.home-more { max-width: 840px; }
+.home-more-intro { margin: 0 0 24px; }
+.home-more-group { margin-bottom: 28px; }
+.home-shell .home-more-group h2 {
+  color: var(--home-muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.home-more-menu a { text-decoration: none; color: var(--home-ink); }
+.home-more-menu a > svg { flex-shrink: 0; }
+.home-more-menu a > span { min-width: 0; }
+.home-more-menu small {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--home-muted);
+}
+.home-more-menu a:hover { background: var(--home-nav); }
+.home-more-menu a:focus-visible {
+  outline: 3px solid var(--home-focus);
+  outline-offset: 2px;
+}
+.home-shell .home-topbar-heading:has(.home-more-back) h1 { font-size: 22px; }
+.home-shell .home-more-intro { margin: 0 0 24px; }
+/* 标题接收路由切换后的朗读焦点，不作为交互控件绘制焦点框。 */
+.home-shell .home-topbar-heading h1:focus { outline: none; }

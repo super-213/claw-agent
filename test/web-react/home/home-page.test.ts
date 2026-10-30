@@ -166,3 +166,51 @@ it('completes an overdue attention item using its original occurrence and refres
   await waitFor(() => expect(change).toHaveBeenCalledWith('late', 'complete', { expected_version: 3 }, 'late:once'));
   await waitFor(() => expect(screen.queryByText('已做完忘勾选')).toBeNull());
 });
+
+it('keeps four primary destinations and groups miscellaneous tools without duplicate chat history', async () => {
+  window.history.replaceState(null, '', '/home/more');
+  mount();
+  expect(screen.getAllByRole('heading', { name: '更多', exact: true })).toHaveLength(1);
+  const nav = screen.getByRole('navigation', { name: '手机主导航' });
+  expect(nav.querySelectorAll('a')).toHaveLength(4);
+  expect(screen.getByRole('heading', { name: '个人设置' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
+  expect(screen.queryByRole('link', { name: /最近对话/ })).toBeNull();
+  expect(screen.queryByRole('heading', { name: '管理员工具' })).toBeNull();
+  expect(screen.queryByRole('group', { name: '外观' })).toBeNull();
+  fireEvent.click(screen.getByRole('link', { name: /物品操作记录/ }));
+  expect(window.location.search).toBe('?section=activity');
+  expect(screen.getByRole('heading', { name: '物品操作记录' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: '返回更多' }));
+  expect(window.location.pathname + window.location.search).toBe('/home/more');
+  expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
+});
+
+it('opens account settings with appearance controls and a deterministic return on a direct link', async () => {
+  window.history.replaceState(null, '', '/home/more?section=account');
+  mount();
+  expect(screen.getByRole('heading', { name: '账号与设置' })).toHaveFocus();
+  expect(screen.getByRole('group', { name: '外观' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: '返回更多' }));
+  expect(window.location.search).toBe('');
+  expect(screen.getByRole('heading', { name: '更多' })).toHaveFocus();
+});
+
+it('keeps the member admin inside the shared navigation and returns to the menu', async () => {
+  useAppStore.setState({ currentUser: { ...useAppStore.getState().currentUser!, role: 'admin' } });
+  window.history.replaceState(null, '', '/home/more');
+  mount();
+  fireEvent.click(screen.getByRole('link', { name: /家庭成员管理/ }));
+  expect(screen.getByRole('heading', { name: '家庭成员管理' })).toBeTruthy();
+  expect(screen.getByText('家庭成员绑定与迁移核对（管理员）')).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: '返回更多' }));
+  expect(screen.getByRole('heading', { name: '管理员工具' })).toBeTruthy();
+});
+
+it.each(['unknown', 'admin', 'toString'])('recovers invalid or unauthorized More section %s', async (section) => {
+  window.history.replaceState(null, '', `/home/more?section=${section}`);
+  mount();
+  await waitFor(() => expect(window.location.search).toBe(''));
+  expect(screen.getByRole('heading', { name: '便捷使用' })).toBeTruthy();
+  expect(screen.queryByText('家庭成员绑定与迁移核对（管理员）')).toBeNull();
+});

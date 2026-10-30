@@ -431,8 +431,8 @@ export function DashboardPage() {
             <a className="dashboard-nav-link" href="/chat">
               对话
             </a>
-            <a className="dashboard-nav-link" href="/home">
-              家庭
+            <a className="dashboard-nav-link" href="/home/more">
+              ← 返回更多
             </a>
             <div className="range-control" aria-label="时间范围">
               {(['all', '30d', '7d', 'today'] as DashboardRange[]).map((item) => (

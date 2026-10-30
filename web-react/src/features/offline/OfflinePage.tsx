@@ -41,7 +41,7 @@ export function OfflinePage() {
     setTitle(''); setEditing(undefined);
   });
   return <main className="auth-shell"><section className="auth-panel offline-panel">
-    <Link to="/home">返回工作台</Link><h1>离线随身页</h1>
+    <Link to="/home/more">← 返回更多</Link><h1>离线随身页</h1>
     <p role="status">{online ? '已联网' : '当前离线'} · 仅查看最近一次授权同步的数据</p>
     <p>主动启用后，此浏览器保存事项标题、近期对话标题和资料元数据，最长 24 小时。正文与附件不缓存。共用设备请谨慎启用；退出或切换账号会清空。</p>
     <p>离线数据仅供参考，可能已过期。恢复网络后先验证当前权限，再显示缓存。关闭本次浏览器会话后需联网重新启用。</p>

@@ -7,13 +7,13 @@ import {
 import { isAdmin, useAppStore } from '../../stores/appStore';
 
 const shortcuts = [
-  { path: '/home/more?section=sessions', label: '最近对话', icon: MessageCircle },
-  { path: '/home/more?section=activity', label: '家庭动态', icon: CalendarDays },
+  { path: '/chat', label: '最近对话', icon: MessageCircle },
+  { path: '/home/more?section=activity', label: '物品操作记录', icon: CalendarDays },
   { path: '/home/more?section=account', label: '账号与设置', icon: Settings },
   { path: '/install', label: '添加到主屏幕', icon: Download },
 ];
 const adminShortcuts = [
-  { path: '/home/more?section=admin', label: '成员与迁移管理', icon: Users },
+  { path: '/home/more?section=admin', label: '家庭成员管理', icon: Users },
   { path: '/dashboard', label: '管理看板', icon: LayoutDashboard },
 ];
 
