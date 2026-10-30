@@ -14,6 +14,8 @@ from typing import Any
 import uuid
 
 from fastapi import Body, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 import uvicorn
@@ -246,6 +248,14 @@ async def http_exception_handler(_request: Request, exc: HTTPException):
     if exc.status_code == 403:
         return _error("forbidden", 403)
     return _error(detail or "http_error", exc.status_code)
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_validation_handler(request: Request, exc: RequestValidationError):
+    # Default validation details include raw input, including invalid passwords.
+    if request.url.path.startswith(('/api/auth/', '/api/admin/users')):
+        return _json({'error': 'invalid_input', 'message': '请检查输入内容后重试。'}, 422)
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.middleware("http")

@@ -162,6 +162,11 @@ body:has(.chat-workspace) .pwa-offline { display: none; }
   .chat-workspace .new-btn { min-height: 52px; background: var(--home-ink); color: var(--home-surface); border-color: transparent; font-size: 16px; }
   .chat-workspace .new-btn:hover { background: var(--home-ink); color: var(--home-surface); opacity: .9; }
   .chat-workspace .session-more { width: 44px; min-height: 44px; }
+  .chat-workspace .session-open { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: pan-y; }
+  .chat-workspace .session-open:active { background: var(--home-calendar); }
+  .chat-workspace .history-panel .session-list .session-item { flex-wrap: wrap; }
+  .chat-workspace .session-menu { position: static; flex: 0 0 calc(100% - 16px); margin: 0 8px 8px; }
+  .chat-workspace .session-menu button { min-height: 44px; font-size: 14px; }
   .chat-workspace .session-list { overscroll-behavior-y: contain; }
   .chat-workspace .sidebar-close { position: static; background: transparent; color: var(--home-ink); border: 0; box-shadow: none; width: 44px; height: 44px; min-height: 44px; flex-shrink: 0; }
   .chat-workspace .topbar { min-height: 74px; padding: 12px; gap: 8px; }

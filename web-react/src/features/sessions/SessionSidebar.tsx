@@ -1,5 +1,6 @@
 import { Menu, MessageCircle, MoreHorizontal, SquarePen, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { SessionSummary, User } from '../../api/types';
 import { formatTime } from '../../utils/format';
 import { useDialog } from '../../components/ui/useDialog';
@@ -49,7 +50,31 @@ export function SessionSidebar({
       ]
     : sessions;
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 860px)').matches);
+  const press = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null);
+  const suppressClick = useRef<string | null>(null);
+  const cancelPress = () => {
+    if (press.current) window.clearTimeout(press.current.timer);
+    press.current = null;
+  };
+  const startPress = (event: ReactPointerEvent<HTMLButtonElement>, sessionId: string) => {
+    cancelPress();
+    suppressClick.current = null;
+    if (!isMobile || !open || event.pointerType !== 'touch' || !event.isPrimary) return;
+    press.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      timer: window.setTimeout(() => {
+        suppressClick.current = sessionId;
+        onToggleSessionMenu(sessionId);
+      }, 500),
+    };
+  };
   const { ref: sidebarRef, dismiss } = useDialog(open && isMobile, onCloseMobile);
+  useEffect(() => {
+    // A closed drawer, changed viewport or unmounted list cannot finish a press.
+    return cancelPress;
+  }, [open, isMobile, sessions]);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 860px)');
     const update = () => setIsMobile(query.matches);
@@ -59,6 +84,11 @@ export function SessionSidebar({
   useEffect(() => {
     if (sidebarRef.current) sidebarRef.current.inert = isMobile && !open;
   }, [isMobile, open, sidebarRef]);
+  useEffect(() => {
+    if (isMobile && open && menuSessionId) {
+      sidebarRef.current?.querySelector('.session-menu')?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [isMobile, open, menuSessionId, sidebarRef]);
 
   return (
     <div className="sidebar-layer" ref={sidebarRef}>
@@ -73,7 +103,7 @@ export function SessionSidebar({
           </button>
         </div>
         <div className="history-panel">
-          <div className="session-list" id="session-history-list">
+          <div className="session-list" id="session-history-list" onScroll={cancelPress}>
             {orderedSessions.map((session) => {
               const busy = busySessionIds.has(session.id);
               const sharing = session.sharing || { scope: 'private' };
@@ -84,7 +114,31 @@ export function SessionSidebar({
                   key={session.id}
                   className={`session-item${session.id === currentSessionId ? ' active' : ''}${menuOpen ? ' menu-open' : ''}${busy ? ' busy' : ''}`}
                 >
-                  <button type="button" className="session-open" aria-current={session.id === currentSessionId ? "page" : undefined} onClick={() => void onOpenSession(session.id)}>
+                  <button
+                    type="button"
+                    className="session-open"
+                    aria-current={session.id === currentSessionId ? 'page' : undefined}
+                    onPointerDown={(event) => startPress(event, session.id)}
+                    onPointerMove={(event) => {
+                      const current = press.current;
+                      if (current && current.pointerId === event.pointerId &&
+                        Math.hypot(event.clientX - current.x, event.clientY - current.y) > 10) cancelPress();
+                    }}
+                    onPointerUp={cancelPress}
+                    onPointerCancel={cancelPress}
+                    onPointerLeave={cancelPress}
+                    onContextMenu={(event) => {
+                      if (isMobile) event.preventDefault();
+                    }}
+                    onClick={(event) => {
+                      if (suppressClick.current === session.id && event.detail !== 0) {
+                        suppressClick.current = null;
+                        event.preventDefault();
+                        return;
+                      }
+                      void onOpenSession(session.id);
+                    }}
+                  >
                     <MessageCircle size={16} aria-hidden="true" />
                     <span className="session-content">
                       <span className="session-title">
@@ -102,6 +156,7 @@ export function SessionSidebar({
                     type="button"
                     title="更多操作"
                     aria-label="更多操作"
+                    aria-expanded={menuOpen}
                     onClick={(event) => {
                       event.stopPropagation();
                       onToggleSessionMenu(menuOpen ? null : session.id);

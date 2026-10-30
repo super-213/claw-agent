@@ -232,3 +232,25 @@ def test_self_password_change_checks_password_revokes_sessions_and_keeps_passkey
     assert UserStore(users.path).verify_password('alice', 'newpass123')
     assert 'fixture-key' in passkeys.store.snapshot()['credentials']
     assert client.post('/api/auth/login', json={'username': 'alice', 'password': 'newpass123'}).status_code == 200
+
+
+def test_account_validation_errors_do_not_echo_credentials(tmp_path, monkeypatch):
+    client, users, _ = _client_with_auth_state(tmp_path, monkeypatch)
+    users.create_user(username='admin', password='fixture-current', role='admin')
+    client.post('/api/auth/login', json={'username': 'admin', 'password': 'fixture-current'})
+    cases = [
+        ('/api/auth/change-password', {'current_password': 'fixture-current', 'new_password': 'short'}),
+        ('/api/auth/change-password', {'current_password': 'fixture-current', 'new_password': 'fixture-new', 'unexpected': 'fixture-secret'}),
+        ('/api/auth/change-password', {'current_password': 'fixture-current', 'new_password': {'value': 'fixture-secret'}}),
+        ('/api/auth/login', {'username': 'admin', 'password': {'value': 'fixture-secret'}}),
+        ('/api/admin/users', {'username': 'new-user', 'password': {'value': 'fixture-secret'}}),
+    ]
+    for url, payload in cases:
+        response = client.post(url, json=payload)
+        assert response.status_code == 422
+        assert response.json() == {'error': 'invalid_input', 'message': '请检查输入内容后重试。'}
+        assert all(secret not in response.text for secret in ['fixture-current', 'fixture-new', 'fixture-secret', 'short'])
+    malformed = client.post('/api/auth/change-password', content='{"current_password":"fixture-current","new_password":"fixture-secret",', headers={'Content-Type': 'application/json'})
+    assert malformed.status_code == 422
+    assert 'fixture-' not in malformed.text
+    assert client.get('/api/auth/me').status_code == 200
