@@ -10,7 +10,7 @@ import {
 import { tasksApi, type TaskRow } from '../../api/tasks';
 import { useAppStore } from '../../stores/appStore';
 
-import { dayKey, monthDays, shiftMonth } from './calendarModel';
+import { dayKey, lunarDateLabel, monthDays, shiftMonth } from './calendarModel';
 import './home-calendar.css';
 
 const weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
@@ -64,6 +64,7 @@ export function ScheduleCalendar({
     retry: false,
   });
   const days = useMemo(() => (month ? monthDays(month) : []), [month]);
+  const lunarDate = useMemo(() => lunarDateLabel(selected), [selected]);
   const rows = (query.data?.rows || []).filter(
     (row) =>
       row.task.lifecycle === 'active' && row.occurrence?.status === 'open',
@@ -102,17 +103,9 @@ export function ScheduleCalendar({
       <div className="home-calendar-top">
         <CalendarDays size={21} />
         <span>家庭日历</span>
-        <button
-          type="button"
-          aria-label="回到今天"
-          disabled={!today}
-          onClick={() => {
-            setMonth(today!.slice(0, 7));
-            setSelected(today!);
-          }}
-        >
-          今天
-        </button>
+        <span className="home-calendar-lunar" aria-label="所选日期的农历">
+          {lunarDate || '日期暂不可用'}
+        </span>
       </div>
       <div className="home-calendar-month">
         <h2>

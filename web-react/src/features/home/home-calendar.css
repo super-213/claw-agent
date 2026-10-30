@@ -16,13 +16,12 @@
   font-weight: 600;
   margin-bottom: 22px;
 }
-.home-shell .home-calendar-top > button {
+.home-calendar-top .home-calendar-lunar {
   margin-left: auto;
-  border: var(--home-control-border) solid var(--home-outline);
-  min-height: 32px;
+  color: var(--home-muted);
   font-size: 12px;
-  padding: 5px 8px;
-  background: var(--home-surface);
+  font-weight: 500;
+  white-space: nowrap;
 }
 .home-calendar-month {
   display: flex;
@@ -225,7 +224,6 @@
     width: 44px;
     min-height: 44px;
   }
-  .home-shell .home-calendar-top > button,
   .home-shell .home-agenda-empty button,
   .home-shell .home-agenda-more {
     min-height: 44px;

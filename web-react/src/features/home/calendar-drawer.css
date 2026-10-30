@@ -72,4 +72,4 @@
 }
 .home-calendar-drawer .home-schedule { border-radius: 0; }
 .home-calendar-drawer .home-calendar-top > svg,
-.home-calendar-drawer .home-calendar-top > span { display: none; }
+.home-calendar-drawer .home-calendar-top > span:not(.home-calendar-lunar) { display: none; }

@@ -32,6 +32,10 @@ with sync_playwright() as p:
  assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
  finger('touchEnd');expect(d).to_be_visible()
  expect(d.locator('.home-calendar-days button')).to_have_count(42)
+ expect(d.get_by_role('button',name='回到今天',exact=True)).to_have_count(0)
+ expect(d.get_by_label('所选日期的农历')).to_have_text('丙午年九月十四')
+ d.get_by_role('button',name='2026-10-30',exact=True).click()
+ expect(d.get_by_label('所选日期的农历')).to_have_text('丙午年九月廿一')
  page.wait_for_timeout(500)
  page.screenshot(path=str(out/'calendar-edge-drawer.png'))
  assert page.evaluate('document.body.style.overflow') == 'hidden'

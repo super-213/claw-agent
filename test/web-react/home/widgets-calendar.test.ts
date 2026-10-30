@@ -10,6 +10,7 @@ import {
 } from '../../../web-react/src/features/home/widgetLayout';
 import {
   monthDays,
+  lunarDateLabel,
   shiftMonth,
 } from '../../../web-react/src/features/home/calendarModel';
 
@@ -25,6 +26,13 @@ it('builds Monday-first real calendar dates across leap months and years', () =>
   expect(days[41]).toBe('2028-03-12');
   expect(shiftMonth('2026-12', 1)).toBe('2027-01');
   expect(shiftMonth('2027-01', -1)).toBe('2026-12');
+});
+it('formats lunar dates with traditional day names, new year and leap months', () => {
+  expect(lunarDateLabel('2026-10-30')).toBe('丙午年九月廿一');
+  expect(lunarDateLabel('2026-02-16')).toBe('乙巳年腊月廿九');
+  expect(lunarDateLabel('2026-02-17')).toBe('丙午年正月初一');
+  expect(lunarDateLabel('2025-07-25')).toBe('乙巳年闰六月初一');
+  expect(lunarDateLabel('')).toBe('');
 });
 it('restores corrupted layouts safely and preserves intentional empty layouts', () => {
   expect(parseWidgetLayout('bad')).toEqual(defaultWidgets);
