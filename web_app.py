@@ -690,11 +690,11 @@ def _load_authorized_session(
     return session
 
 
-def _visible_session_metas(user: dict[str, Any]) -> list[dict[str, Any]]:
+def _visible_session_metas(user: dict[str, Any], *, readable_only: bool = False) -> list[dict[str, Any]]:
     visible = []
     for meta in store.list_sessions():
         payload = asdict(meta)
-        if user.get("role") == "admin":
+        if not readable_only and user.get("role") == "admin":
             visible.append(payload)
             continue
         try:
@@ -1261,7 +1261,7 @@ def admin_user_usage(user_id: str, _admin: dict[str, Any] = Depends(require_admi
 
 @app.get("/api/sessions", tags=["sessions"])
 def list_sessions(user: dict[str, Any] = Depends(require_user)):
-    return _visible_session_metas(user)
+    return _visible_session_metas(user, readable_only=True)
 
 
 @app.get("/api/token-usage", tags=["diagnostics"])

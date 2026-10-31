@@ -137,7 +137,9 @@ class BoardPostService:
                     clean.append({'type': 'text', 'text': block['text']})
             elif block.get('type') == 'image' and set(block) <= {'type', 'asset_id', 'alt'} and isinstance(block.get('asset_id'), str):
                 asset = doc['assets'].get(block['asset_id'])
-                if not asset or asset['created_by'] != actor:
+                if (not asset or asset['created_by'] != actor
+                        or not re.fullmatch(r'asset_[a-f0-9]{32}', block['asset_id'])
+                        or not (self.asset_root / (block['asset_id'] + '.png')).is_file()):
                     raise TaskError('board_asset_not_found', '图片不可用，请重新选择。', status=404)
                 alt = block.get('alt', '')
                 if not isinstance(alt, str) or len(alt) > 500:

@@ -2,11 +2,14 @@
 import type { User } from '../../api/types';
 const OWNER = 'claw-response-cache-owner';
 let generation = 0;
+const mutations = new Map<string, number>();
+const area = (url: string) => url.match(/^\/api\/(home|sessions|knowledge|interactive-cards)(?:\/|$)/)?.[0].replace(/\/$/, '') || '';
 let pending: Promise<unknown> = Promise.resolve();
 const owner = () => { try { return localStorage.getItem(OWNER); } catch { return null; } };
-export const cacheContext = (expectedOwner?: string) => ({ owner: expectedOwner || owner(), generation });
+export const cacheContext = (expectedOwner?: string) => ({ owner: expectedOwner || owner(), generation, mutations: new Map(mutations) });
 type Context = ReturnType<typeof cacheContext>;
-const current = (context: Context) => context.owner === owner() && context.generation === generation;
+const current = (context: Context, url?: string) => context.owner === owner() && context.generation === generation
+  && (!url || (context.mutations.get(area(url)) || 0) === (mutations.get(area(url)) || 0));
 
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -43,16 +46,16 @@ export function cacheableRead(url: string) {
 }
 export function saveResponse(url: string, data: unknown, context: Context) {
   return enqueue(async () => {
-    if (!context.owner || !current(context)) return;
+    if (!context.owner || !current(context, url)) return;
     await access(store => store.put({ owner: context.owner, data }, url), true);
   });
 }
 export async function cachedResponse(url: string, context: Context): Promise<{ data: unknown } | undefined> {
   await pending;
-  if (!context.owner || !current(context)) return;
+  if (!context.owner || !current(context, url)) return;
   try {
     const row = await access(store => store.get(url));
-    if (current(context) && row?.owner === context.owner) return { data: row.data };
+    if (current(context, url) && row?.owner === context.owner) return { data: row.data };
   } catch { /* A missing/unavailable cache is an ordinary network failure. */ }
 }
 export function clearResponseCache() {
@@ -68,11 +71,12 @@ export function bindCacheUser(user: User) {
   return saveResponse('/api/auth/me', { user }, cacheContext());
 }
 export function invalidateResponseCache(url: string) {
-  generation++;
+  const prefix = area(url);
+  if (!prefix) return Promise.resolve();
+  mutations.set(prefix, (mutations.get(prefix) || 0) + 1);
   return enqueue(async () => {
     // Refresh the changed business area without discarding unrelated cached pages.
-    const prefix = url.match(/^\/api\/(home|sessions|knowledge|interactive-cards)(?:\/|$)/)?.[0].replace(/\/$/, '');
-    if (!prefix) return;
+    if (!prefix.startsWith('/api/')) return;
     const keys = await access(store => store.getAllKeys());
     for (const key of keys) {
       if (typeof key === 'string' && (key === prefix || key.startsWith(`${prefix}/`) || key.startsWith(`${prefix}?`))) {

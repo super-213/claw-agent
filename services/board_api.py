@@ -1,4 +1,7 @@
 """Authenticated message board HTTP adapter."""
+from io import BytesIO
+from PIL import Image, UnidentifiedImageError
+
 from fastapi import APIRouter, Body, Depends, File, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -88,8 +91,25 @@ def board_router(get_service, require_user, session_context, resolve_source):
         return get_service().upload(user, path.read_bytes())
 
     @router.get('/assets/{asset_id}')
-    def asset(asset_id: str, user=Depends(require_user)):
+    def asset(asset_id: str, width: int | None = Query(None, ge=64, le=2048), user=Depends(require_user)):
+        # Authorize the current viewer on every request, including small previews.
         path = get_service().asset(user, asset_id)
-        return FileResponse(path, media_type='image/png', headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
+        headers = {'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'}
+        if width is None:
+            return FileResponse(path, media_type='image/png', headers=headers)
+        try:
+            with Image.open(path) as source:
+                source.thumbnail((width, width))
+                output = BytesIO()
+                transparent = 'A' in source.getbands() or 'transparency' in source.info
+                if transparent:
+                    source.save(output, format='PNG', optimize=True)
+                else:
+                    source.convert('RGB').save(output, format='JPEG', quality=82, optimize=True)
+                payload = output.getvalue()
+                mime = 'image/png' if transparent else 'image/jpeg'
+            return Response(payload, media_type=mime, headers=headers)
+        except (OSError, ValueError, UnidentifiedImageError) as exc:
+            raise TaskError('board_image_unavailable', '图片读取失败，请稍后重试。', status=503) from exc
 
     return router

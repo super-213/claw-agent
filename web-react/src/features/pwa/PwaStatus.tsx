@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { connectionNotice, useConnectionStatus } from './useConnectionStatus';
-import { hasUnsavedWork } from './activity';
+import { setImmediateUpdate } from './updateState';
 
 export function PwaStatus() {
   const { online, disconnected } = useConnectionStatus();
@@ -41,20 +41,21 @@ export function PwaStatus() {
   // Mutable guard also covers controllerchange during an update handshake.
   const update = () => {
     if (!registration?.waiting) return;
-    if (hasUnsavedWork()) { setNotice('请先完成生成、上传并保存草稿或表单，再更新。'); return; }
     if (!online) { setNotice('请联网后更新。'); return; }
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setNotice('');
+    setImmediateUpdate(true);
     setUpdating(true);
     updatingRef.current = true;
     const channel = new window.MessageChannel();
     const timeout = window.setTimeout(() => {
-      channel.port1.close(); updatingRef.current = false; setUpdating(false);
+      channel.port1.close(); updatingRef.current = false; setImmediateUpdate(false); setUpdating(false);
       setNotice('更新未完成，请稍后重试。');
     }, 10000);
     channel.port1.onmessage = (event) => {
       if (event.data?.ok) return; // controllerchange completes the update.
-      window.clearTimeout(timeout); channel.port1.close(); updatingRef.current = false; setUpdating(false);
-      setNotice('请关闭本站的其他窗口后再更新，以免打断其中的操作。');
+      window.clearTimeout(timeout); channel.port1.close(); updatingRef.current = false; setImmediateUpdate(false); setUpdating(false);
+      setNotice('更新未完成，请重试。');
     };
     registration.waiting.postMessage({ type: 'APPLY_UPDATE' }, [channel.port2]);
   };

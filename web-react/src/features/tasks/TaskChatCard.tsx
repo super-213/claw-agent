@@ -1,3 +1,4 @@
+import { isImmediateUpdate } from '../pwa/updateState';
 import { CalendarDays, StickyNote, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { CardRenderProps } from '../interactive-cards/types';
@@ -66,7 +67,7 @@ function SavedCard({ view, context, editKey, submit, busy, verifying, uncertain,
   }, [view, task.version, occ?.version, dirty]);
   useEffect(() => {
     if (!dirty) return;
-    const leave = (event: Event) => { event.preventDefault(); event.returnValue = true; };
+    const leave = (event: Event) => { if (isImmediateUpdate()) return; event.preventDefault(); event.returnValue = true; };
     window.addEventListener('beforeunload', leave);
     return () => window.removeEventListener('beforeunload', leave);
   }, [dirty]);
@@ -222,7 +223,7 @@ function DraftCard({ view, editKey, submit, busy, verifying, uncertain, error, r
   useEffect(() => { writeCardEdit(editKey, { items, temporal, space, members, literal, completion, version }); }, [items, temporal, space, members, literal, completion, version, editKey]);
   useEffect(() => {
     if (!dirty) return;
-    const leave = (event: Event) => { event.preventDefault(); event.returnValue = true; };
+    const leave = (event: Event) => { if (isImmediateUpdate()) return; event.preventDefault(); event.returnValue = true; };
     window.addEventListener('beforeunload', leave);
     return () => window.removeEventListener('beforeunload', leave);
   }, [dirty]);

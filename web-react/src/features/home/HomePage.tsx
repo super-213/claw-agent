@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, CalendarDays, Check } from 'lucide-react';
+import { ApiError } from '../../api/client';
 import { configApi } from '../../api/config';
 import { homeApi, type InventoryLocation } from '../../api/home';
 import { sessionsApi } from '../../api/sessions';
@@ -175,6 +176,8 @@ export function HomePage() {
     Object.values(inventories).some((query) => query.isPending);
   const failed =
     tasks.isError || Object.values(inventories).some((query) => query.isError);
+  const memberNotBound = [tasks.error, ...Object.values(inventories).map(query => query.error)]
+    .some(error => error instanceof ApiError && error.data?.error === 'member_not_bound');
   const exact = !loading && !failed && tasks.data?.historyComplete;
   const status = loading
     ? '正在整理需要关注的事…'
@@ -353,6 +356,7 @@ export function HomePage() {
           {(view === 'tasks' || view === 'items' || view === 'library' || view === 'memories') && (
             <FamilyNav section={view} onOpen={go} />
           )}
+          {memberNotBound && <p className="home-error" role="alert">当前账号尚未绑定家庭成员，无法读取家庭事项和物品。请联系管理员在“更多 → 家庭成员管理”中绑定账号，绑定后刷新页面。<button type="button" onClick={() => void refresh()}>重试</button></p>}
           {isToday && (
             <div className="home-today-grid">
               <div className="home-today-main">
@@ -364,7 +368,7 @@ export function HomePage() {
                   onCreateItem={() => go('/home/items?create=1')}
                 />
                 <div className="home-dashboard-feedback">
-                  {failed && (
+                  {failed && !memberNotBound && (
                     <p className="home-error" role="alert">
                       部分数据暂时无法读取，已保留上次内容。
                       <button type="button" onClick={() => void refresh()}>

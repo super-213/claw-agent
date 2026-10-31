@@ -28,12 +28,14 @@ interface Attachment {
 
 export function Composer({
   disabled,
+  inputDisabled = disabled,
   draft,
   onDraftChange,
   onSend,
   onUploadFiles,
 }: {
   disabled: boolean;
+  inputDisabled?: boolean;
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: (text: string, media: MessageMedia[], invocation?: TaskInvocation) => void | boolean | Promise<void | boolean>;
@@ -183,7 +185,7 @@ export function Composer({
 
   return (
     <div className="composer-area">
-      <BoardMentionInput text={draft} onChange={onDraftChange} members={members} disabled={!!disabled}>{({ handleBoardKey, menuId: boardMenuId, activeOptionId: boardOptionId }) => <TaskCommandInput
+      <BoardMentionInput text={draft} onChange={onDraftChange} members={members} disabled={inputDisabled}>{({ handleBoardKey, menuId: boardMenuId, activeOptionId: boardOptionId }) => <TaskCommandInput
         text={draft}
         onChange={onDraftChange}
         members={members}
@@ -191,10 +193,10 @@ export function Composer({
         onMentions={setMentions}
         invocation={invocation}
         onInvocation={setInvocation}
-        disabled={disabled}
+        disabled={inputDisabled}
         onFocusInput={() => { ref.current?.focus(); }}
       >
-        {({ handleKeyDown, menuId, activeOptionId }) => <SkillCommandInput text={draft} onChange={onDraftChange} disabled={disabled} onFocusInput={() => ref.current?.focus()}>
+        {({ handleKeyDown, menuId, activeOptionId }) => <SkillCommandInput text={draft} onChange={onDraftChange} disabled={inputDisabled} onFocusInput={() => ref.current?.focus()}>
           {({ handleSkillKey, menuId: skillMenuId, activeOptionId: skillOptionId }) => <>
           <label className="sr-only" htmlFor="composer-file-input">
             添加文件或图片
@@ -232,7 +234,7 @@ export function Composer({
             rows={1}
             enterKeyHint="enter"
             value={draft}
-            disabled={disabled}
+            disabled={inputDisabled}
             onKeyDown={event => {
               if (event.nativeEvent.isComposing) return;
               if (!event.shiftKey && (handleSkillKey(event.key) || handleBoardKey(event.key) || handleKeyDown(event.key))) { event.preventDefault(); return; }

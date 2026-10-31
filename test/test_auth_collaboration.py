@@ -135,6 +135,9 @@ def test_session_visibility_and_selected_share(tmp_path, monkeypatch):
 
     client.post("/api/auth/logout")
     client.post("/api/auth/login", json={"username": "admin", "password": "secret123"})
+    admin_ids = [item['id'] for item in client.get('/api/sessions').json()]
+    assert admin_session['id'] in admin_ids
+    assert alice_session['id'] not in admin_ids
     assert client.get(f"/api/sessions/{alice_session['id']}").status_code == 403
     assert client.patch(f"/api/sessions/{alice_session['id']}/share", json={"scope": "all"}).status_code == 403
     client.post("/api/auth/logout")

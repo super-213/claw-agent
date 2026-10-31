@@ -95,6 +95,7 @@ export function ChatWorkspace({
   const [shareSessionId, setShareSessionId] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(initialTreeOpen);
   const [tree, setTree] = useState<BranchTree | null>(null);
+  const [composerIdentity, setComposerIdentity] = useState(currentSessionId || 'new');
   const draftKey = currentSessionId || 'new';
   const draft = useAppStore((state) => state.chatDrafts[draftKey] || '');
   const setDraft = useCallback((value: string | ((current: string) => string)) => {
@@ -208,6 +209,13 @@ export function ChatWorkspace({
     async (sessionId: string, options: { pushRoute?: boolean } = {}) => {
       const owner = useAppStore.getState().currentUser?.id;
       setBootError('');
+      const previous = useAppStore.getState();
+      if (previous.currentSessionId && previous.currentSessionId !== sessionId) setComposerIdentity(sessionId);
+      if (!previous.currentSessionId && previous.chatDrafts.new) {
+        const existing = previous.chatDrafts[sessionId];
+        previous.setChatDraft(sessionId, [existing, previous.chatDrafts.new].filter(Boolean).join('\n'));
+        previous.setChatDraft('new', '');
+      }
       setCurrentSessionId(sessionId);
       onSessionChange?.(sessionId);
       setMenuSessionId(null);
@@ -238,10 +246,12 @@ export function ChatWorkspace({
     if (!active) return;
     let mounted = true;
     const boot = async () => {
-      await Promise.allSettled([loadSkills(), loadConfig()]);
+      void Promise.allSettled([loadSkills(), loadConfig()]);
       const loadedSessions = await loadSessions();
       if (!mounted) return;
-      const target = requestedSessionId || params.sessionId || useAppStore.getState().currentSessionId || loadedSessions[0]?.id;
+      const remembered = useAppStore.getState().currentSessionId;
+      const target = requestedSessionId || params.sessionId ||
+        (loadedSessions.some(session => session.id === remembered) ? remembered : null) || loadedSessions[0]?.id;
       if (target) {
         await openSession(target, { pushRoute: false });
       } else {
@@ -250,7 +260,9 @@ export function ChatWorkspace({
     };
     void boot().catch((error) => {
       console.warn('[ChatWorkspace] boot:', error);
-      if (mounted) setBootError('暂时无法打开对话，请刷新重试。输入内容已保留。');
+      if (mounted) setBootError(error instanceof ApiError && [403, 404].includes(error.status)
+        ? '该对话已不存在或当前账号无权访问，请从历史对话选择其他对话，或新建对话。输入内容已保留。'
+        : '暂时无法打开对话，请刷新重试。输入内容已保留。');
     });
     return () => {
       mounted = false;
@@ -735,7 +747,7 @@ export function ChatWorkspace({
             ) : null}
             {taskDraft && taskDraft.sessionId === currentSessionId && <TaskDraftChooser draft={taskDraft}
               onChoose={(command, body) => { setDraft(`/ ${command} ${body}`); setTaskDraft(null); }} onDismiss={() => setTaskDraft(null)} />}
-            <Composer key={`${currentUser?.id}:${currentSessionId}`} disabled={currentBusy || !readySessionId || readySessionId !== currentSessionId} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
+            <Composer key={`${currentUser?.id}:${composerIdentity}`} inputDisabled={currentBusy} disabled={currentBusy || !readySessionId || readySessionId !== currentSessionId} draft={draft} onDraftChange={setDraft} onSend={sendMessage} onUploadFiles={uploadFiles} />
           </div>
           <BranchTreePanel
             open={treeOpen}

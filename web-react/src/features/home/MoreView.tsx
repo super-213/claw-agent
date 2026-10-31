@@ -113,6 +113,7 @@ export function MoreView({
               <section className="home-more-group" aria-labelledby="more-admin">
                 <h2 id="more-admin">管理员工具</h2>
                 <div className="home-more-menu">
+                  <Link to="/admin/users"><Users size={21} aria-hidden="true" /><span>用户管理<small>创建账号并绑定家庭成员</small></span><ArrowRight size={18} aria-hidden="true" /></Link>
                   <Link to="/home/more?section=admin"><Users size={21} aria-hidden="true" />
                     <span>家庭成员管理<small>账号绑定与历史迁移核对</small></span>
                     <ArrowRight size={18} aria-hidden="true" /></Link>

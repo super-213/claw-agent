@@ -43,6 +43,22 @@ class FixtureModel:
         yield {'type': 'done', 'response': await self.achat_with_tools(messages, schemas)}
 w._new_llm_client = FixtureModel
 
+# Delay only isolated fixture uploads to verify local previews before the server reply.
+if os.getenv('BOARD_CARD_READ_DELAY'):
+    original_get = w.family_board.get
+    def delayed_get(*args, **kwargs):
+        time.sleep(float(os.environ['BOARD_CARD_READ_DELAY']))
+        return original_get(*args, **kwargs)
+    w.family_board.get = delayed_get
+
+if os.getenv('BOARD_UPLOAD_DELAY'):
+    original_upload = w.family_board.upload
+    def delayed_upload(user, data):
+        time.sleep(float(os.environ['BOARD_UPLOAD_DELAY']))
+        return original_upload(user, data)
+    w.family_board.upload = delayed_upload
+
+
 
 @w.app.post('/api/__test/clock')
 def change_clock(payload: dict):

@@ -1,4 +1,4 @@
-import { formRequest, jsonRequest } from './client';
+import { uploadForm, type UploadOptions, jsonRequest } from './client';
 import type { CardContext, CardView } from '../features/interactive-cards/types';
 
 export type BoardBlock = { type: 'text'; text: string } | { type: 'image'; asset_id: string; alt: string };
@@ -20,7 +20,7 @@ export const emptyBoardData = (): BoardData => ({ title: '', content_blocks: [],
 export const boardData = (post: BoardData): BoardData => ({ title: post.title, content_blocks: post.content_blocks, audience_mode: post.audience_mode, recipient_ids: post.recipient_ids, retention_mode: post.retention_mode, expires_at: post.expires_at, duration_hours: post.duration_hours });
 const base = '/api/home/board';
 const sessionQuery = (context?: CardContext) => context?.sessionId ? `?session_id=${encodeURIComponent(context.sessionId)}` : '';
-export const boardAssetUrl = (id: string) => `${base}/assets/${encodeURIComponent(id)}`;
+export const boardAssetUrl = (id: string, width = 1600) => `${base}/assets/${encodeURIComponent(id)}?width=${width}`;
 export const boardApi = {
   feed: (cursor?: string | null) => jsonRequest<BoardList>(`${base}/feed?${new URLSearchParams(cursor ? { cursor } : {})}`, { cache: 'no-store' }),
   list: (cursor?: string | null) => jsonRequest<BoardList>(`${base}/posts?${new URLSearchParams(cursor ? { cursor } : {})}`, { cache: 'no-store' }),
@@ -33,5 +33,5 @@ export const boardApi = {
       method: suffix ? 'POST' : 'PATCH', body: JSON.stringify({ request_id: requestId, expected_version: action.expected_version, data: action.data }),
     });
   },
-  upload: (file: File) => { const data = new FormData(); data.append('file', file); return formRequest<{ asset_id: string }>(`${base}/assets`, data); },
+  upload: (file: File, options?: UploadOptions) => { const data = new FormData(); data.append('file', file); return uploadForm<{ asset_id: string }>(`${base}/assets`, data, options); },
 };

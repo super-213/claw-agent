@@ -6,7 +6,7 @@ import { boardTime } from './boardTime';
 function BoardImage({ assetId, alt, onPreview }: { assetId: string; alt: string; onPreview: (assetId: string) => void }) {
   const [failed, setFailed] = useState(false);
   return failed ? <button type="button" className="board-image-failed" onClick={() => setFailed(false)}>图片暂不可用，点击重试</button> : <button type="button" className="board-image" aria-label="查看便笺图片" onClick={e => { e.stopPropagation(); onPreview(assetId); }}>
-    <img src={boardAssetUrl(assetId)} alt={alt || '便笺图片'} loading="lazy" onError={() => setFailed(true)} />
+    <img src={boardAssetUrl(assetId, 640)} alt={alt || '便笺图片'} loading="lazy" onError={() => setFailed(true)} />
   </button>;
 }
 export function BoardBody({ view, onPreview }: { view: BoardView; onPreview: (assetId: string) => void }) {

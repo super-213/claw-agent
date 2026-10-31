@@ -45,11 +45,22 @@ install_formula() {
 }
 
 stop_jobs() {
-  local kind service
+  local kind service attempt
   for kind in web api; do
     service="$DOMAIN/$(label "$kind")"
     if launchctl print "$service" >/dev/null 2>&1; then
       launchctl bootout "$service"
+      # bootout can return while launchd still exposes a terminating job.
+      # Do not let start_jobs mistake that old registration for a running service.
+      for ((attempt=0; attempt<100; attempt++)); do
+        if ! launchctl print "$service" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 0.1
+      done
+      if launchctl print "$service" >/dev/null 2>&1; then
+        fail "等待服务退出超时：${service}。未继续启动，请检查服务状态后重试。"
+      fi
     fi
   done
 }

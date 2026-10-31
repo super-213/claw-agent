@@ -1,0 +1,44 @@
+import React from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, expect, it, vi } from 'vitest';
+import { ChatWorkspace } from '../../../web-react/src/features/chat/ChatWorkspace';
+import { sessionsApi } from '../../../web-react/src/api/sessions';
+import { skillsApi } from '../../../web-react/src/api/skills';
+import { tasksApi } from '../../../web-react/src/api/tasks';
+import { chatApi } from '../../../web-react/src/api/chat';
+import { useAppStore } from '../../../web-react/src/stores/appStore';
+
+afterEach(() => { cleanup(); vi.restoreAllMocks(); useAppStore.setState({ currentUser: null, currentSessionId: null, chatDrafts: {}, sessionMessages: {}, streams: {} }); });
+it('allows typing before slow startup finishes and preserves input and focus when the first session becomes ready', async () => {
+  window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  useAppStore.setState({ currentUser: { id: 'alice', username: 'alice', role: 'user', status: 'active' }, currentSessionId: null, chatDrafts: {}, sessions: [], streams: {}, messages: [], sessionMessages: {} });
+  // A stalled optional request must not hold up the session request.
+  vi.spyOn(skillsApi, 'list').mockImplementation(() => new Promise(() => {}));
+  vi.spyOn(tasksApi, 'members').mockResolvedValue({ members: [], current_member_id: null });
+  vi.spyOn(chatApi, 'latestJob').mockResolvedValue({ job: null });
+  let listReady!: (value: { id: string }[]) => void;
+  vi.spyOn(sessionsApi, 'list').mockImplementation(() => new Promise(resolve => { listReady = resolve; }));
+  let detailReady!: (value: { id: string; messages: [] }) => void;
+  vi.spyOn(sessionsApi, 'get').mockImplementation(() => new Promise(resolve => { detailReady = resolve; }));
+  vi.spyOn(sessionsApi, 'tree').mockResolvedValue({ nodes: [] });
+  render(React.createElement(MemoryRouter, {}, React.createElement(ChatWorkspace)));
+  const input = screen.getByRole('combobox', { name: '输入指令或问题' });
+  expect(input).toBeEnabled();
+  input.focus();
+  fireEvent.change(input, { target: { value: '加载时先写下的问题' } });
+  expect(screen.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
+  await waitFor(() => expect(sessionsApi.list).toHaveBeenCalled());
+  await act(async () => listReady([{ id: 'session-a' }]));
+  await waitFor(() => expect(sessionsApi.get).toHaveBeenCalledWith('session-a'));
+  expect(screen.getByRole('combobox', { name: '输入指令或问题' })).toBe(input);
+  expect(input).toHaveFocus();
+  expect(input).toHaveValue('加载时先写下的问题');
+  expect(screen.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
+  await act(async () => detailReady({ id: 'session-a', messages: [] }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '发送', exact: true })).toBeEnabled());
+  expect(input).toHaveValue('加载时先写下的问题');
+  expect(input).toHaveFocus();
+  expect(useAppStore.getState().chatDrafts['session-a']).toBe('加载时先写下的问题');
+  expect(useAppStore.getState().chatDrafts.new).toBe('');
+});

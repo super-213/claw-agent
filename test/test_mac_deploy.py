@@ -144,5 +144,35 @@ ask_port test 18080 web
             self.assertIn(b'data: done', response.read())
 
 
+class MacRestartTest(unittest.TestCase):
+    def run_shell(self, body):
+        return subprocess.run(['/bin/bash', '-c', 'source "$1"\n' + body,
+                               'test', str(ROOT / 'deploy/mac.sh')], capture_output=True, text=True)
+
+    def test_stop_waits_until_launchd_removes_terminating_jobs(self):
+        result = self.run_shell(r'''remaining=0
+launchctl() {
+  case "$1" in
+    bootout) remaining=2 ;;
+    print) [[ "$remaining" -ne -1 ]] ;;
+  esac
+}
+sleep() { remaining=$((remaining-1)); if [[ "$remaining" -le 0 ]]; then remaining=-1; fi; }
+stop_jobs
+[[ "$remaining" == -1 ]]
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_stop_timeout_does_not_continue_to_start(self):
+        result = self.run_shell(r'''launchctl() { return 0; }
+sleep() { :; }
+stop_jobs
+echo SHOULD_NOT_START
+''')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('等待服务退出超时', result.stderr)
+        self.assertNotIn('SHOULD_NOT_START', result.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

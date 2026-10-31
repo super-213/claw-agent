@@ -1,3 +1,4 @@
+import { isImmediateUpdate } from '../pwa/updateState';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { activityData, type ActivityAction, type ActivityView } from '../../api/familyActivities';
@@ -50,7 +51,7 @@ function LiveActivityCard({ view, context, editKey, submit, busy, verifying, unc
     setChoices(view.own_participation?.option_ids || []); setValues(view.own_participation?.values || {}); setOwnVersion(view.participation_version);
   }, [savedSequence]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const warn = (event: globalThis.BeforeUnloadEvent) => { if (readCardEdit(editKey)) { event.preventDefault(); event.returnValue = ''; } };
+    const warn = (event: globalThis.BeforeUnloadEvent) => { if (isImmediateUpdate()) return; if (readCardEdit(editKey)) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, [editKey]);
   const locked = busy || verifying || uncertain;

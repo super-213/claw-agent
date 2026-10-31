@@ -265,3 +265,11 @@ it('validates password confirmation, reports server errors and clears secrets wh
   expect(screen.getByLabelText('当前密码')).toHaveValue('');
   expect(screen.getByLabelText('新密码', { exact: true })).toHaveValue('');
 });
+
+it('explains missing household membership instead of a generic read error', async () => {
+  const { ApiError } = await import('../../../web-react/src/api/client');
+  vi.mocked(tasksApi.list).mockRejectedValue(new ApiError('请管理员先将当前账号绑定为家庭成员。', new Response(null, { status: 403 }), { error: 'member_not_bound' }));
+  mount();
+  expect(await screen.findByText(/当前账号尚未绑定家庭成员/)).toBeTruthy();
+  expect(screen.queryByText(/部分数据暂时无法读取/)).toBeNull();
+});

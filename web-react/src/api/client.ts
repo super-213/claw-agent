@@ -25,7 +25,7 @@ const emitUnauthorized = () => {
 const parseJson = async (response: Response): Promise<any> => {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if ([401, 403].includes(response.status)) await clearResponseCache();
+    if ([401, 403].includes(response.status)) void clearResponseCache();
     if (response.status === 401) emitUnauthorized();
     throw new ApiError(data.message || data.error || '请求失败', response, data);
   }
@@ -61,8 +61,8 @@ export const jsonRequest = async <T>(url: string, options: RequestInit = {}): Pr
     }
     const data = await parseJson(response) as T;
     if (cacheRead) window.dispatchEvent(new Event('claw-cache-fresh'));
-    if (writing) await invalidateResponseCache(url);
-    else if (cacheRead && url !== '/api/auth/me') await saveResponse(url, data, context);
+    if (writing) void invalidateResponseCache(url);
+    else if (cacheRead && url !== '/api/auth/me') void saveResponse(url, data, context);
     return data;
   } finally { finish(); }
 };
@@ -78,7 +78,7 @@ export const formRequest = async <T>(url: string, formData: FormData, options: R
       headers: { Accept: 'application/json', ...(options.headers || {}) },
     });
     const data = await parseJson(response) as T;
-    await invalidateResponseCache(url);
+    void invalidateResponseCache(url);
     return data;
   } finally { finish(); }
 };
@@ -143,3 +143,39 @@ export const streamRequest = async (url: string, options: StreamOptions = {}): P
   if (!finalEvent) throw new Error('连接已中断。请重新读取会话，确认结果后再决定是否重试。');
   return finalEvent;
 };
+
+export interface UploadOptions {
+  signal?: AbortSignal;
+  onProgress?: (loaded: number, total: number) => void;
+}
+
+export async function uploadForm<T>(url: string, body: FormData, options: UploadOptions = {}): Promise<T> {
+  if (!window.navigator.onLine) throw new Error('当前离线，请联网后上传。');
+  const finish = beginActivity();
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const abort = () => xhr.abort();
+      const cleanup = () => options.signal?.removeEventListener('abort', abort);
+      xhr.open('POST', url);
+      xhr.timeout = 120000;
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.upload.onprogress = event => { if (event.lengthComputable) options.onProgress?.(event.loaded, event.total); };
+      xhr.onload = async () => {
+        cleanup();
+        try {
+          const result = await parseJson(new Response(xhr.responseText, { status: xhr.status, headers: { 'Content-Type': 'application/json' } })) as T;
+          // IndexedDB is best-effort bookkeeping, never part of server upload completion.
+          void invalidateResponseCache(url);
+          resolve(result);
+        } catch (error) { reject(error); }
+      };
+      xhr.onerror = () => { cleanup(); reject(new Error('网络连接失败，请重试上传。')); };
+      xhr.ontimeout = () => { cleanup(); reject(new Error('上传超时，请检查网络后重试。')); };
+      xhr.onabort = () => { cleanup(); reject(new DOMException('已取消上传', 'AbortError')); };
+      if (options.signal?.aborted) { cleanup(); reject(new DOMException('已取消上传', 'AbortError')); return; }
+      options.signal?.addEventListener('abort', abort, { once: true });
+      xhr.send(body);
+    });
+  } finally { finish(); }
+}

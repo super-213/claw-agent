@@ -21,11 +21,12 @@ self.addEventListener('message', (event) => {
   }
   if (event.data?.type !== 'APPLY_UPDATE') return;
   event.waitUntil((async () => {
-    // A suspended tab cannot reliably acknowledge safety. Require it to be closed.
-    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const ok = windows.length === 1 && windows[0].id === event.source?.id;
-    event.ports[0]?.postMessage({ ok });
-    if (ok) await self.skipWaiting();
+    try {
+      await self.skipWaiting();
+      event.ports[0]?.postMessage({ ok: true });
+    } catch {
+      event.ports[0]?.postMessage({ ok: false });
+    }
   })());
 });
 

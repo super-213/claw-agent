@@ -44,7 +44,9 @@ origin = f'http://127.0.0.1:{web_port}'
 env = {**os.environ, 'HOME010_API_PORT': str(api_port), 'VITE_API_TARGET': f'http://127.0.0.1:{api_port}'}
 processes = []
 results = []
-worker_path = ROOT / 'web-react/dist/sw.js'
+static_root = Path(tempfile.mkdtemp(prefix='claw-pwa-build-')) / 'dist'
+shutil.copytree(ROOT / 'web-react/dist', static_root)
+worker_path = static_root / 'sw.js'
 original_worker = worker_path.read_bytes()
 try:
     processes.append(subprocess.Popen([sys.executable, str(ROOT / 'test/browser/home_workbench_server.py')], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, start_new_session=True))
@@ -53,13 +55,13 @@ try:
     mime = next((path for path in [Path('/etc/nginx/mime.types'), Path('/opt/homebrew/etc/nginx/mime.types')] if path.exists()), None)
     if nginx and mime:
         temporary = Path(tempfile.mkdtemp(prefix='claw-pwa-nginx-'))
-        site = (ROOT / 'deploy/claw-agent.conf').read_text().replace('listen 80 default_server;', f'listen 127.0.0.1:{web_port};').replace('listen [::]:80 default_server;', '').replace('root /var/www/claw-agent;', f'root {ROOT}/web-react/dist;').replace('http://127.0.0.1:8000', f'http://127.0.0.1:{api_port}')
+        site = (ROOT / 'deploy/claw-agent.conf').read_text().replace('listen 80 default_server;', f'listen 127.0.0.1:{web_port};').replace('listen [::]:80 default_server;', '').replace('root /var/www/claw-agent;', f'root {static_root};').replace('http://127.0.0.1:8000', f'http://127.0.0.1:{api_port}')
         config = temporary / 'nginx.conf'
         config.write_text(f'pid {temporary}/nginx.pid;\nerror_log stderr;\nevents {{}}\nhttp {{\ninclude {mime};\naccess_log off;\nclient_body_temp_path {temporary}/body;\nproxy_temp_path {temporary}/proxy;\n' + site + '\n}\n')
         subprocess.run([nginx, '-t', '-e', 'stderr', '-c', str(config)], check=True)
         processes.append(subprocess.Popen([nginx, '-e', 'stderr', '-c', str(config), '-g', 'daemon off;'], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, start_new_session=True))
     else:
-        processes.append(subprocess.Popen(['npm', '--prefix', str(ROOT / 'web-react'), 'run', 'preview', '--', '--host', '127.0.0.1', '--port', str(web_port), '--strictPort'], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, start_new_session=True))
+        processes.append(subprocess.Popen(['npm', '--prefix', str(ROOT / 'web-react'), 'run', 'preview', '--', '--outDir', str(static_root), '--host', '127.0.0.1', '--port', str(web_port), '--strictPort'], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, start_new_session=True))
     wait_ready(origin)
     with sync_playwright() as p:
         browser = p.chromium.launch(channel='chrome', headless=True)
@@ -155,25 +157,21 @@ try:
         page.locator('.composer-input').blur()
         results.append('模拟键盘可视区域下输入框无遮挡且底部导航收起')
 
-        # A published update must wait for drafts, then wait for other windows.
+        # Explicit Update applies immediately, including with drafts and another window.
         worker_path.write_bytes(original_worker + b'\n// isolated PWA update validation\n')
         page.evaluate('''async () => {
           const reg = await navigator.serviceWorker.getRegistration();
           await reg.update();
         }''')
         expect(page.get_by_role('button', name='更新', exact=True)).to_be_visible(timeout=15000)
-        page.get_by_role('button', name='更新', exact=True).click()
-        expect(page.get_by_text('请先完成生成、上传并保存草稿或表单，再更新。')).to_be_visible()
-        page.locator('.composer-input').fill('')
         other = context.new_page()
         other.goto(origin + '/install')
-        page.get_by_role('button', name='更新', exact=True).click()
-        expect(page.get_by_text('请关闭本站的其他窗口后再更新，以免打断其中的操作。')).to_be_visible()
-        other.close()
         with page.expect_navigation():
             page.get_by_role('button', name='更新', exact=True).click()
         expect(page.locator('.composer-input')).to_be_enabled()
-        results.append('真实 Worker 升级阻止草稿丢失和多窗口打断，安全时可完成升级')
+        expect(other.get_by_role('heading', name='把家庭助手放到主屏幕')).to_be_visible()
+        other.close()
+        results.append('存在草稿和其他窗口时点击更新直接切换 Worker 并刷新通过')
 
         keys = page.evaluate('''async () => {
           const names = await caches.keys();
@@ -183,7 +181,8 @@ try:
         context.set_offline(True)
         page.goto(origin + '/install')
         expect(page.get_by_role('heading', name='把家庭助手放到主屏幕')).to_be_visible()
-        expect(page.get_by_text('当前离线，已输入的内容会留在此页面。请联网后继续。')).to_be_visible()
+        expect(page.locator('.pwa-offline')).to_be_visible()
+        expect(page.locator('.pwa-offline')).to_contain_text('当前离线')
         context.set_offline(False)
         results.append('离线启动和恢复联网通过，缓存没有业务 API 或私人文件')
         assert not errors, errors
@@ -204,3 +203,5 @@ finally:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
+
+    shutil.rmtree(static_root.parent, ignore_errors=True)

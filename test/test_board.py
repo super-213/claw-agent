@@ -339,3 +339,43 @@ def test_http_old_filters_cannot_reveal_destroyed_note_or_its_image(board_api):
         assert client.get('/api/home/board/posts/' + post['id']).status_code == 404
         assert client.get('/api/home/board/posts/' + post['id'] + '/card').status_code == 404
         assert client.get('/api/home/board/assets/' + asset).status_code == 404
+
+
+def test_publish_rejects_metadata_without_saved_image_and_retry_can_repair(board):
+    service, users, _ = board
+    asset = service.upload(users[0], image_bytes())['asset_id']
+    draft = service.create(users[0], data(content_blocks=[{'type': 'image', 'asset_id': asset}]), draft=True, request_id='missing-file-draft')
+    path = service.asset_root / (asset + '.png')
+    path.unlink()
+    with pytest.raises(TaskError, match='board_asset_not_found'):
+        service.change(users[0], draft['post']['id'], {}, draft=True, action='publish', request_id='missing-file-commit', expected_version=1)
+    assert not service.store.snapshot()['posts']
+    assert service.upload(users[0], image_bytes())['asset_id'] == asset
+    result = service.change(users[0], draft['post']['id'], {}, draft=True, action='publish', request_id='missing-file-commit', expected_version=1)
+    assert result['post']['content_blocks'][0]['asset_id'] == asset
+    assert service.asset(users[1], asset).read_bytes() == path.read_bytes()
+
+
+def test_image_previews_are_small_and_keep_authorization_and_withdrawal(board_api):
+    clients, service, users, _ = board_api
+    a, b, c = clients
+    # A deterministic textured image exercises real image encoding/transfer size.
+    import random
+    rng = random.Random(42)
+    original = Image.frombytes('RGB', (1200, 900), rng.randbytes(1200 * 900 * 3))
+    data_stream = BytesIO()
+    original.save(data_stream, format='JPEG', quality=90)
+    asset = a.post('/api/home/board/assets', files={'file': ('photo.jpg', data_stream.getvalue(), 'image/jpeg')}).json()['asset_id']
+    post = a.post('/api/home/board/posts', json={'request_id': 'preview-photo', 'data': data(content_blocks=[{'type': 'image', 'asset_id': asset}])}).json()['post']
+    raw = b.get('/api/home/board/assets/' + asset)
+    small = b.get('/api/home/board/assets/' + asset + '?width=640')
+    assert small.status_code == 200
+    assert small.headers['cache-control'] == 'private, no-store'
+    assert small.headers['content-type'] == 'image/jpeg'
+    assert len(small.content) < len(raw.content) / 3
+    with Image.open(BytesIO(small.content)) as preview:
+        assert max(preview.size) <= 640
+    assert c.get('/api/home/board/assets/' + asset + '?width=640').status_code == 404
+    assert b.get('/api/home/board/assets/' + asset + '?width=100000').status_code == 422
+    a.post('/api/home/board/posts/' + post['id'] + '/withdraw', json={'request_id': 'preview-withdraw', 'expected_version': 1})
+    assert b.get('/api/home/board/assets/' + asset + '?width=640').status_code == 404
