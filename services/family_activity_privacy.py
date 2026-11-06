@@ -72,6 +72,8 @@ def cleanup_activity_history(service, runs, conversations, jobs=None):
         return
     # Use each store's existing write locks and persistence callback.
     for path in runs.root_dir.glob('*.json'):
+        if path.name.startswith('.') or not path.is_file():
+            continue
         with runs._lock:
             data = json.loads(path.read_text(encoding='utf-8'))
             if sanitize_activity_history(data, gone) != data:
@@ -79,6 +81,8 @@ def cleanup_activity_history(service, runs, conversations, jobs=None):
                 from services.task_store import TaskStore
                 TaskStore.write_atomic(path, runs_document)
     for path in conversations.root_dir.glob('*.json'):
+        if path.name.startswith('.') or not path.is_file():
+            continue
         with conversations._session_lock(path.stem):
             data = json.loads(path.read_text(encoding='utf-8'))
             if sanitize_activity_history(data, gone) != data:

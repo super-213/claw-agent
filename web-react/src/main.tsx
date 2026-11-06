@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { AppProviders } from './app/providers';
 import { App } from './app/App';
 import './styles/app.css';
+import './styles/neubrutalism.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

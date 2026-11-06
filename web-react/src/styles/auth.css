@@ -1,7 +1,5 @@
 .auth-body {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 70%, transparent), transparent 44%),
-    var(--app-bg);
+  background: var(--surface-solid);
   min-height: 100vh;
 }
 
@@ -14,8 +12,8 @@
 
 .auth-panel {
   background: var(--surface-elevated);
-  backdrop-filter: blur(30px) saturate(1.2);
-  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--separator);
   border-radius: 22px;
   box-shadow: var(--shadow-hairline), var(--shadow-popover);

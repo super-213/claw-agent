@@ -89,7 +89,9 @@ with sync_playwright() as p:
  page.get_by_label('和家庭 Agent 对话').fill('帮我创建日程，今天新增示例')
  page.get_by_role('button',name='发送',exact=True).click()
  d=page.locator('.chat-workspace');expect(d).to_be_visible()
- expect(d.locator('.composer')).to_have_css('background-color', 'rgb(199, 233, 255)')
+ expect(d.locator('.composer')).to_have_css('background-color', 'rgb(255, 255, 255)')
+ expect(d.locator('.composer')).to_have_css('border-top-width', '3px')
+ expect(d.locator('.composer')).to_have_css('border-radius', '0px')
  expect(d.locator('.composer-input')).to_be_visible()
  expect(d.get_by_text('已保存以下事项：',exact=True).first).to_be_visible(timeout=15000)
  # The initial send can replace the provisional route while the job is accepted.

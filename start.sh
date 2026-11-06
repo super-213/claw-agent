@@ -101,7 +101,23 @@ require_command() {
   fi
 }
 
-require_command python
+select_python() {
+  if [[ -n "${PYTHON_BIN:-}" ]]; then
+    require_command "$PYTHON_BIN"
+  elif [[ -x "$PROJECT_DIR/.venv/bin/python" ]]; then
+    PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python)"
+  else
+    printf "未找到 Python，请创建项目 .venv 或设置 PYTHON_BIN。\n" >&2
+    exit 1
+  fi
+}
+
+select_python
+"$PYTHON_BIN" -c 'import sys; assert sys.version_info >= (3, 10), "需要 Python 3.10+"' || exit 1
 require_command npm
 
 BACKEND_PORT="$(ask_port "请输入后端 API 端口" "8000")"
@@ -124,7 +140,7 @@ cleanup_old_logs
 cd "$PROJECT_DIR" || exit 1
 
 printf "启动后端 API，端口：%s\n" "$BACKEND_PORT"
-nohup env PORT="$BACKEND_PORT" python web_app.py >>"$BACKEND_LOG" 2>&1 &
+nohup env PORT="$BACKEND_PORT" "$PYTHON_BIN" web_app.py >>"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 printf "%s\n" "$BACKEND_PID" >"$BACKEND_PID_FILE"
 

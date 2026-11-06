@@ -3,7 +3,7 @@
   min-width: 0;
   padding: 20px 18px;
   border: 0;
-  border-radius: 16px;
+  border-radius: 0;
   background: var(--home-calendar);
   position: sticky;
   top: 20px;
@@ -65,7 +65,7 @@
   min-height: 36px;
   min-width: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 0;
   font-family: "Space Grotesk", sans-serif;
   font-size: 13px;
   position: relative;
@@ -86,7 +86,7 @@
   width: 3px;
   height: 3px;
   background: currentColor;
-  border-radius: 50%;
+  border-radius: 0;
   position: absolute;
   bottom: 4px;
 }
@@ -142,7 +142,7 @@
   padding: 12px;
   background: var(--home-schedule);
   border: var(--home-control-border) solid var(--home-outline);
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: 2px 2px 0 var(--home-outline);
   transition: transform 140ms ease, box-shadow 140ms ease;
 }

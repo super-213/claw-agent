@@ -67,6 +67,6 @@
 }
 
 :root[data-theme="dark"] :is(.kpi-tile:first-child, .dashboard-priority-panel) {
-  background: linear-gradient(135deg, #293b4b, #252c35);
+  background: var(--surface-solid);
   color: var(--text-primary);
 }

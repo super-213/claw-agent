@@ -1,0 +1,144 @@
+/* Visual contract: docs/standards/新粗野主义.md.
+   Structural surfaces use 3/5/8px hard shadows; dense reading rows stay quiet.
+   Kept after feature styles so the same primitives apply across route boundaries. */
+body, .auth-body, body.dashboard-route .dashboard-shell,
+.dashboard-shell-flat, .dashboard-main, .main, .composer-area {
+  background: var(--home-page);
+}
+:is(.topbar, .sidebar, .composer, .auth-panel, .skill-modal, .tree-panel,
+    .session-menu, .task-invocation-picker, .dashboard-sidebar, .dashboard-topbar,
+    .panel, .modal-backdrop, .message-actions) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+:is(.home-shell, .chat-workspace, .dashboard-shell, .auth-panel, .skill-modal,
+    .task-invocation-picker, .session-menu, .tree-panel) :is(button, input, select, textarea, a),
+:is(.home-app, .home-widget, .home-command, .home-dialog, .home-chat-layer,
+    .skill-modal, .auth-panel, .panel, .kpi-tile, .board-paper, .board-desk,
+    .activity-card, .knowledge-card, .home-panel-tabs, .family-sections,
+    .home-agent-popover, .task-invocation-picker, .session-menu, .tree-panel) {
+  border-radius: 0;
+}
+:is(.auth-panel, .skill-modal, .home-dialog, .home-agent-popover,
+    .chat-workspace .session-menu, .chat-workspace .chat-session-info-body,
+    .chat-workspace .task-invocation-picker) {
+  background: var(--home-surface);
+  border: 3px solid var(--home-outline);
+  box-shadow: var(--home-shadow-lg);
+}
+:is(.home-widget, .home-command, .board-paper, .panel, .inventory-grid > .home-list-item) {
+  border: 3px solid var(--home-outline);
+  box-shadow: var(--home-shadow);
+}
+.home-app { background: var(--home-page); }
+.home-content { padding: 24px 28px 32px; }
+.home-topbar { padding-bottom: 18px; border-bottom: 3px solid var(--home-outline); margin-bottom: 24px; }
+.home-shell .home-topbar-heading h1,
+.home-shell .home-topbar-heading:has(.home-more-back) h1 {
+  font-family: var(--home-display-font);
+  font-size: clamp(26px, 2.6vw, 36px);
+  line-height: 1.25;
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+.home-shell :is(.home-section-head, .home-widget-heading) h2 { font-size: 18px; font-weight: 800; }
+.home-widget-number strong { font-family: var(--home-display-font); font-weight: 900; font-size: 44px; }
+.home-widget-caption { opacity: 1; }
+.home-widget-grid { gap: 20px; }
+.home-side-nav { background: var(--home-surface); border: 3px solid var(--home-outline); margin-left: 0; padding-inline: 3px; }
+.home-side-nav a[aria-current="page"], .home-bottom-nav a[aria-current="page"] {
+  background: var(--home-action); color: var(--home-action-ink); border-color: var(--home-outline);
+  box-shadow: var(--home-shadow-sm); font-weight: 800;
+}
+.home-bottom-nav { border-top-width: 3px; }
+.home-shell .home-avatar { background: var(--home-knowledge); box-shadow: var(--home-shadow-sm); }
+.home-shell .home-command { margin-bottom: 4px; }
+.home-shell .home-command-title { margin-bottom: 0; }
+.home-shell .home-command-title h2 { font-weight: 800; }
+.home-shell .home-command-actions { flex-wrap: wrap; }
+.home-shell .home-primary,
+.chat-workspace :is(.send-btn, .new-btn),
+:is(.modal-primary, .auth-submit),
+.board-panel .board-primary, .board-chat-card .board-primary,
+:root[data-theme="dark"] .home-shell .home-primary,
+:root[data-theme="dark"] .chat-workspace .send-btn {
+  background: var(--home-action); color: var(--home-action-ink);
+  border: 3px solid var(--home-outline); box-shadow: var(--home-shadow-sm); font-weight: 800;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+.home-shell :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+:is(.skill-input, .skill-textarea) {
+  border: 3px solid var(--home-outline); background: var(--home-surface); border-radius: 0;
+}
+.home-shell :is(.home-command-actions button, .family-add-options button, .home-widget-catalog button) {
+  background: var(--home-surface); box-shadow: var(--home-shadow-sm);
+}
+.home-more-menu a { border-bottom: 2px solid var(--home-outline); padding: 16px 0; }
+.home-shell .home-more-group h2 {
+  display: inline-block; background: var(--home-schedule); color: var(--home-ink);
+  border: 2px solid var(--home-outline); padding: 3px 10px; font-weight: 800; margin-bottom: 12px;
+}
+.home-shell .family-sections, .home-shell .home-panel-tabs { background: var(--home-surface); border: 2px solid var(--home-outline); }
+.home-shell .home-panel-tabs button { border-radius: 0; }
+.home-shell .home-panel-tabs button[aria-pressed=true], .family-sections a[aria-current="page"] { background: var(--home-schedule); }
+.board-paper { background: var(--home-surface); }
+.board-note:hover { box-shadow: 7px 7px 0 var(--home-outline); }
+.chat-workspace .sidebar { background: var(--home-page); border-right: 3px solid var(--home-outline); }
+.chat-workspace .topbar { border-bottom: 3px solid var(--home-outline); }
+.chat-workspace .topbar-title { font-family: var(--home-display-font); font-weight: 900; }
+.chat-workspace .message.user { border: 2px solid var(--home-outline); box-shadow: var(--home-shadow-sm); }
+.chat-workspace .message.assistant, .chat-workspace .message.final { border: 0; border-left: 3px solid var(--home-outline); }
+.chat-workspace .composer { border: 3px solid var(--home-outline); box-shadow: var(--home-shadow); background: var(--home-surface); }
+.chat-workspace .composer:focus-within { outline: 3px solid var(--home-focus); outline-offset: 4px; box-shadow: var(--home-shadow); }
+.chat-workspace .empty-icon { border: 3px solid var(--home-outline); box-shadow: var(--home-shadow); }
+.chat-workspace .history-panel .session-list .session-item.active { background: var(--home-agent); box-shadow: inset 3px 0 0 var(--home-outline); }
+.auth-title { font-family: var(--home-display-font); font-size: 36px; font-weight: 900; }
+.auth-panel { padding: 32px; }
+.dashboard-sidebar { background: var(--home-surface); color: var(--home-ink); border-right: 3px solid var(--home-outline); }
+.dashboard-priority-panel, .kpi-tile:first-child,
+:root[data-theme="dark"] :is(.kpi-tile:first-child, .dashboard-priority-panel) { background: var(--home-agent); color: var(--home-ink); }
+.dashboard-priority-panel :is(h2, p, .dashboard-kicker, .panel-stat),
+.kpi-tile:first-child :is(small, strong, span) { color: inherit; }
+.panel { background: var(--home-surface); }
+:is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--home-focus); outline-offset: 4px;
+}
+@media (hover: hover) {
+  .home-shell .home-primary:hover:not(:disabled),
+  .chat-workspace :is(.send-btn, .new-btn):hover:not(:disabled),
+  :is(.modal-primary, .auth-submit):hover:not(:disabled),
+  :root[data-theme="dark"] .home-shell .home-primary:hover:not(:disabled) {
+    background: var(--home-action); color: var(--home-action-ink); border-color: var(--home-outline);
+    transform: translate(-2px, -2px); box-shadow: var(--home-shadow);
+  }
+}
+.home-shell .home-primary:active:not(:disabled),
+.chat-workspace :is(.send-btn, .new-btn):active:not(:disabled),
+:is(.modal-primary, .auth-submit):active:not(:disabled) { transform: translate(3px, 3px); box-shadow: none; }
+:root[data-theme="dark"] :is(.home-dialog, .home-widget.is-dragging) { box-shadow: var(--home-shadow-lg); }
+@media (max-width: 1023px) {
+  .home-shell .home-command { grid-template-columns: minmax(0, 1fr) auto; }
+  .home-shell .home-command form { grid-column: 1 / -1; grid-row: 2; }
+  .home-shell .home-command-actions { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 767px) {
+  .home-content { padding: 20px 16px calc(100px + env(safe-area-inset-bottom, 0px)); }
+  .home-topbar { padding-bottom: 16px; margin-bottom: 20px; }
+  .home-shell .home-topbar-heading h1 { font-size: 26px; }
+  .home-widget-grid { gap: 14px; }
+  .home-widget-number strong { font-size: 36px; }
+  .home-dialog { border-inline: 0; border-bottom: 0; box-shadow: none; }
+  .home-command { box-shadow: var(--home-shadow-sm); }
+  .auth-shell { padding: 20px; }
+  .auth-panel { padding: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-shell .home-primary, .chat-workspace :is(.send-btn, .new-btn),
+  :is(.modal-primary, .auth-submit, .board-note) { transition: none; transform: none !important; animation: none; }
+}
+
+/* Board details are portalled dialogs and need the same surface treatment. */
+.home-dialog.board-dialog { border: 3px solid var(--home-outline); border-radius: 0; box-shadow: var(--home-shadow-lg); }
+.home-shell .board-paper { border: 2px solid var(--home-outline); box-shadow: var(--home-shadow); }
+.home-shell .home-calendar-drawer { border-left: 3px solid var(--home-outline); }
+.home-shell .home-primary:disabled, .chat-workspace .send-btn:disabled { box-shadow: none; }

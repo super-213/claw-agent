@@ -70,7 +70,7 @@ body.home-route .home-shell {
   color: inherit;
   background: transparent;
   border: var(--home-control-border) solid var(--home-outline);
-  border-radius: 8px;
+  border-radius: 0;
   min-height: 44px;
   padding: 8px 13px;
   font: inherit;
@@ -123,7 +123,7 @@ body.home-route .home-shell {
   max-width: 100%;
   min-height: 44px;
   border: var(--home-control-border) solid var(--home-outline);
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--home-surface);
   color: inherit;
   font: inherit;
@@ -167,7 +167,7 @@ body.home-route .home-shell {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--home-success);
   margin: 8px 0;
 }
@@ -182,7 +182,7 @@ body.home-route .home-shell {
   margin: auto;
   background: var(--home-surface);
   border: 0;
-  border-radius: 18px;
+  border-radius: 0;
 }
 .home-content {
   min-width: 0;
@@ -203,7 +203,7 @@ body.home-route .home-shell {
   flex-shrink: 0;
   background: var(--home-knowledge);
   border: var(--home-control-border) solid var(--home-outline);
-  border-radius: 50%;
+  border-radius: 0;
   font-weight: 700;
 }
 .home-today-grid {
@@ -272,7 +272,7 @@ body.home-route .home-shell {
   gap: 0;
   min-width: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   padding: 0;
   text-align: left;
   box-shadow: none;
@@ -300,7 +300,7 @@ body.home-route .home-shell {
   align-items: stretch;
   padding: 14px;
   border: 1px solid var(--home-line);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--home-surface);
 }
 .inventory-grid .home-row-title {
@@ -332,7 +332,7 @@ body.home-route .home-shell {
   padding: 18px 20px 16px;
   background: var(--home-agent);
   border: var(--home-border) solid var(--home-outline);
-  border-radius: var(--home-radius);
+  border-radius: 0;
 }
 .home-command h2 {
   margin-bottom: 12px;
@@ -378,7 +378,7 @@ body.home-route .home-shell {
   display: flex;
   gap: 4px;
   padding: 4px;
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--home-page);
 }
 .home-shell .home-segment button {
@@ -511,7 +511,7 @@ body.home-route .home-shell {
   background: var(--home-surface);
   color: var(--home-ink);
   border: var(--home-border) solid var(--home-outline);
-  border-radius: var(--home-radius);
+  border-radius: 0;
   box-shadow: 6px 6px 0 var(--home-outline);
   animation: home-layer-in 160ms ease-out;
 }
@@ -554,7 +554,7 @@ body.home-route .home-shell {
   position: absolute;
   inset: 24px;
   border: var(--home-control-border) solid var(--home-outline);
-  border-radius: 16px;
+  border-radius: 0;
   overflow: hidden;
   background: var(--home-surface);
   animation: home-layer-in 160ms ease-out;
@@ -596,7 +596,7 @@ body.home-route .home-shell {
   .home-app {
     min-height: calc(100dvh - 24px);
     grid-template-columns: 76px minmax(0, 1fr);
-    border-radius: 16px;
+    border-radius: 0;
   }
   .home-content {
     padding: 18px 20px 28px;
@@ -671,7 +671,7 @@ body.home-route .home-shell {
     max-height: 94dvh;
     border: 0;
     border-top: var(--home-border) solid var(--home-outline);
-    border-radius: 20px 20px 0 0;
+    border-radius: 0;
     box-shadow: none;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
@@ -783,7 +783,7 @@ body.home-route .home-shell {
   display: flex;
   gap: 4px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--home-page);
 }
 .family-sections a {
@@ -795,7 +795,7 @@ body.home-route .home-shell {
   min-height: 44px;
   padding: 8px 14px;
   border: var(--home-control-border) solid transparent;
-  border-radius: 8px;
+  border-radius: 0;
 }
 .family-sections a[aria-current="page"] {
   background: var(--home-surface);
@@ -845,7 +845,7 @@ body.home-route .home-shell {
   width: fit-content;
   color: var(--home-ink);
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: 0;
 }
 .home-more-back:focus-visible {
   outline: 3px solid var(--home-focus);
@@ -946,7 +946,7 @@ body.home-route .home-shell {
   min-height: 44px;
   padding: 10px 12px;
   border: 1px solid var(--home-outline);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--home-ink);
   background: var(--home-surface);
   font: inherit;

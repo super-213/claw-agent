@@ -104,8 +104,8 @@ http_status() {
   fi
 
   local code
-  code="$(curl -sS -m 3 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || true)"
-  if [[ "$code" =~ ^2|3 ]]; then
+  code="$(curl --noproxy '*' -sS -m 3 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null || true)"
+  if [[ "$code" =~ ^[23][0-9][0-9]$ ]]; then
     printf "正常：HTTP %s" "$code"
     return 0
   fi
@@ -122,7 +122,8 @@ print_service() {
   local name="$1"
   local pid="$2"
   local port="$3"
-  local url="$4"
+  local health_path="$4"
+  local url=""
   local inferred_ports
 
   printf "\n[%s]\n" "$name"
@@ -147,6 +148,10 @@ print_service() {
     inferred_ports="$(listening_ports_for_pid "$pid")"
     if [[ -n "$inferred_ports" ]]; then
       printf "端口：%s（从进程监听推断）\n" "$inferred_ports"
+      # A single listener is unambiguous; do not guess between multiple ports.
+      if is_number "$inferred_ports" && pid_matches_project "$pid"; then
+        port="$inferred_ports"
+      fi
     else
       printf "端口：未知\n"
     fi
@@ -154,6 +159,9 @@ print_service() {
     printf "端口：未知\n"
   fi
 
+  if is_number "$port"; then
+    url="http://127.0.0.1:$port$health_path"
+  fi
   if [[ -n "$url" ]]; then
     printf "健康检查：%s\n" "$(http_status "$url")"
   else
@@ -195,20 +203,11 @@ fi
 BACKEND_PORT="${BACKEND_PORT:-}"
 FRONTEND_PORT="${FRONTEND_PORT:-}"
 
-BACKEND_URL=""
-FRONTEND_URL=""
-if [[ -n "$BACKEND_PORT" ]]; then
-  BACKEND_URL="http://127.0.0.1:$BACKEND_PORT/"
-fi
-if [[ -n "$FRONTEND_PORT" ]]; then
-  FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT/"
-fi
-
 printf "项目目录：%s\n" "$PROJECT_DIR"
 printf "状态文件：%s\n" "$STATE_STATUS"
 
-print_service "后端 API" "${BACKEND_PID:-}" "$BACKEND_PORT" "$BACKEND_URL"
-print_service "前端 Vite" "${FRONTEND_PID:-}" "$FRONTEND_PORT" "$FRONTEND_URL"
+print_service "后端 API" "${BACKEND_PID:-}" "$BACKEND_PORT" "/api/health"
+print_service "前端 Vite" "${FRONTEND_PID:-}" "$FRONTEND_PORT" "/"
 
 print_log_tail "后端日志" "$BACKEND_LOG"
 print_log_tail "前端日志" "$FRONTEND_LOG"

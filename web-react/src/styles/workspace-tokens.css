@@ -1,48 +1,60 @@
 /* 010: functional colors identify areas; state colors describe real outcomes. */
 :root {
-  --home-page: #f8f5ec;
+  --home-page: #fff9ed;
   --home-surface: #fff;
-  --home-ink: #242424;
-  --home-muted: #62615e;
-  --home-line: #dedbd2;
-  --home-agent: #c7e9ff;
-  --home-schedule: #ffe48d;
-  --home-calendar: #e6f4d6;
-  --home-nav: #eef6e6;
-  --home-knowledge: #d8c8ff;
-  --home-success: #b8e8b0;
+  --home-ink: #202020;
+  --home-muted: #494740;
+  --home-line: #aaa69b;
+  --home-agent: #76d5ff;
+  --home-schedule: #ffdc40;
+  --home-calendar: #fff9ed;
+  --home-nav: #fff9ed;
+  --home-knowledge: #ff9cc9;
+  --home-success: #d5edc8;
   --home-danger: #a02d21;
   --home-focus: #235fba;
-  --home-shadow: 4px 4px 0 #242424;
-  --home-radius: 12px;
+  --home-shadow: 5px 5px 0 #202020;
+  --home-radius: 0px;
   /* Structural outlines stay distinct from quiet list separators. */
-  --home-outline: #242424;
+  --home-outline: #202020;
   --home-border: 3px;
-  --home-control-border: 2px;
+  --home-control-border: 3px;
   --home-control-shadow: 3px 3px 0 var(--home-outline);
-  --home-widget-today: #f0f9a8;
-  --home-widget-fridge: #c8f3c2;
-  --home-widget-medicine: #e4cdfa;
+  --home-widget-today: #ffdc40;
+  --home-widget-fridge: #76d5ff;
+  --home-widget-medicine: #ff9cc9;
 }
 :root[data-theme="dark"] {
   /* Neutral graphite surfaces with quiet, distinct functional tints. */
   --home-page: #17191c;
   --home-surface: #202327;
   --home-ink: #eceef1;
-  --home-muted: #adb4bf;
+  --home-muted: #c0c7d0;
   --home-line: #383e47;
-  --home-agent: #293b4b;
-  --home-schedule: #30353d;
+  --home-agent: #174c65;
+  --home-schedule: #594811;
   --home-calendar: #252a31;
   --home-nav: #24292f;
-  --home-knowledge: #383247;
+  --home-knowledge: #612c48;
   --home-success: #293e34;
   --home-danger: #f0a49c;
   --home-focus: #a5c7e5;
   --home-shadow: 4px 4px 0 #111316;
-  --home-outline: #4b5563;
+  --home-outline: #aeb8c5;
   --home-control-shadow: 3px 3px 0 #111316;
-  --home-widget-today: #2c3139;
-  --home-widget-fridge: #2c3139;
-  --home-widget-medicine: #383247;
+  --home-widget-today: #594811;
+  --home-widget-fridge: #174c65;
+  --home-widget-medicine: #612c48;
+}
+
+:root {
+  --home-shadow-sm: 3px 3px 0 #202020;
+  --home-shadow-lg: 8px 8px 0 #202020;
+  --home-action: #ffdc40;
+  --home-action-ink: #202020;
+  --home-display-font: "Arial Black", "Noto Sans SC", "PingFang SC", sans-serif;
+}
+:root[data-theme="dark"] {
+  --home-shadow-sm: 3px 3px 0 #08090b;
+  --home-shadow-lg: 8px 8px 0 #08090b;
 }

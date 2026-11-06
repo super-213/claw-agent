@@ -55,9 +55,7 @@ body.dashboard-route::after {
 }
 
 body.dashboard-route .dashboard-shell {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), transparent 280px),
-    var(--page);
+  background: var(--surface-solid);
   background-repeat: no-repeat;
   background-size: 100% 100vh;
 }

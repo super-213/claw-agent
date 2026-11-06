@@ -42,7 +42,7 @@
 }
 
 .llm-req-header .req-state .dot {
-  animation: softPulse 1.2s ease-in-out infinite;
+  animation: none;
   background: currentColor;
   flex: 0 0 auto;
   height: 5px;
@@ -119,7 +119,7 @@
 }
 
 .tool-call-head .tool-status .dot {
-  animation: softPulse 1.2s ease-in-out infinite;
+  animation: none;
   background: currentColor;
   flex: 0 0 auto;
   height: 5px;

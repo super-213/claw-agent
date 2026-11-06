@@ -317,7 +317,7 @@
 }
 
 .message.user {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 95%, #fff), var(--accent));
+  background: var(--accent);
   border-radius: var(--radius-bubble) 9px var(--radius-bubble) var(--radius-bubble);
   box-shadow: 0 12px 26px color-mix(in srgb, var(--accent) 22%, transparent);
   color: #fff;
@@ -472,7 +472,7 @@
 }
 
 .thinking span {
-  animation: softPulse 1.2s ease-in-out infinite;
+  animation: none;
   background: var(--text-tertiary);
   border-radius: 50%;
   height: 6px;
@@ -485,7 +485,7 @@
 .message-context-menu,
 .tree-node-context-menu {
   background: var(--surface-elevated);
-  backdrop-filter: blur(24px) saturate(1.2);
+  backdrop-filter: none;
   border: 1px solid var(--separator);
   border-radius: 12px;
   box-shadow: var(--shadow-popover);

@@ -3,7 +3,7 @@
 .modal-backdrop {
   align-items: center;
   background: rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
   display: none;
   inset: 0;
   justify-content: center;
@@ -18,7 +18,7 @@
 
 .skill-modal {
   background: var(--surface-elevated);
-  backdrop-filter: blur(30px) saturate(1.2);
+  backdrop-filter: none;
   border: 1px solid var(--separator);
   border-radius: 16px;
   box-shadow: var(--shadow-popover);

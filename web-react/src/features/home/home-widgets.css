@@ -25,7 +25,7 @@
 .home-widget {
   min-width: 0;
   border: var(--home-border) solid var(--home-outline);
-  border-radius: var(--home-radius);
+  border-radius: 0;
   background: var(--home-surface);
   position: relative;
 }
@@ -64,7 +64,7 @@
   min-height: 150px;
   padding: 17px 16px;
   gap: 10px;
-  border-radius: calc(var(--home-radius) - var(--home-border));
+  border-radius: 0;
 }
 .home-widget-label {
   display: flex;
@@ -146,7 +146,7 @@
   content: "";
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--home-widget-today);
   border: 2px solid var(--home-outline);
 }
@@ -225,7 +225,7 @@
   justify-items: center;
   padding: 30px 20px;
   border: 1px dashed var(--home-line);
-  border-radius: 14px;
+  border-radius: 0;
   color: var(--home-muted);
 }
 .home-widget-catalog {

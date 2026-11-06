@@ -22,7 +22,7 @@
   .home-calendar-edge > span {
     width: 4px;
     height: 40px;
-    border-radius: 4px;
+    border-radius: 0;
     background: var(--home-muted);
     opacity: .45;
   }
@@ -48,7 +48,7 @@
   background: var(--home-calendar);
   color: var(--home-ink);
   border-left: 1px solid var(--home-line);
-  box-shadow: -12px 0 40px #0002;
+  box-shadow: -8px 0 0 var(--home-outline);
   transform: translateX(100%);
   overscroll-behavior: contain;
 }

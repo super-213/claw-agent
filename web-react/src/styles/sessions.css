@@ -2,8 +2,8 @@
 
 .sidebar {
   background: color-mix(in srgb, var(--surface-solid) 78%, var(--app-bg));
-  backdrop-filter: blur(28px) saturate(1.25);
-  -webkit-backdrop-filter: blur(28px) saturate(1.25);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-right: 1px solid var(--separator-soft);
   display: flex;
   flex-direction: column;
@@ -24,7 +24,7 @@
 
 .brand-icon {
   align-items: center;
-  background: linear-gradient(180deg, #2c2c2e, #111113);
+  background: var(--surface-solid);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
@@ -201,7 +201,7 @@
 }
 
 .session-busy-dot {
-  animation: softPulse 1.1s ease-in-out infinite;
+  animation: none;
   background: var(--warning);
   border-radius: 50%;
   display: inline-block;
@@ -249,8 +249,8 @@
 
 .session-menu {
   background: var(--surface-elevated);
-  backdrop-filter: blur(24px) saturate(1.2);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--separator);
   border-radius: 12px;
   box-shadow: var(--shadow-popover);
@@ -478,9 +478,7 @@
 /* Workbench sidebar hierarchy */
 
 .sidebar {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-solid) 88%, var(--app-bg)), color-mix(in srgb, var(--surface-solid) 68%, var(--app-bg))),
-    var(--surface-solid);
+  background: var(--surface-solid);
 }
 
 .brand-area {
@@ -495,7 +493,7 @@
 }
 
 .brand-icon {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), #0f766e);
+  background: var(--surface-solid);
   border-color: color-mix(in srgb, var(--accent) 28%, rgba(255, 255, 255, 0.2));
   box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 26%, transparent);
 }
@@ -519,8 +517,8 @@
 
 .account-popover {
   background: color-mix(in srgb, var(--surface-elevated) 96%, transparent);
-  backdrop-filter: blur(24px) saturate(1.22);
-  -webkit-backdrop-filter: blur(24px) saturate(1.22);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--separator);
   border-radius: 14px;
   box-shadow: var(--shadow-popover);
